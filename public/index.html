@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12273e">
+  <title>MOCK MARKET — 학교 모의주식</title>
+  <meta name="description" content="학교 동아리 21개가 기업이 되는 가상 주식시장 행사">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" aria-label="메뉴">
+      <div class="brand"><span class="brand-mark">M</span><div><strong>MOCK MARKET</strong><small>SCHOOL EDITION</small></div></div>
+      <div class="nav-title">MARKET</div>
+      <nav class="nav-list">
+        <button class="nav active" data-page="dashboard"><span>▦</span> 대시보드</button>
+        <button class="nav" data-page="market"><span>↗</span> 주식시장</button>
+        <button class="nav" data-page="news"><span>≡</span> 시장 뉴스</button>
+      </nav>
+      <div class="nav-title second">MY ACCOUNT</div>
+      <nav class="nav-list">
+        <button class="nav" data-page="portfolio"><span>◫</span> 내 자산</button>
+        <button class="nav" data-page="management"><span>▤</span> 기업 경영</button>
+      </nav>
+      <div class="sidebar-bottom"><span class="status-dot"></span> 행사 준비 단계 <small>가상화폐만 사용 · 실제 투자 아님</small></div>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="top-left"><span class="live-dot"></span><span>모의주식 2026</span><span class="top-separator">/</span><b id="current-title">대시보드</b></div>
+        <div class="top-right"><span class="event-date">10.21 — 10.27</span><button id="account-button" class="account-btn">로그인</button></div>
+      </header>
+      <main id="page" tabindex="-1">
+        <section class="page active" id="page-dashboard">
+          <div class="eyebrow">2026 SCHOOL STOCK SIMULATION</div>
+          <div class="hero"><div><div class="hero-tag">VIRTUAL STOCK EXCHANGE</div><h1>우리 학교의<br><span>새로운 주식시장.</span></h1><p>21개 동아리가 기업이 되고, 학생들이 투자자가 되는<br class="desktop-only"> 7일간의 경제 시뮬레이션.</p><button class="hero-button" data-goto="market">기업 둘러보기 <span>→</span></button></div><div class="hero-art"><div class="graph-label">SCHOOL INDEX <small>PREVIEW</small></div><svg viewBox="0 0 400 210" role="img" aria-label="장식용 그래프. 실제 주가 데이터 아님"><defs><linearGradient id="chartfill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#75d7c0" stop-opacity=".22"/><stop offset="1" stop-color="#75d7c0" stop-opacity="0"/></linearGradient></defs><path d="M4 188 L4 158 L45 165 L73 135 L110 144 L146 110 L182 124 L219 79 L263 97 L297 65 L340 77 L386 29 L396 40 L396 208 L4 208Z" fill="url(#chartfill)"/><polyline points="4,158 45,165 73,135 110,144 146,110 182,124 219,79 263,97 297,65 340,77 386,29 396,40" fill="none" stroke="#77d8c3" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="386" cy="29" r="5" fill="#a1f6db"/></svg><small>* 화면 장식이며 실제 가격 흐름이 아닙니다.</small></div></div>
+          <div class="section-heading"><h2>행사 한눈에 보기</h2><span>EVENT OVERVIEW</span></div>
+          <div class="stats"><div class="stat"><div class="stat-icon blue">⌂</div><div><span>참여 기업</span><strong>21<small>개 동아리</small></strong></div></div><div class="stat"><div class="stat-icon violet">◎</div><div><span>예상 활성 참가자</span><strong>200<small>명</small></strong></div></div><div class="stat"><div class="stat-icon mint">₩</div><div><span>학생 1인당 시작 자금</span><strong>1,000,000<small>원(가상)</small></strong></div></div></div>
+          <div class="two-column"><section class="panel"><div class="panel-title"><h3>참여 기업 미리보기</h3><button class="text-link" data-goto="market">전체 보기 →</button></div><div id="featured-companies" class="company-mini"><div class="placeholder">기업 목록을 불러오는 중…</div></div></section><section class="panel"><div class="panel-title"><h3>최근 공지</h3><button class="text-link" data-goto="news">전체 보기 →</button></div><div id="featured-news"><div class="placeholder">공지를 불러오는 중…</div></div></section></div>
+        </section>
+        <section class="page" id="page-market"><div class="eyebrow">MARKET</div><div class="page-heading"><div><h1>주식시장</h1><p>21개 동아리 기업을 살펴보세요. 실제 주문 기능은 거래 규칙 확정 후 열립니다.</p></div><span class="pill">상장 준비 중</span></div><div class="panel"><div class="panel-title"><h3>기업 목록 <span class="count" id="market-count">0</span></h3><input class="search" id="company-search" placeholder="기업명 또는 코드 검색" aria-label="기업명 또는 코드 검색"></div><div class="table-wrap"><table><thead><tr><th>기업명</th><th>기업 코드</th><th>기준가격(예시)</th><th>상태</th><th></th></tr></thead><tbody id="market-rows"></tbody></table></div></div><div class="info-note">현재 표시되는 기준가격은 시연용 값입니다. 주식 발행 수량·매매 방식·가격 결정 규칙은 아직 확정되지 않았습니다.</div></section>
+        <section class="page" id="page-news"><div class="eyebrow">NEWSROOM</div><div class="page-heading"><div><h1>시장 뉴스</h1><p>행사 공지와 기업별 이벤트가 게시될 공간입니다.</p></div></div><div id="all-news" class="news-grid"></div></section>
+        <section class="page" id="page-portfolio"><div class="eyebrow">MY ACCOUNT</div><div class="page-heading"><div><h1>내 자산</h1><p>로그인하면 가상 보유금과 보유 주식을 확인할 수 있습니다.</p></div></div><div id="portfolio-content" class="panel empty-state">로그인 후 내 자산을 확인할 수 있습니다.</div></section>
+        <section class="page" id="page-management"><div class="eyebrow">MANAGEMENT</div><div class="page-heading"><div><h1>기업 경영</h1><p>동아리장을 위한 기업 운영 공간입니다. 투자·배당 설정 기능은 추후 추가됩니다.</p></div></div><div id="management-content" class="panel empty-state">로그인 후 담당 기업을 확인할 수 있습니다.</div></section>
+      </main>
+      <footer>MOCK MARKET · 학생 교육용 가상 주식시장 <span>DEVELOPMENT PREVIEW v0.1</span></footer>
+    </div>
+  </div>
+  <dialog id="login-dialog"><form method="dialog" class="modal" id="login-form"><div class="modal-heading"><div><span class="eyebrow">MEMBER ACCESS</span><h2>로그인</h2></div><button class="close" id="close-login" type="button" aria-label="닫기">×</button></div><p>관리자가 발급한 아이디와 비밀번호를 입력하세요.</p><label for="username">아이디</label><input id="username" name="username" autocomplete="username" required maxlength="32"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" required><div id="login-error" role="alert" class="login-error"></div><button class="login-submit" type="submit">로그인</button><small>현재 자체 회원가입 기능은 제공하지 않습니다.</small></form></dialog>
+  <dialog id="company-dialog"><div class="modal company-modal"><div class="modal-heading"><div><span class="eyebrow">COMPANY PROFILE</span><h2 id="detail-title">기업 정보</h2></div><button class="close" id="close-detail" aria-label="닫기">×</button></div><div id="company-detail"></div><div class="modal-actions"><button class="ghost" id="detail-close">닫기</button><button class="disabled-button" disabled>매수·매도 추후 제공</button></div></div></dialog>
+</body>
+</html>
