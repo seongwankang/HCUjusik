@@ -2,16 +2,28 @@
   "name": "school-mock-stock",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.25.0",
   "type": "module",
   "description": "학교 동아리 기반 모의주식 행사 기본 프로젝트",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 migrations apply stock-db --local",
-    "db:remote": "wrangler d1 migrations apply stock-db --remote",
-    "test": "node --test"
+    "build": "node scripts/build.mjs",
+    "dev": "pnpm build && wrangler dev",
+    "deploy": "pnpm build && wrangler deploy",
+    "test": "node --test tests/*.test.mjs",
+    "test:legacy": "node --test legacy/d1/tests/*.test.mjs",
+    "test:rules": "node --test tests/rules/*.test.mjs",
+    "check": "pnpm test && pnpm build && wrangler deploy --dry-run"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "esbuild": "^0.25.0",
     "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "firebase": "^12.0.0",
+    "jose": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

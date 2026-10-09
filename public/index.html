@@ -7,7 +7,7 @@
   <title>MOCK MARKET — 학교 모의주식</title>
   <meta name="description" content="학교 동아리 21개가 기업이 되는 가상 주식시장 행사">
   <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <script src="/app.js" type="module"></script>
 </head>
 <body>
   <div class="layout">
@@ -47,7 +47,7 @@
       <footer>MOCK MARKET · 학생 교육용 가상 주식시장 <span>DEVELOPMENT PREVIEW v0.1</span></footer>
     </div>
   </div>
-  <dialog id="login-dialog"><form method="dialog" class="modal" id="login-form"><div class="modal-heading"><div><span class="eyebrow">MEMBER ACCESS</span><h2>로그인</h2></div><button class="close" id="close-login" type="button" aria-label="닫기">×</button></div><p>관리자가 발급한 아이디와 비밀번호를 입력하세요.</p><label for="username">아이디</label><input id="username" name="username" autocomplete="username" required maxlength="32"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" required><div id="login-error" role="alert" class="login-error"></div><button class="login-submit" type="submit">로그인</button><small>현재 자체 회원가입 기능은 제공하지 않습니다.</small></form></dialog>
+  <dialog id="login-dialog"><form method="dialog" class="modal" id="login-form"><div class="modal-heading"><div><span class="eyebrow">MEMBER ACCESS</span><h2>로그인</h2></div><button class="close" id="close-login" type="button" aria-label="닫기">×</button></div><p>관리자가 등록한 이메일과 비밀번호를 입력하세요.</p><label for="username">이메일</label><input id="username" name="username" type="email" autocomplete="username" required maxlength="254"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" required><div id="login-error" role="alert" class="login-error"></div><button class="login-submit" type="submit">로그인</button><small>공용 컴퓨터에서는 사용 후 로그아웃하세요. 화면을 새로고침하면 다시 로그인해야 합니다.</small></form></dialog>
   <dialog id="company-dialog"><div class="modal company-modal"><div class="modal-heading"><div><span class="eyebrow">COMPANY PROFILE</span><h2 id="detail-title">기업 정보</h2></div><button class="close" id="close-detail" aria-label="닫기">×</button></div><div id="company-detail"></div><div class="modal-actions"><button class="ghost" id="detail-close">닫기</button><button class="disabled-button" disabled>매수·매도 추후 제공</button></div></div></dialog>
 </body>
 </html>

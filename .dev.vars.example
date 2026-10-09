@@ -1,0 +1,4 @@
+# Public Firebase web configuration only; copy this file to .dev.vars locally.
+FIREBASE_PROJECT_ID="replace-with-project-id"
+FIREBASE_API_KEY="replace-with-web-api-key"
+FIREBASE_AUTH_DOMAIN="replace-with-project-id.firebaseapp.com"

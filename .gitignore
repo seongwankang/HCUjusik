@@ -6,3 +6,13 @@ node_modules/
 .generated-*
 .DS_Store
 coverage/
+public/auth.bundle.js
+service-account*.json
+*-adminsdk-*.json
+*.pem
+firebase-debug.log
+firestore-debug.log
+.dev.vars.*
+!.dev.vars.example
+.tools/
+docs/local-verification.txt

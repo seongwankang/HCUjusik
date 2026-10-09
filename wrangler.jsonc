@@ -8,12 +8,9 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "stock-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
-  ]
+  "vars": {
+    "FIREBASE_PROJECT_ID": "replace-with-project-id",
+    "FIREBASE_API_KEY": "",
+    "FIREBASE_AUTH_DOMAIN": "replace-with-project-id.firebaseapp.com"
+  }
 }

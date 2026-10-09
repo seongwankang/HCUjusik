@@ -1,0 +1,43 @@
+rules_version = '2';
+// users/{uid}: displayName string, role student|president|admin, active bool.
+// portfolios/{uid}: cash integer (simulation units), holdings array <= 100,
+// version integer. Only trusted staff/server may provision or update these.
+// assignments/{uid}: companyIds array <= 5.
+// companies/{id}: presentation data only; ticker string, name string, etc.
+// news/{id}: presentation data only; title, content, publishedAt timestamp.
+// No email, password, key, or private student data in companies/news.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function participant() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    match /users/{uid} {
+      // Inactive students can read their own registration status only.
+      allow get: if owner(uid);
+      allow list, create, update, delete: if false;
+    }
+    match /portfolios/{uid} {
+      allow get: if owner(uid) && participant();
+      allow list, create, update, delete: if false;
+    }
+    match /assignments/{uid} {
+      allow get: if owner(uid) && participant();
+      allow list, create, update, delete: if false;
+    }
+    match /companies/{id} {
+      allow get: if participant();
+      allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
+      allow create, update, delete: if false;
+    }
+    match /news/{id} {
+      allow get: if participant();
+      allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+      allow create, update, delete: if false;
+    }
+    // Orders, fills, admin collections and every subcollection default deny.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,3 +1,4 @@
+import {idToken, login, logout, sessionVersion} from '/auth.bundle.js';
 const state = {page:'dashboard',companies:[],news:[],user:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -5,9 +6,14 @@ const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 async function getJSON(url,options={}) {
-  const response = await fetch(url,{credentials:'same-origin',...options});
+  const generation = sessionVersion();
+  const token = await idToken();
+  const headers = new Headers(options.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(url,{...options,headers});
   let data = {};
   try {data = await response.json();}catch{}
+  if (generation !== sessionVersion()) throw new Error('로그인 상태가 변경되었습니다.');
   if (!response.ok) throw new Error(data.error || `서버 응답 오류 (${response.status})`);
   return data;
 }
@@ -85,7 +91,7 @@ async function refreshSession() {
 async function initialLoad() {
   const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession()]);
   if(results[0].status==='fulfilled')state.companies=results[0].value.companies;
-  else $('#featured-companies').textContent='기업 정보를 불러오지 못했습니다. 데이터베이스 설정을 확인하세요.';
+  else $('#featured-companies').textContent='로그인 후 기업 정보를 조회할 수 있습니다. 연결 전에는 Firebase 설정이 필요합니다.';
   if(results[1].status==='fulfilled')state.news=results[1].value.news;
   else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
   if(results[0].status==='fulfilled')renderCompanies();
@@ -104,8 +110,8 @@ document.addEventListener('click',event=>{
 $('#company-search').addEventListener('input',renderCompanies);
 $('#account-button').addEventListener('click',async()=>{
   if(!state.user){$('#login-dialog').showModal();return;}
-  try {await getJSON('/api/logout',{method:'POST'});}catch(e){alert(e.message);return;}
-  state.user=null;updateAccountButton();
+  try {await logout();}catch(e){alert(e.message);return;}
+  state.user=null;state.companies=[];state.news=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();
   if(state.page==='management')loadManagement();
 });
@@ -118,12 +124,14 @@ $('#login-form').addEventListener('submit',async(e)=>{
   const username=$('#username').value;
   const password=$('#password').value;
   try{
-    const data=await getJSON('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    await login(username,password);
+    const data=await getJSON('/api/me');
     state.user=data.user;
+    await initialLoad();
     $('#password').value='';
     $('#login-dialog').close();updateAccountButton();
     if(state.page==='portfolio')loadPortfolio();
     if(state.page==='management')loadManagement();
-  }catch(error){$('#login-error').textContent=error.message;}
+  }catch(error){await logout().catch(()=>{});$('#login-error').textContent='로그인 또는 행사 참가 등록을 확인하세요.';}
 });
 initialLoad();
