@@ -7,12 +7,14 @@
   "description": "학교 동아리 기반 모의주식 행사 기본 프로젝트",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "pnpm build && wrangler dev",
-    "deploy": "pnpm build && wrangler deploy",
+    "dev": "pnpm build && node scripts/serve.mjs",
+    "deploy": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:legacy": "node --test legacy/d1/tests/*.test.mjs",
     "test:rules": "node --test tests/rules/*.test.mjs",
-    "check": "pnpm test && pnpm build && wrangler deploy --dry-run"
+    "check": "pnpm test && pnpm build && wrangler deploy --dry-run",
+    "deploy:workers": "pnpm build && wrangler deploy",
+    "dev:workers": "pnpm build && wrangler dev"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

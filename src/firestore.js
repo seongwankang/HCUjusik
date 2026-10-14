@@ -40,6 +40,12 @@ export function createFirestore(env, token, fetcher = fetch) {
     return response.json();
   }
   return {
+    async commit(items) {
+      const encode=v=> typeof v==='string'?{stringValue:v}:typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integerValue:String(v)}:{arrayValue:{values:v.map(encode)}};
+      const writes=items.map(item=>({update:{name:`projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${item.path}`,fields:Object.fromEntries(Object.entries(item.data).map(([k,v])=>[k,['publishedAt','startsAt','endsAt'].includes(k)?{timestampValue:v}:encode(v)]))},updateMask:{fieldPaths:Object.keys(item.data)},...(item.createOnly?{currentDocument:{exists:false}}:{})}));
+      const response=await fetcher(base+':commit',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({writes}),signal:AbortSignal.timeout(8000)});
+      if(!response.ok)throw new HttpError(response.status===403?403:response.status===409?409:503,'저장하지 못했습니다. Firestore 관리자 권한과 규칙을 확인하세요.');
+    },
     async get(path) {
       const document = await read('/' + path.split('/').map(encodeURIComponent).join('/'), true);
       return document ? documentData(document) : null;

@@ -16,3 +16,5 @@ firestore-debug.log
 !.dev.vars.example
 .tools/
 docs/local-verification.txt
+
+dist/

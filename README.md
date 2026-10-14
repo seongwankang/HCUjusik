@@ -1,3 +1,18 @@
+# 청운증권HTS — 현재 실행 방식
+
+GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare 계정은 필요하지 않습니다.
+
+- 배포: [GitHub Pages 안내](docs/github-pages.md)
+- 관리자·학교 이메일 인증: [설정 안내](docs/admin-setup.md)
+- 로컬: `pnpm install --frozen-lockfile`, `pnpm dev` (8789/HCUjusik/)
+- 빌드: `pnpm build` → `dist/`
+- 검증: `pnpm test`, Firestore 에뮬레이터 규칙 테스트
+
+서비스 계정 키는 사용하지 않습니다. 거래 체결은 비활성화 상태입니다.
+
+---
+아래는 기존 Workers 단계의 기록입니다. 현재 배포는 위 Pages 안내를 사용하세요.
+
 # 모의주식 | MOCK MARKET
 
 학교 동아리 기반 교육용 모의주식 초기 프로젝트입니다.

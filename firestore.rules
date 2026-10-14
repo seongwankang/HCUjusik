@@ -10,32 +10,63 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function schoolVerified() { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email is string && request.auth.token.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$'); }
     function participant() {
       return signedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true &&
+        (schoolVerified() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
+    function admin() { return participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function str(v, n) { return v is string && v.size() > 0 && v.size() <= n; }
+    function ids(v) { return v is list && v.size() <= 5 &&
+      (v.size() < 1 || v[0] is string) && (v.size() < 2 || v[1] is string) &&
+      (v.size() < 3 || v[2] is string) && (v.size() < 4 || v[3] is string) && (v.size() < 5 || v[4] is string); }
+    function userData() { let d=request.resource.data; return d.keys().hasOnly(['displayName','role','active']) && str(d.displayName,80) && d.role in ['student','president'] && d.active is bool; }
+    function companyData() { let d=request.resource.data; return d.keys().hasOnly(['name','ticker','description','category','status','referencePrice','issuedShares','companyCash','dailyRevenue']) && str(d.name,80) && str(d.ticker,20) && str(d.description,2000) && str(d.category,40) && d.status in ['draft','listed','paused']; }
     match /users/{uid} {
       // Inactive students can read their own registration status only.
-      allow get: if owner(uid);
-      allow list, create, update, delete: if false;
+      allow get: if owner(uid) || admin();
+      allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
+      allow create: if owner(uid) && schoolVerified() && userData() && request.resource.data.role == 'student' && request.resource.data.active == true &&
+        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 1000000 &&
+        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.holdings == [] &&
+        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.version == 0;
+      allow update: if admin() && resource.data.role != 'admin' && userData();
+      allow delete: if false;
     }
     match /portfolios/{uid} {
       allow get: if owner(uid) && participant();
-      allow list, create, update, delete: if false;
+      allow create: if owner(uid) && schoolVerified() && !exists(/databases/$(database)/documents/users/$(uid)) &&
+        getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'student' &&
+        getAfter(/databases/$(database)/documents/users/$(uid)).data.active == true &&
+        request.resource.data.keys().hasOnly(['cash','holdings','version']) &&
+        request.resource.data.cash is int && request.resource.data.cash == 1000000 &&
+        request.resource.data.holdings == [] && request.resource.data.version is int && request.resource.data.version == 0;
+      allow list, update, delete: if false;
     }
     match /assignments/{uid} {
-      allow get: if owner(uid) && participant();
-      allow list, create, update, delete: if false;
+      allow get: if (owner(uid) && participant()) || admin();
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['companyIds']) && ids(request.resource.data.companyIds);
+      allow list, delete: if false;
     }
     match /companies/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create, update, delete: if false;
+      allow create: if admin() && companyData() && request.resource.data.referencePrice is int && request.resource.data.referencePrice > 0 && request.resource.data.referencePrice <= 100000000 && request.resource.data.issuedShares is int && request.resource.data.issuedShares > 0 && request.resource.data.issuedShares <= 100000000 && request.resource.data.companyCash == 0 && request.resource.data.dailyRevenue == 0;
+      allow update: if admin() && companyData() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','ticker','description','category','status']);
+      allow delete: if false;
     }
     match /news/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-      allow create, update, delete: if false;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','companyName','publishedAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt is timestamp;
+      allow delete: if false;
+    }
+    match /events/{id} {
+      allow get: if participant();
+      allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','startsAt','endsAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && str(request.resource.data.companyId,128) && request.resource.data.startsAt is timestamp && request.resource.data.endsAt is timestamp && request.resource.data.endsAt > request.resource.data.startsAt;
+      allow delete: if false;
     }
     // Orders, fills, admin collections and every subcollection default deny.
     match /{document=**} { allow read, write: if false; }

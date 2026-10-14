@@ -1,5 +1,6 @@
-import {idToken, login, logout, sessionVersion} from '/auth.bundle.js';
-const state = {page:'dashboard',companies:[],news:[],user:null};
+import {setupAdmin} from './admin.js';
+import {dataRequest, login, signup, logout, sessionVersion, verificationStatus, sendVerification} from './auth.bundle.js';
+const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
@@ -7,23 +8,18 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<
 
 async function getJSON(url,options={}) {
   const generation = sessionVersion();
-  const token = await idToken();
-  const headers = new Headers(options.headers);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(url,{...options,headers});
-  let data = {};
-  try {data = await response.json();}catch{}
+  const data=await dataRequest(url,options);
   if (generation !== sessionVersion()) throw new Error('로그인 상태가 변경되었습니다.');
-  if (!response.ok) throw new Error(data.error || `서버 응답 오류 (${response.status})`);
   return data;
 }
 
 function navigate(page) {
-  if (!['dashboard','market','news','portfolio','management'].includes(page)) return;
+  if (!['dashboard','market','news','portfolio','management','admin'].includes(page)) return;
+  if(page==='admin' && state.user?.role!=='admin')return;
   state.page = page;
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
   $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  $('#current-title').textContent = {dashboard:'대시보드',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영'}[page];
+  $('#current-title').textContent = {dashboard:'대시보드',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자'}[page];
   if(page==='portfolio') loadPortfolio();
   if(page==='management') loadManagement();
   window.scrollTo({top:0,behavior:'instant'});
@@ -34,6 +30,13 @@ function companyRow(c) {
   return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right">기업 정보 →</span></button>`;
 }
 function renderCompanies() {
+  if(state.companyError) {
+    const message=esc(state.companyError);
+    $('#featured-companies').innerHTML=`<div class="placeholder">${message}</div>`;
+    $('#market-count').textContent='—';
+    $('#market-rows').innerHTML=`<tr><td colspan="5" class="muted">${message}</td></tr>`;
+    return;
+  }
   $('#featured-companies').innerHTML = state.companies.slice(0,5).map(companyRow).join('') || '<div class="placeholder">등록된 기업이 없습니다.</div>';
   const search = ($('#company-search').value || '').trim().toLocaleLowerCase();
   const rows = state.companies.filter(c=>(c.name+' '+c.ticker).toLocaleLowerCase().includes(search));
@@ -46,7 +49,7 @@ function newsCard(n,compact=false) {
 }
 function renderNews() {
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
-  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') || '<div class="panel empty-state">등록된 뉴스가 없습니다.</div>';
+  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard({title:`기업 이벤트 · ${e.title}`,content:`${e.content}\n기간: ${new Date(e.startsAt).toLocaleString('ko-KR')} ~ ${new Date(e.endsAt).toLocaleString('ko-KR')} (게시용)`,companyName:e.companyId})).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
 }
 function showCompany(id) {
   const c = state.companies.find(c=>c.id===id);
@@ -71,7 +74,7 @@ async function loadPortfolio() {
 }
 async function loadManagement() {
   const target=$('#management-content');
-  if(!state.user){target.innerHTML=loginPrompt('동아리장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
+  if(!state.user){target.innerHTML=loginPrompt('사장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
   target.innerHTML='<div class="placeholder">기업 정보를 불러오는 중…</div>';
   try {
     const {companies}=await getJSON('/api/my-company');
@@ -80,6 +83,8 @@ async function loadManagement() {
   }catch(e){target.textContent=e.message;}
 }
 function updateAccountButton() {
+  adminUI.session(state.user);
+  if(state.page==='admin' && state.user?.role!=='admin')navigate('dashboard');
   const btn=$('#account-button');
   btn.textContent=state.user?`${state.user.displayName} · 로그아웃`:'로그인';
   btn.title=state.user?'로그아웃':'로그인';
@@ -89,13 +94,21 @@ async function refreshSession() {
   updateAccountButton();
 }
 async function initialLoad() {
-  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession()]);
-  if(results[0].status==='fulfilled')state.companies=results[0].value.companies;
-  else $('#featured-companies').textContent='로그인 후 기업 정보를 조회할 수 있습니다. 연결 전에는 Firebase 설정이 필요합니다.';
+  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession(),getJSON('/api/events')]);
+  if(results[0].status==='fulfilled') {
+    state.companies=results[0].value.companies;
+    state.companyError=null;
+  } else {
+    state.companies=[];
+    state.companyError=state.user
+      ? `기업 정보를 불러오지 못했습니다. ${results[0].reason.message}`
+      : '상단 로그인 버튼으로 로그인하면 테스트 기업을 조회할 수 있습니다.';
+  }
   if(results[1].status==='fulfilled')state.news=results[1].value.news;
   else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
-  if(results[0].status==='fulfilled')renderCompanies();
-  if(results[1].status==='fulfilled')renderNews();
+  state.events=results[3].status==='fulfilled'?results[3].value.events:[];
+  renderCompanies();
+  if(results[1].status==='fulfilled' || results[3].status==='fulfilled')renderNews();
 }
 
 $$('button[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
@@ -111,27 +124,83 @@ $('#company-search').addEventListener('input',renderCompanies);
 $('#account-button').addEventListener('click',async()=>{
   if(!state.user){$('#login-dialog').showModal();return;}
   try {await logout();}catch(e){alert(e.message);return;}
-  state.user=null;state.companies=[];state.news=[];renderCompanies();renderNews();updateAccountButton();
+  state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 테스트 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();
   if(state.page==='management')loadManagement();
 });
 $('#close-login').addEventListener('click',()=>$('#login-dialog').close());
 $('#close-detail').addEventListener('click',()=>$('#company-dialog').close());
 $('#detail-close').addEventListener('click',()=>$('#company-dialog').close());
+let signupMode=false;
+function verificationPanel(show){
+  $('#verification-panel').hidden=!show;
+  for(const selector of ['#username','#password','label[for="username"]','label[for="password"]','#auth-submit','#auth-toggle'])$(selector).hidden=show;
+  $('#signup-name-label').hidden=show||!signupMode;
+  $('#signup-warning').hidden=show||!signupMode;
+}
+async function finishLogin(){
+  let data;
+  try{data=await getJSON('/api/me');}
+  catch(error){
+    const status=await verificationStatus();
+    if(!status||!status.verified||!/^[^\s@]+@hcu\.hs\.kr$/i.test(status.email||''))throw error;
+    const name=$('#verification-name').value.trim()||$('#signup-name').value.trim();
+    if(!name)throw new Error('이메일 인증 후 학생 이름을 입력해 주세요.');
+    await getJSON('/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:name})});
+    data=await getJSON('/api/me');
+  }
+  state.user=data.user;await initialLoad();$('#password').value='';
+  verificationPanel(false);$('#login-dialog').close();updateAccountButton();
+  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
+}
+$('#verification-resend').addEventListener('click',async()=>{
+  const b=$('#verification-resend');b.disabled=true;
+  try{await sendVerification();$('#verification-message').textContent='인증 메일을 다시 보냈습니다. 스팸메일함도 확인하세요.';}
+  catch{$('#verification-message').textContent='메일을 보내지 못했습니다. 잠시 후 다시 시도하세요.';}
+  finally{setTimeout(()=>{b.disabled=false;},60000);}
+});
+$('#verification-check').addEventListener('click',async()=>{
+  const b=$('#verification-check');b.disabled=true;
+  try{const status=await verificationStatus(true);if(!status?.verified){$('#verification-message').textContent='아직 인증되지 않았습니다. 메일의 인증 링크를 눌러 주세요.';return;}await finishLogin();}
+  catch(e){$('#verification-message').textContent=e.message;}
+  finally{b.disabled=false;}
+});
+$('#auth-toggle').addEventListener('click',()=>{
+  signupMode=!signupMode;
+  $('#auth-title').textContent=signupMode?'학생 회원가입':'로그인';
+  $('#auth-submit').textContent=signupMode?'회원가입':'로그인';
+  $('#auth-toggle').textContent=signupMode?'이미 가입했나요? 로그인':'처음 오셨나요? 회원가입';
+  $('#auth-description').textContent=signupMode?'학생 계정으로 가입합니다. 사장 역할은 관리자가 지정합니다.':'이메일과 비밀번호로 로그인하세요.';
+  $('#signup-name-label').hidden=!signupMode;
+  $('#signup-name').disabled=!signupMode;
+  $('#signup-name').required=signupMode;
+  $('#signup-warning').hidden=!signupMode;
+  $('#password').minLength=signupMode?6:0;
+  $('#password').autocomplete=signupMode?'new-password':'current-password';
+  $('#login-error').textContent='';
+});
 $('#login-form').addEventListener('submit',async(e)=>{
   e.preventDefault();
   $('#login-error').textContent='';
-  const username=$('#username').value;
+  const username=$('#username').value.trim().toLowerCase();
   const password=$('#password').value;
+  const submit=$('#auth-submit');submit.disabled=true;
   try{
-    await login(username,password);
-    const data=await getJSON('/api/me');
-    state.user=data.user;
-    await initialLoad();
-    $('#password').value='';
-    $('#login-dialog').close();updateAccountButton();
-    if(state.page==='portfolio')loadPortfolio();
-    if(state.page==='management')loadManagement();
-  }catch(error){await logout().catch(()=>{});$('#login-error').textContent='로그인 또는 행사 참가 등록을 확인하세요.';}
+    if(signupMode){
+      if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(username)){throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');}
+      try{await signup(username,password);}catch(error){if(error.code==='auth/email-already-in-use')await login(username,password);else throw error;}
+    }else await login(username,password);
+    // Existing active admin profiles are exempt; the server decides that exemption.
+    try{await finishLogin();}catch(error){
+      const status=await verificationStatus();
+      if(!status||!/^[^\s@]+@hcu\.hs\.kr$/i.test(status.email||''))throw error;
+      verificationPanel(true);$('#password').value='';$('#auth-title').textContent='이메일 인증';
+      $('#verification-address').textContent=status.email;$('#verification-name').value=$('#signup-name').value;
+      $('#verification-message').textContent=status.verified?error.message:'메일의 인증 링크를 누른 뒤 인증 완료 확인을 눌러 주세요.';
+      if(signupMode&&!status.verified){try{await sendVerification();$('#verification-message').textContent='인증 메일을 보냈습니다. 스팸메일함도 꼭 확인하세요.';}catch{$('#verification-message').textContent='인증 메일을 보내지 못했습니다. 잠시 후 재발송 버튼을 눌러 주세요.';}}
+    }
+  }catch(error){await logout().catch(()=>{});$('#login-error').textContent=signupMode&&error.message.includes('학교 이메일')?error.message:'로그인 또는 가입을 완료하지 못했습니다. 이메일·비밀번호와 참가 상태를 확인하세요.';}
+  finally{submit.disabled=false;}
 });
+const adminUI=setupAdmin(getJSON);
 initialLoad();

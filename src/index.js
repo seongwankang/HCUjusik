@@ -1,6 +1,7 @@
 import {authenticate} from './auth.js';
 import {createFirestore} from './firestore.js';
 import {HttpError} from './errors.js';
+import {adminRoute} from './admin.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {status, headers: {
@@ -31,9 +32,10 @@ export function createWorker({verify, firestore = createFirestore} = {}) {
       if (path === '/api/health' && request.method === 'GET') {
         return json({ok: true, stage: 'firebase-read-only', configured: configured(env), tradingEnabled: false});
       }
-      const routes = ['/api/config', '/api/me', '/api/companies', '/api/news', '/api/portfolio', '/api/my-company', '/api/orders'];
-      if (!routes.includes(path)) return json({error: '존재하지 않는 API 경로입니다.'}, 404);
-      if ((path === '/api/orders' ? 'POST' : 'GET') !== request.method) return json({error: '지원하지 않는 메서드입니다.'}, 405);
+      const routes = ['/api/config', '/api/me', '/api/register', '/api/companies', '/api/news', '/api/portfolio', '/api/my-company', '/api/orders'];
+      const admin = /^\/api\/admin\/(companies|news|events|users)$/.test(path);
+      if (!routes.includes(path) && !admin && path !== '/api/events') return json({error: '존재하지 않는 API 경로입니다.'}, 404);
+      if (!admin && (['/api/orders','/api/register'].includes(path) ? 'POST' : 'GET') !== request.method) return json({error: '지원하지 않는 메서드입니다.'}, 405);
       if (!configured(env)) return json({error: 'Firebase 공개 설정을 먼저 구성하세요.'}, 503);
       if (path === '/api/config') return json({firebase: {
         projectId: env.FIREBASE_PROJECT_ID, apiKey: env.FIREBASE_API_KEY,
@@ -41,11 +43,25 @@ export function createWorker({verify, firestore = createFirestore} = {}) {
       }});
       if (path === '/api/me' && !request.headers.has('authorization')) return json({authenticated: false, user: null});
       try {
-        const {uid, token} = await authenticate(request, env, verify);
+        const {uid, token, claims} = await authenticate(request, env, verify);
         const db = firestore(env, token);
         // No self-registration into the event. Staff provisions active profiles.
         const profile = await db.get(`users/${uid}`);
+        const schoolVerified = claims.email_verified === true && typeof claims.email === 'string' && /^[^\s@]+@hcu\.hs\.kr$/i.test(claims.email);
+        if(!(profile?.role==='admin' && profile.active===true) && !schoolVerified)throw new HttpError(403,'학교 이메일(@hcu.hs.kr)의 이메일 인증을 완료하세요.');
+        if (path === '/api/register') {
+          if(profile) return json({ok:true,registered:true});
+          let data;try{data=await request.json();}catch{throw new HttpError(400,'이름을 확인하세요.');}
+          if(typeof data.displayName!=='string'||!data.displayName.trim()||data.displayName.length>80)throw new HttpError(400,'이름은 1~80자로 입력하세요.');
+          await db.commit([
+            {path:`users/${uid}`,data:{displayName:data.displayName.trim(),role:'student',active:true},createOnly:true},
+            {path:`portfolios/${uid}`,data:{cash:1000000,holdings:[],version:0},createOnly:true}
+          ]);
+          return json({ok:true,registered:true},201);
+        }
         if (profile?.active !== true) throw new HttpError(403, '행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+        if (admin) return json(await adminRoute(request, db, profile, path));
+        if (path === '/api/events') return json({events: await db.list('events', 100, 'startsAt desc')});
         if (path === '/api/me') return json({authenticated: true, user: safeUser(profile, uid)});
         if (path === '/api/orders') {
           // Intentionally unconditional: no env toggle, body parsing, or write client.

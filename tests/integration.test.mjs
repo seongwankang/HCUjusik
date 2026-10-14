@@ -18,7 +18,7 @@ function setup({active = true, registered = true} = {}) {
   const worker = createWorker({
     verify: async token => {
       if (token !== 'valid.token.signature') throw new HttpError(401, 'invalid');
-      return {sub: 'student-a'};
+      return {sub: 'student-a',email:'student@hcu.hs.kr',email_verified:true};
     },
     firestore: (_env, token) => {
       assert.equal(token, 'valid.token.signature');
