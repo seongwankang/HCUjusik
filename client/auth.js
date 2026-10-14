@@ -1,0 +1,60 @@
+import {getFirestore} from 'firebase/firestore';
+import {createClientApi} from './data.js';
+import {initializeApp} from 'firebase/app';
+import {
+  getAuth, setPersistence, inMemoryPersistence,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut
+} from 'firebase/auth';
+
+let auth;
+let ready;
+let generation = 0;
+let api;
+export const sessionVersion = () => generation;
+async function init() {
+  const response = await fetch(new URL('firebase.config.json',import.meta.url));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  auth = getAuth(initializeApp(data));
+  auth.languageCode = 'ko';
+  api=createClientApi({db:getFirestore(auth.app),getUser:async()=>auth.currentUser});
+  // Shared school computers: no token persistence in browser storage.
+  await setPersistence(auth, inMemoryPersistence);
+  return auth;
+}
+function ensure() {
+  return ready ||= init().catch(error => {ready = undefined; throw error;});
+}
+export async function idToken() {
+  await ensure();
+  return auth.currentUser ? auth.currentUser.getIdToken() : null;
+}
+export async function login(email, password) {
+  await ensure();
+  await signInWithEmailAndPassword(auth, email, password);
+  generation++;
+}
+export async function signup(email, password) {
+  if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(email.trim()))throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');
+  await ensure();
+  await createUserWithEmailAndPassword(auth, email, password);
+  generation++;
+}
+export async function verificationStatus(refresh=false) {
+  await ensure();
+  if(!auth.currentUser)return null;
+  if(refresh){await reload(auth.currentUser);await auth.currentUser.getIdToken(true);}
+  return {email:auth.currentUser.email,verified:auth.currentUser.emailVerified};
+}
+export async function sendVerification() {
+  await ensure();
+  if(!auth.currentUser)throw new Error('로그인이 필요합니다.');
+  await sendEmailVerification(auth.currentUser);
+}
+export async function logout() {
+  generation++;
+  await ensure();
+  await signOut(auth);
+}
+
+export async function dataRequest(path,options){await ensure();return api(path,options);}
