@@ -40,7 +40,7 @@ Spark와 Workers Free를 유지하면 무료 범위에서 예상 청구액은 0�
 ## 인증과 권한 경계
 
 1. 비밀번호는 Firebase SDK로 Firebase에 직접 전달한다. Workers에는 전달하지 않는다.
-2. 브라우저는 토큰을 메모리에 보관한다. 새로고침하면 다시 로그인해야 한다.
+2. 브라우저는 Firebase 세션 저장소에 로그인 상태를 보관한다. 같은 탭에서 새로고침해도 유지되며, 로그인 복원 완료 후 데이터를 조회한다.
    매 요청에서 SDK getIdToken()을 호출해 필요한 경우 만료 토큰을 갱신한다.
 3. Workers의 src/auth.js는 jose 라이브러리로 RS256 서명, 고정 Google JWKS,
    issuer, audience, exp, iat, auth_time 및 비어 있지 않은 128자 이하 sub를 확인한다.
@@ -57,7 +57,7 @@ Spark와 Workers Free를 유지하면 무료 범위에서 예상 청구액은 0�
 로그아웃은 SDK의 로컬 세션을 종료한다. 이미 탈취된 ID token을 즉시 폐기하는
 Admin revocation 검사는 구현하지 않았다. 최대 약 1시간의 토큰 수명 동안 유효할 수 있다.
 즉시 행사 접근 차단이 필요하면 운영자가 users/{uid}.active=false로 설정한다.
-Rules도 이 상태를 확인한다. 브라우저 세션 지속 저장은 하지 않지만 XSS 방지를 위해
+Rules도 이 상태를 확인한다. 브라우저는 탭 세션에만 로그인을 저장하며 XSS 방지를 위해
 표시 문자열 escaping을 유지하고 토큰/응답 오류 내용을 로그에 남기지 않는다.
 
 ## 서버 Firestore 접근과 비밀키

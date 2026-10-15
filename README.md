@@ -48,7 +48,7 @@ pnpm dlx firebase-tools emulators:exec --only firestore --project demo-school-st
 클라이언트의 모든 쓰기는 막혀 있으며 주문은 인증 후 항상 501을 반환합니다.
 미연결 상태에서는 /api/health가 configured=false를 반환하고 읽기 API는 503입니다.
 
-공용 컴퓨터에서 token을 지속 저장하지 않으므로 새로고침 후 재로그인이 필요합니다.
+로그인은 같은 탭의 세션에 보관되어 새로고침해도 유지됩니다. 공용 컴퓨터에서는 사용 후 반드시 로그아웃하세요.
 기업/뉴스도 로그인한 활성 행사 참가자만 조회합니다.
 운영자는 Auth 계정과 users/{UID}, portfolios/{UID} 문서를 별도로 준비합니다.
 현재 UI 가격은 참고값이며 실제 체결·공식 순위 계산이 아닙니다.
