@@ -1,5 +1,6 @@
 {
  "apiKey":"AIzaSyC0i2yjCL9y1kkZQwd7GnYX3lihWzvPiYQ",
  "authDomain":"hcujusik.firebaseapp.com",
- "projectId":"hcujusik"
+ "projectId":"hcujusik",
+ "tradingApiUrl":""
 }
