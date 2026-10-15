@@ -1,5 +1,6 @@
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
+import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView} from './spark-exchange.js';
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
 const message=s=>{throw new Error(s);};
 function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(Array.isArray(v))return v.map(plain);if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,plain(x)]));return v;}
@@ -19,6 +20,19 @@ export function createClientApi({db,getUser}){
    return {ok:true,registered:true};
   }
   if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+  if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role);
+  if(route==='/api/limit-order'&&method==='POST'){
+   const b=JSON.parse(options.body||'{}');await initializeSpark(db,user.uid,b.companyId);
+   const result=await placeSpark(db,user.uid,b);
+   try{for(let i=0;i<8;i++)if(!await matchSpark(db,user.uid,b.companyId))break;}catch{return {...result,matchPending:true};}
+   return {...result,order:await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`)};
+  }
+  if(route==='/api/cancel-order'&&method==='POST'){
+   const b=JSON.parse(options.body||'{}');
+   if(b.ownerUid&&b.ownerUid!==user.uid&&profile.role!=='admin')message('본인 주문만 취소할 수 있습니다.');
+   if(!b.companyId)b.companyId=(await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`))?.companyId;
+   return cancelSpark(db,user.uid,b);
+  }
   if(route==='/api/me'&&method==='GET')return {authenticated:true,user:{id:user.uid,displayName:profile.displayName,role:profile.role}};
   if(['/api/test-portfolio','/api/test-orders'].includes(route))message('기준가격 즉시 매매는 종료됐습니다. 지정가 주문장을 사용하세요.');
   if(route==='/api/orders')message('공식 주문은 아직 비활성화 상태입니다. 테스트 주문을 사용하세요.');

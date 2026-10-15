@@ -1,6 +1,5 @@
 import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
-import {createExchangeRequest} from './exchange.js';
 import {initializeApp} from 'firebase/app';
 import {
   getAuth, setPersistence, inMemoryPersistence,
@@ -11,7 +10,6 @@ let auth;
 let ready;
 let generation = 0;
 let api;
-let exchange;
 export const sessionVersion = () => generation;
 async function init() {
   const response = await fetch(new URL('firebase.config.json',import.meta.url));
@@ -20,7 +18,6 @@ async function init() {
   auth = getAuth(initializeApp(data));
   auth.languageCode = 'ko';
   api=createClientApi({db:getFirestore(auth.app),getUser:async()=>auth.currentUser});
-  exchange=createExchangeRequest({baseUrl:data.tradingApiUrl,getToken:async()=>auth.currentUser?.getIdToken(),allowLocal:['localhost','127.0.0.1'].includes(location.hostname)});
   // Shared school computers: no token persistence in browser storage.
   await setPersistence(auth, inMemoryPersistence);
   return auth;
@@ -60,4 +57,10 @@ export async function logout() {
   await signOut(auth);
 }
 
-export async function dataRequest(path,options){await ensure();return path.startsWith('/api/exchange?')||['/api/limit-order','/api/cancel-order'].includes(path)?exchange(path,options):api(path,options);}
+export async function dataRequest(path,options){
+ await ensure();try{return await api(path,options);}catch(error){
+  if(!error.code)error.status=400;
+  else if(['permission-denied','invalid-argument','not-found','already-exists'].includes(error.code))error.status=error.code==='permission-denied'?403:400;
+  throw error;
+ }
+}
