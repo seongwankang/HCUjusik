@@ -62,3 +62,5 @@ pnpm dlx firebase-tools emulators:exec --only firestore --project demo-school-st
 모든 클라이언트 쓰기 차단을 목표로 합니다. 대규모 공개 전 운영 환경에서 검토·검증하세요.
 
 경영 이벤트 운영과 권한 구조: [docs/company-events.md](docs/company-events.md)
+
+설비·직원·R&D 초기 밸런스: [docs/business-policy.md](docs/business-policy.md)

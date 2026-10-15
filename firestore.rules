@@ -399,9 +399,9 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/companyOperations/$(cid)) || operations(cid).locked == false;
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent']) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
         number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
-        number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
+        number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
       let total=pending ? o.pendingRevenue : o.revenue;
@@ -423,7 +423,8 @@ service cloud.firestore {
       let lost=n < e.count ? n : e.count;
       let p=pool(o,false);
       let q=pool(o,true);
-      return d.diff(o).affectedKeys().hasOnly([e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent']) &&
+      return d.diff(o).affectedKeys().hasOnly(e.asset == 'research' ? [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent','activeResearchBps','pendingResearchBps'] : [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent']) &&
+        (e.asset != 'research' || (d.activeResearchBps == researchBps(o)-(n > 0 ? int(researchBps(o)*lost / n) : 0) && d.pendingResearchBps == o.get('pendingResearchBps',0)-(n > 0 ? int(o.get('pendingResearchBps',0)*lost / n) : 0))) &&
         d[e.asset] == n-lost && poolLoss(d.production,p,e.asset,n,lost) && poolLoss(d.pendingProduction,q,e.asset,n,lost) &&
         d.revenue == o.revenue-(n > 0 ? int(p[e.asset]*lost / n) : 0) && d.pendingRevenue == o.pendingRevenue-(n > 0 ? int(q[e.asset]*lost / n) : 0);
     }
@@ -438,21 +439,36 @@ service cloud.firestore {
       return !o.locked && manager(cid) && (eventData(eid).type == 'choice' ? o.get('pendingEvent','') == eid && d.pendingEvent == '' : d.get('pendingEvent','') == o.get('pendingEvent','')) && !exists(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)) &&
         r.appliedAt == request.time && (r.effect.kind == 'destroy' ? destroyed(cid,eid,r.effect) : d.diff(o).affectedKeys().hasOnly(['lastEvent','pendingEvent']));
     }
+    function researchBps(o) { return o.get('activeResearchBps',(o.research < 6 ? o.research : 6)*500); }
+    function staffCapacity(o) { let n=o.factory*5+o.equipment*2; return n < 1000 ? n : 1000; }
+    function economyPolicy() {
+      return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 2 ? get(/databases/$(database)/documents/economyConfig/main).data :
+        {'version':2,'factoryCost':2000000,'factoryRevenue':120000,'equipmentCost':1000000,'equipmentRevenue':65000,'researchCost':1500000,'researchBoostBps':500,'employeeCost':300000,'employeeRevenue':18000};
+    }
     function investment(cid,d,o,asset) {
-      let config=get(/databases/$(database)/documents/economyConfig/main).data;
+      let c=economyPolicy();
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
-      return !o.locked && o.get('pendingEvent','') == '' && (o.revenue == 0 && o.pendingRevenue == 0 || o.keys().hasAll(['production','pendingProduction'])) && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
-        (o.pendingRevenue == 0 || o.pendingDay > dayNumber()) &&
-        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',asset,'pendingRevenue','pendingDay','production','pendingProduction']) && d.production == pool(o,false) && poolIncrease(d.pendingProduction,pool(o,true),asset,config[asset+'Revenue']) &&
-        d[asset] == o[asset]+1 && d.cash == o.cash+funding-o.receivedIssuerCash-config[asset+'Cost'] &&
-        d.receivedIssuerCash == funding && d.pendingRevenue == o.pendingRevenue+config[asset+'Revenue'] && d.pendingDay == dayNumber()+1;
+      let yieldAmount=asset in ['factory','equipment'] ? c[asset+'Revenue'] : 0;
+      return number(d.pendingResearchBps,1000000) && number(d.cash,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingStaffRevenue,1000000000000) && (asset == 'employee' ? number(d.employees,1000) : number(d[asset],1000)) && !o.locked && o.get('pendingEvent','') == '' && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+        (o.revenue == 0 && o.pendingRevenue == 0 || o.keys().hasAll(['production','pendingProduction'])) &&
+        (o.pendingRevenue+o.get('pendingStaffRevenue',0)+o.get('pendingResearchBps',0) == 0 || o.pendingDay > dayNumber()) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',(asset == 'employee' ? 'employees' : asset),'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
+        d.production == pool(o,false) && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,pool(o,true),asset,yieldAmount) : d.pendingProduction == pool(o,true)) &&
+        (asset == 'employee' ? o.get('employees',0) < staffCapacity(o) : d[asset] == o[asset]+1) &&
+        (asset != 'research' || (o.research < 6 && researchBps(o)+o.get('pendingResearchBps',0) < 3000)) &&
+        d.cash == o.cash+funding-o.receivedIssuerCash-c[asset+'Cost'] && d.receivedIssuerCash == funding &&
+        d.pendingRevenue == o.pendingRevenue+yieldAmount && d.pendingDay == dayNumber()+1 &&
+        d.employees == o.get('employees',0)+(asset == 'employee' ? 1 : 0) && d.staffRevenue == o.get('staffRevenue',0) &&
+        d.pendingStaffRevenue == o.get('pendingStaffRevenue',0)+(asset == 'employee' ? c.employeeRevenue : 0) &&
+        d.activeResearchBps == researchBps(o) && d.pendingResearchBps == o.get('pendingResearchBps',0)+(asset == 'research' ? c.researchBoostBps : 0);
     }
     match /economyConfig/{id} {
       allow get: if id == 'main' && participant();
-      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchRevenue']) &&
+      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['version','factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchBoostBps','employeeCost','employeeRevenue']) && request.resource.data.version == 2 &&
         number(request.resource.data.factoryCost,100000000) && request.resource.data.factoryCost > 0 && number(request.resource.data.factoryRevenue,100000000) && request.resource.data.factoryRevenue > 0 &&
         number(request.resource.data.equipmentCost,100000000) && request.resource.data.equipmentCost > 0 && number(request.resource.data.equipmentRevenue,100000000) && request.resource.data.equipmentRevenue > 0 &&
-        number(request.resource.data.researchCost,100000000) && request.resource.data.researchCost > 0 && number(request.resource.data.researchRevenue,100000000) && request.resource.data.researchRevenue > 0;
+        number(request.resource.data.researchCost,100000000) && request.resource.data.researchCost > 0 && number(request.resource.data.researchBoostBps,1000) && request.resource.data.researchBoostBps > 0 &&
+        number(request.resource.data.employeeCost,100000000) && request.resource.data.employeeCost > 0 && number(request.resource.data.employeeRevenue,100000000) && request.resource.data.employeeRevenue > 0;
       allow list,delete: if false;
     }
     match /companyOperations/{cid} {
@@ -464,7 +480,7 @@ service cloud.firestore {
       allow update: if admin() ? operationData(request.resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingEvent']) ? choiceOperation(cid,request.resource.data,resource.data) :
-        operationData(request.resource.data) && investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : 'research');
+        investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
       allow list,delete: if false;
       match /days/{dayId} {
         allow get: if participant();

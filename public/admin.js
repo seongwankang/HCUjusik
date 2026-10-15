@@ -21,7 +21,7 @@ export function setupAdmin(api){
  else control=`<input ${attrs} value="${escape(Array.isArray(value)?value.join(','):value)}" type="${k.endsWith('At')?'datetime-local':['referencePrice','issuedShares'].includes(k)?'number':'text'}" ${['companyIds','companyId'].includes(k)?'':'required'} maxlength="${k==='title'?120:k==='description'?2000:k==='id'||k==='companyId'?128:80}" ${['referencePrice','issuedShares'].includes(k)?'min="1" max="1000000" step="1"':''}>`;
  return `<label>${kind==='events'&&k==='companyId'?'대상 기업':labels[k]}${control}</label>`;
  }).join('');
- document.querySelector('#admin-editor').innerHTML=`<form id="admin-form" class="admin-form"><h3>${editing?escape(item.name||item.title||item.displayName)+' · 수정':'새로 등록'}</h3>${controls}<button class="account-btn" type="submit">저장</button></form>`;
+ document.querySelector('#admin-editor').innerHTML=`<form id="admin-form" class="admin-form"><h3>${editing?escape(item.name||item.title||item.displayName)+' · 수정':'새로 등록'}</h3>${kind==='companies'&&!editing?'<p class="info-note">표준 시작값: 주당 10,000원 × 1,000주입니다. 전량 판매 시 회사 자금 1,000만 원이 모이며, 발행만으로 현금이 지급되지는 않습니다.</p>':''}${controls}<button class="account-btn" type="submit">저장</button></form>`;
  document.querySelector('#admin-form').onsubmit=async e=>{
  e.preventDefault();const button=e.target.querySelector('[type=submit]');button.disabled=true;
  const data=Object.fromEntries(new FormData(e.target));data.id=item.id||crypto.randomUUID();if(kind==='users')data.displayName=item.displayName;
