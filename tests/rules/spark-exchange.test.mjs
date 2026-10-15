@@ -2,7 +2,7 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
-import {doc,getDoc,setDoc,updateDoc,getDocs,collection,writeBatch,increment,serverTimestamp} from 'firebase/firestore';
+import {doc,getDoc,setDoc,updateDoc,getDocs,collection,writeBatch,increment,serverTimestamp,query,orderBy,limit,deleteDoc} from 'firebase/firestore';
 import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView} from '../../client/spark-exchange.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw new Error('Loopback emulator required');
 let env,a,b,c,admin;
@@ -24,6 +24,22 @@ test('first-come issuance, partial fill and immutable initial supply',async()=>{
  await cancelSpark(b,'b',{companyId:'test-a',orderId:'primary-second'});
  await assertFails(updateDoc(doc(a,'sparkBooks/test-a'),{treasuryShares:100}));
 });
+test('market history includes other students while private fills stay private',async()=>{
+ const q=query(collection(c,'sparkBooks/test-a/trades'),orderBy('marketVersion','desc'),limit(100));
+ const trades=await getDocs(q);assert.equal(trades.size,2);
+ assert.deepEqual(trades.docs.map(d=>d.data().quantity),[30,70]);
+ for(const d of trades.docs){assert.deepEqual(Object.keys(d.data()).sort(),['companyId','createdAt','marketVersion','price','quantity']);assert.equal(d.data().price,10000);}
+ await assertFails(getDocs(query(collection(c,'sparkAccounts/a/fills'),limit(30))));
+ const view=await sparkView(c,'c','test-a','student');assert.equal(view.fills.length,0);assert.equal(view.marketTrades.length,2);assert.equal(view.marketHistoryAvailable,true);
+});
+test('public prints reject edits, deletes, unbounded queries and unauthenticated reads',async()=>{
+ const trades=await getDocs(query(collection(c,'sparkBooks/test-a/trades'),limit(100))),ref=trades.docs[0].ref;
+ await assertFails(updateDoc(ref,{price:1}));await assertFails(deleteDoc(ref));
+ await assertFails(setDoc(doc(c,'sparkBooks/test-a/trades/fake-print'),{companyId:'test-a',price:1,quantity:1,marketVersion:1,createdAt:serverTimestamp()}));
+ await assertFails(getDocs(collection(c,'sparkBooks/test-a/trades')));
+ await assertFails(getDocs(query(collection(c,'sparkBooks/test-a/trades'),limit(101))));
+ const anon=env.unauthenticatedContext().firestore();await assertFails(getDocs(query(collection(anon,'sparkBooks/test-a/trades'),limit(100))));
+});
 test('secondary price/time matching and private counterparty assets',async()=>{
  await assertFails(getDoc(doc(a,'sparkAccounts/b')));
  await placeSpark(a,'a',order('sell-first',{side:'sell',price:12000,quantity:5}));
@@ -34,11 +50,11 @@ test('secondary price/time matching and private counterparty assets',async()=>{
  await cancelSpark(a,'a',{companyId:'test-a',orderId:'sell-first'});assert.equal((await getDoc(doc(a,'sparkAccounts/a'))).data().reservedPositions['test-a'],0);
  await assertFails(getDocs(collection(a,'sparkAccounts/c/fills')));
 });
-async function forgeFill(db,buy,sell,{price=sell.price,quantity=Math.min(buy.remaining,sell.remaining),bonus=0,skipSeller=false,skipFill=false,skipOrder=false}={}){
+async function forgeFill(db,buy,sell,{price=sell.price,quantity=Math.min(buy.remaining,sell.remaining),bonus=0,skipSeller=false,skipFill=false,skipOrder=false,skipPublic=false,publicPatch={}}={}){
  const ref=doc(db,'sparkBooks/test-a'),book=(await getDoc(ref)).data(),version=book.version+1,id=crypto.randomUUID();
  const orders=book.orders.filter(o=>!(o.uid===buy.uid&&o.id===buy.id)&&!(o.uid===sell.uid&&o.id===sell.id));
  for(const o of [buy,sell])if(o.remaining>quantity)orders.push({...o,remaining:o.remaining-quantity});
- const batch=writeBatch(db);batch.update(ref,{orders,version,updatedAt:serverTimestamp(),lastPrice:price,lastAction:{kind:'fill',actor:'c',buy,sell,fillId:id}});
+ const batch=writeBatch(db);if(!skipPublic)batch.set(doc(db,'sparkBooks/test-a/trades',id),{companyId:'test-a',price,quantity,marketVersion:version,createdAt:serverTimestamp(),...publicPatch});batch.update(ref,{orders,version,updatedAt:serverTimestamp(),lastPrice:price,lastAction:{kind:'fill',actor:'c',buy,sell,fillId:id}});
  batch.update(doc(db,'sparkAccounts',buy.uid),{cash:increment(-price*quantity+bonus),reservedCash:increment(-buy.price*quantity),['positions.test-a']:increment(quantity),version:increment(1),lastMarket:'test-a'});
  if(!skipSeller)batch.update(doc(db,'sparkAccounts',sell.uid),{cash:increment(price*quantity),['positions.test-a']:increment(-quantity),['reservedPositions.test-a']:increment(-quantity),version:increment(1),lastMarket:'test-a'});
  for(const [o,side]of [[buy,'buy'],[sell,'sell']]){
@@ -54,7 +70,7 @@ test('fully forged settlement cannot bypass best bid, resting price or atomic co
  let book=(await getDoc(doc(c,'sparkBooks/test-a'))).data();
  const sell=book.orders.find(o=>o.id==='attack-sell'),low=book.orders.find(o=>o.id==='attack-low'),best=book.orders.find(o=>o.id==='attack-best');
  await assertFails(forgeFill(c,low,sell));
- for(const options of [{price:13000},{quantity:2},{bonus:1},{skipSeller:true},{skipFill:true},{skipOrder:true}])await assertFails(forgeFill(c,best,sell,options));
+ for(const options of [{price:13000},{quantity:2},{bonus:1},{skipSeller:true},{skipFill:true},{skipOrder:true},{skipPublic:true},{publicPatch:{price:1}},{publicPatch:{uid:"c"}}])await assertFails(forgeFill(c,best,sell,options));
  assert.equal(await matchSpark(c,'c','test-a'),true);assert.equal(await matchSpark(c,'c','test-a'),true);
  assert.equal((await getDoc(doc(c,'sparkBooks/test-a'))).data().treasuryShares,0);
  book=(await getDoc(doc(admin,'sparkBooks/test-a'))).data();for(const o of book.orders)await cancelSpark(admin,'operator',{companyId:'test-a',ownerUid:o.uid,orderId:o.id});
@@ -105,4 +121,27 @@ test('ordinary student uses the same direct Firebase trade API without backend c
  assert.equal(placed.order.status,'open');
  await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'student-api-order'})});
  assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/student-api-order'))).data().status,'cancelled');
+});
+
+// Production can still have the previous rules while the new bundle deploys.
+test('rules rollout preserves old trading and activates mandatory market history',async()=>{
+ const current=readFileSync('firestore.rules','utf8');
+ const requirement=" &&\n        getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data ==\n          {'companyId':d.companyId,'price':d.price,'quantity':d.quantity,'marketVersion':d.marketVersion,'createdAt':request.time}";
+ const legacy=current.replace(requirement,'').replace(/    function publicTrade[\s\S]*?(?=    \/\/ Official orders)/,'');
+ assert.notEqual(legacy,current);assert.ok(!legacy.includes('function publicTrade'));
+ const projectId='demo-history-rollout';
+ const old=await initializeTestEnvironment({projectId,firestore:{rules:legacy}});let upgraded;
+ try{
+  await old.clearFirestore();await old.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'users/rollout'),{displayName:'synthetic',active:true,role:'student'});await setDoc(doc(db,'companies/test-a'),{status:'listed',referencePrice:10000,issuedShares:100});});
+  const db=old.authenticatedContext('rollout',claims).firestore();const {createClientApi}=await import('../../client/data.js');
+  const api=createClientApi({db,getUser:async()=>({uid:'rollout',getIdTokenResult:async()=>({claims})})});
+  await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('rollout-before'))});
+  let v=await api('/api/exchange?companyId=test-a');assert.equal(v.account.positions['test-a'],1);assert.equal(v.marketHistoryAvailable,false);assert.deepEqual(v.marketTrades,[]);
+  upgraded=await initializeTestEnvironment({projectId,firestore:{rules:current}});
+  await placeSpark(db,'rollout',order('rollout-after'));
+  await assertFails(matchSpark(db,'rollout','test-a',{recordPublic:false}));
+  assert.equal((await getDoc(doc(db,'sparkAccounts/rollout'))).data().positions['test-a'],1);
+  await matchSpark(db,'rollout','test-a');
+  v=await api('/api/exchange?companyId=test-a');assert.equal(v.marketHistoryAvailable,true);assert.equal(v.marketTrades.length,1);assert.equal(v.account.positions['test-a'],2);
+ }finally{await old.cleanup();await upgraded?.cleanup();}
 });
