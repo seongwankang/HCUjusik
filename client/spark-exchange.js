@@ -1,6 +1,6 @@
 import {doc,collection,getDoc,getDocs,query,orderBy,limit,runTransaction,increment,serverTimestamp} from 'firebase/firestore';
-const IDS=['test-a','test-b'];
-const empty=()=>({cash:1000000,reservedCash:0,positions:{'test-a':0,'test-b':0},reservedPositions:{'test-a':0,'test-b':0},version:0,lastMarket:''});
+const validCompany=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
+const empty=()=>({cash:1000000,reservedCash:0,positions:{},reservedPositions:{},version:0,lastMarket:''});
 const sorted=(orders,side)=>orders.filter(o=>o.side===side).sort((a,b)=>(side==='buy'?b.price-a.price:a.price-b.price)||a.sequence-b.sequence);
 async function transact(db,bookRef,callback){
  for(let attempt=0;attempt<5;attempt++){
@@ -24,7 +24,7 @@ export function crossing(book){
  return {buy,sell,quantity:Math.min(buy.remaining,sell.remaining),price:buy.sequence<sell.sequence?buy.price:sell.price};
 }
 export async function initializeSpark(db,uid,companyId){
- if(!IDS.includes(companyId))throw new Error('테스트 기업을 선택하세요.');
+ if(!validCompany(companyId))throw new Error('기업을 선택하세요.');
  await transact(db,doc(db,'sparkBooks',companyId),async(t,bookSnapshot)=>{
   const account=doc(db,'sparkAccounts',uid),book=doc(db,'sparkBooks',companyId);
   const [a,c]=await Promise.all([t.get(account),t.get(doc(db,'companies',companyId))]);const b=bookSnapshot;
@@ -37,7 +37,7 @@ export async function initializeSpark(db,uid,companyId){
  });
 }
 export async function placeSpark(db,uid,b){
- if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!IDS.includes(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
+ if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!validCompany(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
  const bookRef=doc(db,'sparkBooks',b.companyId),orderRef=doc(db,'sparkAccounts',uid,'orders',b.orderId);
  return transact(db,bookRef,async(t,bookDoc)=>{
   const [accountDoc,old]=await Promise.all([t.get(doc(db,'sparkAccounts',uid)),t.get(orderRef)]);
@@ -46,10 +46,10 @@ export async function placeSpark(db,uid,b){
    return {order:old.data(),duplicate:true};
   }
   const book=bookDoc.data(),account=accountDoc.data();if(!book||!account)throw new Error('종목 화면을 열어 계좌를 준비하세요.');
-  if(book.orders.length>=4)throw new Error('테스트 종목의 대기 주문 4건이 찼습니다. 체결하거나 잔량을 취소하세요.');
+  if(book.orders.length>=4)throw new Error('종목의 대기 주문 4건이 찼습니다. 체결하거나 잔량을 취소하세요.');
   if(book.orders.some(o=>o.uid===uid&&o.side!==b.side&&(b.side==='buy'?b.price>=o.price:b.price<=o.price)))throw new Error('본인의 반대 주문과 가격이 겹칩니다. 기존 주문을 먼저 취소하세요.');
   if(b.side==='buy'&&account.cash-account.reservedCash<b.price*b.quantity)throw new Error('주문 가능 현금이 부족합니다.');
-  if(b.side==='sell'&&account.positions[b.companyId]-account.reservedPositions[b.companyId]<b.quantity)throw new Error('매도 가능 수량이 부족합니다.');
+  if(b.side==='sell'&&(account.positions[b.companyId]??0)-(account.reservedPositions[b.companyId]??0)<b.quantity)throw new Error('매도 가능 수량이 부족합니다.');
   const entry={uid,id:b.orderId,side:b.side,price:b.price,quantity:b.quantity,remaining:b.quantity,sequence:book.version+1};
   const order={companyId:b.companyId,orderId:b.orderId,uid,side:b.side,price:b.price,quantity:b.quantity,sequence:entry.sequence,remaining:b.quantity,filled:0,cancelled:0,status:'open',createdAt:serverTimestamp(),marketVersion:entry.sequence};
   t.update(bookRef,{orders:[...book.orders,entry],version:entry.sequence,lastAction:{kind:'place',actor:uid,entry},updatedAt:serverTimestamp()});
@@ -79,7 +79,7 @@ export async function matchSpark(db,uid,companyId,{recordPublic=true}={}){
  });
 }
 export async function cancelSpark(db,uid,{orderId,companyId,ownerUid=uid}){
- if(!IDS.includes(companyId)||typeof ownerUid!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(ownerUid)||typeof orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(orderId))throw new Error('취소할 주문을 확인하세요.');
+ if(!validCompany(companyId)||typeof ownerUid!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(ownerUid)||typeof orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(orderId))throw new Error('취소할 주문을 확인하세요.');
  const bookRef=doc(db,'sparkBooks',companyId);
  return transact(db,bookRef,async(t,snapshot)=>{
   const book=snapshot.data();
@@ -91,7 +91,7 @@ export async function cancelSpark(db,uid,{orderId,companyId,ownerUid=uid}){
  });
 }
 export async function marketHistory(db,companyId,max=100){
- if(!IDS.includes(companyId))throw new Error('테스트 기업을 선택하세요.');
+ if(!validCompany(companyId))throw new Error('기업을 선택하세요.');
  try{const snapshot=await getDocs(query(collection(db,'sparkBooks',companyId,'trades'),orderBy('marketVersion','desc'),limit(max)));return {available:true,trades:snapshot.docs.map(d=>d.data())};}
  catch(error){if(error.code==='permission-denied')return {available:false,trades:[]};throw error;}
 }

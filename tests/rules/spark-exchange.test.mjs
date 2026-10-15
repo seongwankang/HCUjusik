@@ -161,3 +161,21 @@ test('portfolio reflects executed trades, reservations and cancellation from the
  p=await api('/api/trading-portfolio');const h=p.holdings.find(h=>h.companyId==='test-b');assert.equal(h.quantity,q+2);assert.equal(h.reserved,1);assert.equal(h.available,q+1);
  await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'portfolio-sell'})});
 });
+
+test('administrator-created company IDs trade, settle and appear in assets without a test allowlist',async()=>{
+ const cid='6fc6b11c-1c84-4718-bdc9-742fba2f539e';
+ await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'companies',cid),{name:'Synthetic new company',ticker:'NEW',status:'listed',referencePrice:2500,issuedShares:20}));
+ await initializeSpark(a,'a',cid);await initializeSpark(b,'b',cid);
+ await placeSpark(a,'a',order('new-company-buy',{companyId:cid,quantity:3,price:2500}));await matchSpark(a,'a',cid);
+ assert.equal((await getDoc(doc(a,'sparkAccounts/a'))).data().positions[cid],3);
+ await placeSpark(a,'a',order('new-company-sell',{companyId:cid,side:'sell',quantity:1,price:2400}));
+ await placeSpark(b,'b',order('new-company-peer',{companyId:cid,quantity:1,price:2400}));await matchSpark(b,'b',cid);
+ assert.equal((await getDoc(doc(b,'sparkAccounts/b'))).data().positions[cid],1);
+ const {createClientApi}=await import('../../client/data.js');const api=createClientApi({db:b,getUser:async()=>({uid:'b',getIdTokenResult:async()=>({claims})})});
+ assert.equal((await api('/api/trading-portfolio')).holdings.find(h=>h.companyId===cid).quantity,1);
+ await assertFails(updateDoc(doc(b,'sparkAccounts/b'),{['positions.unrelated']:999}));
+ await assert.rejects(initializeSpark(a,'a','missing-company'),/거래 가능한 기업/);
+ await env.withSecurityRulesDisabled(async context=>updateDoc(doc(context.firestore(),'companies',cid),{status:'paused'}));
+ await assertFails(placeSpark(a,'a',order('new-company-paused',{companyId:cid,price:2400})));
+});
+

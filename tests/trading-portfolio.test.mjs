@@ -17,3 +17,10 @@ test('unopened accounts and initial prices are explicit, missing prices do not i
 test('invalid accounts and over-reservation fail instead of showing fabricated balances',()=>{
  for(const patch of [{cash:-1},{reservedCash:1000000},{positions:{'test-a':NaN}},{reservedPositions:{'test-a':3}},{positions:'bad'}])assert.throws(()=>tradingPortfolio({...account,...patch},companies,{}));
 });
+
+test('new company holdings are valued and reserved shares cannot exceed owned shares',()=>{
+ const id='club-new-2026',a={cash:995000,reservedCash:0,positions:{[id]:2},reservedPositions:{[id]:1},version:2};
+ const p=tradingPortfolio(a,{[id]:{name:'New',referencePrice:2500}},{[id]:{lastPrice:3000}});
+ assert.equal(p.totalValue,1001000);assert.equal(p.holdings[0].companyId,id);assert.equal(p.holdings[0].available,1);
+ assert.throws(()=>tradingPortfolio({...a,reservedPositions:{[id]:3}},{},{}));
+});

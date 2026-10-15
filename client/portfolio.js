@@ -1,11 +1,11 @@
-const IDS=['test-a','test-b'];
 const integer=(v,max=1000000000000)=>Number.isSafeInteger(v)&&v>=0&&v<=max;
 export function tradingPortfolio(account,companies,books){
  const a=account||{cash:1000000,reservedCash:0,positions:{},reservedPositions:{},version:0};
  if(!integer(a.cash)||!integer(a.reservedCash,a.cash)||!integer(a.version)||!a.positions||typeof a.positions!=='object'||Array.isArray(a.positions)||!a.reservedPositions||typeof a.reservedPositions!=='object'||Array.isArray(a.reservedPositions))throw new Error('거래 계좌 형식을 확인하세요.');
  let stockValue=0,valuationComplete=true;
  const holdings=[];
- for(const id of IDS){
+ for(const id of new Set([...Object.keys(a.positions),...Object.keys(a.reservedPositions)])){
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(id))throw new Error('보유 기업 ID를 확인하세요.');
   const quantity=a.positions[id]??0,reserved=a.reservedPositions[id]??0;
   if(!integer(quantity,1000000)||!integer(reserved,quantity))throw new Error('보유 주식 수량을 확인하세요.');
   if(!quantity)continue;

@@ -118,16 +118,15 @@ service cloud.firestore {
     // Spark-only two-symbol limit exchange. Books contain pseudonymous order
     // entries, not names/email/balances. Private accounts/orders/fills stay owner-only.
     // At most 4 resting orders per symbol allows full price/time validation.
-    function sparkId(id) { return id in ['test-a','test-b']; }
+    function sparkId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$'); }
     function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
     function number(v,n) { return v is int && v >= 0 && v <= n; }
     function sparkAccount(d) {
       return d.keys().hasOnly(['cash','reservedCash','positions','reservedPositions','version','lastMarket']) &&
         number(d.cash,1000000000000) && number(d.reservedCash,d.cash) && number(d.version,1000000000) &&
-        d.positions is map && d.positions.keys().hasOnly(['test-a','test-b']) &&
-        number(d.positions['test-a'],1000000) && number(d.positions['test-b'],1000000) &&
-        d.reservedPositions is map && d.reservedPositions.keys().hasOnly(['test-a','test-b']) &&
-        number(d.reservedPositions['test-a'],d.positions['test-a']) && number(d.reservedPositions['test-b'],d.positions['test-b']) &&
+        d.positions is map && d.reservedPositions is map &&
+        number(d.positions.get(d.lastMarket,0),1000000) &&
+        number(d.reservedPositions.get(d.lastMarket,0),d.positions.get(d.lastMarket,0)) &&
         (sparkId(d.lastMarket) || d.lastMarket == '');
     }
     function sparkBefore(cid) { return get(/databases/$(database)/documents/sparkBooks/$(cid)).data; }
@@ -235,7 +234,7 @@ service cloud.firestore {
       return uid == e.uid && d.cash == o.cash && d.positions == o.positions &&
         d.reservedCash == o.reservedCash+(e.side == 'buy' ? e.price*delta : 0) &&
         d.reservedPositions.diff(o.reservedPositions).affectedKeys().hasOnly([cid]) &&
-        d.reservedPositions[cid] == o.reservedPositions[cid]+(e.side == 'sell' ? delta : 0);
+        d.reservedPositions.get(cid,0) == o.reservedPositions.get(cid,0)+(e.side == 'sell' ? delta : 0);
     }
     function settledAccount(uid,cid,d,o,book) {
       let a=book.lastAction;
@@ -246,8 +245,8 @@ service cloud.firestore {
       return (buyer || (a.sell.id != 'issuer' && uid == a.sell.uid)) &&
         d.cash == o.cash+(buyer ? -price*q : price*q) &&
         d.reservedCash == o.reservedCash-(buyer ? a.buy.price*q : 0) &&
-        d.positions.diff(o.positions).affectedKeys().hasOnly([cid]) && d.positions[cid] == o.positions[cid]+(buyer ? q : -q) &&
-        d.reservedPositions.diff(o.reservedPositions).affectedKeys().hasOnly([cid]) && d.reservedPositions[cid] == o.reservedPositions[cid]-(buyer ? 0 : q) &&
+        d.positions.diff(o.positions).affectedKeys().hasOnly([cid]) && d.positions.get(cid,0) == o.positions.get(cid,0)+(buyer ? q : -q) &&
+        d.reservedPositions.diff(o.reservedPositions).affectedKeys().hasOnly([cid]) && d.reservedPositions.get(cid,0) == o.reservedPositions.get(cid,0)-(buyer ? 0 : q) &&
         fill.marketVersion == book.version && fill.companyId == cid;
     }
     function accountChange(uid) {
@@ -288,7 +287,7 @@ service cloud.firestore {
     }
     match /sparkAccounts/{uid} {
       allow get: if owner(uid) && participant();
-      allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{'test-a':0,'test-b':0},'reservedPositions':{'test-a':0,'test-b':0},'version':0,'lastMarket':''};
+      allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
       allow update: if participant() && accountChange(uid);
       allow list,delete: if false;
       match /orders/{id} {
