@@ -2,7 +2,7 @@ import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
 import {initializeApp} from 'firebase/app';
 import {
-  getAuth, setPersistence, inMemoryPersistence,
+  getAuth, setPersistence, browserSessionPersistence,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut
 } from 'firebase/auth';
 
@@ -18,8 +18,10 @@ async function init() {
   auth = getAuth(initializeApp(data));
   auth.languageCode = 'ko';
   api=createClientApi({db:getFirestore(auth.app),getUser:async()=>auth.currentUser});
-  // Shared school computers: no token persistence in browser storage.
-  await setPersistence(auth, inMemoryPersistence);
+  // Keep reloads signed in within this tab; do not retain a permanent login.
+  await setPersistence(auth, browserSessionPersistence);
+  // Do not query private data until Firebase restores the saved session.
+  await auth.authStateReady();
   return auth;
 }
 function ensure() {
