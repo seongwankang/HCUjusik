@@ -19,6 +19,7 @@ async function getJSON(url,options={}) {
 function navigate(page,writeRoute=true) {
   if (!['dashboard','market','news','portfolio','management','admin','company'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')return;
+  if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
   closeTrading();
   state.page = page;
   if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
@@ -36,6 +37,12 @@ function companyMark(name) {return esc(name.slice(0,1));}
 function companyRow(c) {
   return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${won(c.referencePrice)}</strong><small>종목 거래 ↗</small></span></button>`;
 }
+function renderWatchlist(){
+ const search=($('#watch-search').value||'').trim().toLocaleLowerCase();
+ const companies=state.companies.filter(c=>(c.name+' '+c.ticker).toLocaleLowerCase().includes(search));
+ $('#featured-companies').innerHTML=companies.map(c=>companyRow(c).replace('company-mini-row','company-mini-row'+(c.id===state.companyId?' selected':''))).join('')||'<div class="placeholder">검색 결과가 없습니다.</div>';
+}
+$('#watch-search').addEventListener('input',renderWatchlist);
 function renderCompanies() {
   $('#desk-company-count').textContent=state.companyError?'—':state.companies.length.toLocaleString('ko-KR');
   $('#desk-listed-count').textContent=state.companyError?'—':state.companies.filter(c=>c.status==='listed').length.toLocaleString('ko-KR');
@@ -46,7 +53,7 @@ function renderCompanies() {
     $('#market-rows').innerHTML=`<tr><td colspan="5" class="muted">${message}</td></tr>`;
     return;
   }
-  $('#featured-companies').innerHTML = state.companies.slice(0,5).map(companyRow).join('') || '<div class="placeholder">등록된 기업이 없습니다.</div>';
+  renderWatchlist();
   const search = ($('#company-search').value || '').trim().toLocaleLowerCase();
   const rows = state.companies.filter(c=>(c.name+' '+c.ticker).toLocaleLowerCase().includes(search));
   $('#market-count').textContent = rows.length;
@@ -64,7 +71,7 @@ function showCompany(id,writeRoute=true) {
   navigate('company',false);state.companyId=id;
   if(writeRoute&&location.hash!==companyRoute(id))history.pushState(null,'',companyRoute(id));
   const c=state.companies.find(c=>c.id===id);
-  $('#company-switch').innerHTML=state.companies.map(x=>`<button data-company="${esc(x.id)}" class="${x.id===id?'selected':''}" ${x.id===id?'aria-current="page"':''}>${esc(x.name)}</button>`).join('');
+  renderWatchlist();
   $('#detail-title').textContent=c?.name||'종목 거래';$('#current-title').textContent=c?.name||'종목 거래';
   document.title=(c?.name||'종목 거래')+' | 청운증권HTS';
   $('#company-symbol').textContent=c?.ticker||'';$('#company-category').textContent=c?.category||'';
@@ -139,7 +146,7 @@ document.addEventListener('click',event=>{
   if(go)navigate(go.dataset.goto);
   const company=event.target.closest('button[data-company]');
   if(company)showCompany(company.dataset.company);
-  const prompt=event.target.closest('#prompt-login');
+  const prompt=event.target.closest('#prompt-login,[data-open-login]');
   if(prompt)$('#login-dialog').showModal();
 });
 $('#company-search').addEventListener('input',renderCompanies);
