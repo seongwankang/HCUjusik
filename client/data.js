@@ -1,3 +1,4 @@
+import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView} from './events.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -29,6 +30,22 @@ export function createClientApi({db,getUser}){
    const b=JSON.parse(options.body||'{}');if(route==='/api/news-comment')await postComment(db,user.uid,b.newsId,b.id,b.content);
    if(route==='/api/news-vote')return {ok:true,...await voteComment(db,user.uid,b.newsId,b.id,b.value)};
    if(route==='/api/news-comment-delete'){if(profile.role!=='admin')message('관리자만 댓글을 삭제할 수 있습니다.');await removeComment(db,b.newsId,b.id);}return {ok:true};
+  }
+  if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
+  if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-choose','/api/event-apply'].includes(route)){
+   const b=JSON.parse(options.body||'{}');
+   if(route==='/api/event-publish'||route==='/api/event-random'){
+    if(profile.role!=='admin')message('관리자만 이벤트를 발행할 수 있습니다.');
+    return route==='/api/event-publish'?publishEvent(db,b):applyRandomEvent(db,b.id);
+   }
+   return route==='/api/event-choose'?chooseEvent(db,b.companyId,b.id,b.option):applyEvent(db,b.companyId,b.id,b.option);
+  }
+  if(route==='/api/economy-production'&&method==='POST'){
+   if(profile.role!=='admin')message('관리자만 기존 매출을 분류할 수 있습니다.');const b=JSON.parse(options.body||'{}');
+   if(!newsId(b.companyId))message('기업을 선택하세요.');
+   await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',b.companyId),s=await t.get(ref),o=s.data();if(!o||o.locked||o.production)message('분류가 완료됐거나 정산 중입니다.');
+    for(const [key,total] of [['production',o.revenue],['pendingProduction',o.pendingRevenue]]){const p=b[key];if(!p||Object.keys(p).length!==3||['factory','equipment','research'].some(k=>!Number.isSafeInteger(p[k])||p[k]<0||(!o[k]&&p[k]>0))||p.factory+p.equipment+p.research!==total)message('종류별 매출 합계가 기존 매출과 일치해야 합니다.');}
+    t.update(ref,{production:b.production,pendingProduction:b.pendingProduction});});return {ok:true};
   }
   if(route==='/api/economy'&&method==='GET')return operationsView(db,url.searchParams.get('companyId'));
   if(route==='/api/economy-config'&&method==='GET')return {config:await get('economyConfig/main')};

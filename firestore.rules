@@ -66,8 +66,60 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','startsAt','endsAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && str(request.resource.data.companyId,128) && request.resource.data.startsAt is timestamp && request.resource.data.endsAt is timestamp && request.resource.data.endsAt > request.resource.data.startsAt;
-      allow delete: if false;
+      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt']) &&
+        request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
+        request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
+        request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
+        request.resource.data.startsAt == request.time && request.resource.data.endsAt > request.time;
+      allow update,delete: if false;
+    }
+    function eventData(eid) { return get(/databases/$(database)/documents/events/$(eid)).data; }
+    function outcome(eid,option) { return get(/databases/$(database)/documents/eventOutcomes/$(eid)/options/$(string(option))).data.effect; }
+    function choice(cid,eid) { return get(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)).data; }
+    function effectData(e) {
+      return e.keys().hasOnly(['kind','asset','percent','count','hours']) && e.kind in ['revenue','efficiency','destroy','none'] &&
+        e.asset in ['factory','equipment','research'] && e.percent is int && e.percent >= -100 && e.percent <= 500 &&
+        number(e.count,1000) && number(e.hours,2160) &&
+        (e.kind in ['revenue','efficiency'] ? e.hours > 0 && e.count == 0 : e.hours == 0 && e.percent == 0) &&
+        (e.kind == 'destroy' ? e.count > 0 : e.count == 0);
+    }
+    match /eventOutcomes/{eid}/options/{option} {
+      allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' &&
+        selectedOption(eid,option));
+      allow create: if admin() && !exists(/databases/$(database)/documents/events/$(eid)) &&
+        getAfter(/databases/$(database)/documents/events/$(eid)).data.type in ['random','choice'] && option in ['0','1','2'] &&
+        request.resource.data.keys().hasOnly(['effect']) && effectData(request.resource.data.effect);
+      allow list,update,delete: if false;
+    }
+    function selectedOption(eid,option) {
+      let assigned=get(/databases/$(database)/documents/assignments/$(request.auth.uid)).data.companyIds;
+      return (assigned.size() > 0 && selectedFor(assigned[0],eid,option)) ||
+        (assigned.size() > 1 && selectedFor(assigned[1],eid,option)) ||
+        (assigned.size() > 2 && selectedFor(assigned[2],eid,option)) ||
+        (assigned.size() > 3 && selectedFor(assigned[3],eid,option)) ||
+        (assigned.size() > 4 && selectedFor(assigned[4],eid,option));
+    }
+    function selectedFor(cid,eid,option) {
+      return exists(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)) && string(choice(cid,eid).option) == option;
+    }
+    match /companyChoices/{cid}/items/{eid} {
+      allow get: if manager(cid);
+      allow create: if manager(cid) && eventData(eid).type == 'choice' && cid in eventData(eid).targets && request.time < eventData(eid).endsAt &&
+        request.resource.data.keys().hasOnly(['option','chosenAt']) && request.resource.data.option is int && request.resource.data.option in [0,1,2] && request.resource.data.chosenAt == request.time && !operations(cid).locked && operations(cid).get('pendingEvent','') == '' && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.pendingEvent == eid;
+      allow list,update,delete: if false;
+    }
+    function eventReceipt(cid,eid,d) {
+      let e=eventData(eid);
+      return manager(cid) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : d.option == choice(cid,eid).option) &&
+        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt']) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? choice(cid,eid).chosenAt : e.startsAt) &&
+        (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
+          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
+    }
+    match /companyEffects/{cid}/items/{eid} {
+      allow get: if manager(cid);
+      allow list: if manager(cid) && request.query.limit != null && request.query.limit <= 100;
+      allow create: if eventReceipt(cid,eid,request.resource.data);
+      allow update,delete: if false;
     }
     // Isolated test accounts; original portfolios remain immutable.
     // tradeTests/{uid}: cash int, positions {test-a?:int,test-b?:int}, version int, lastOrderId string.
@@ -347,16 +399,51 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/companyOperations/$(cid)) || operations(cid).locked == false;
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount']) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent']) &&
         number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
+    }
+    function pool(o,pending) {
+      let total=pending ? o.pendingRevenue : o.revenue;
+      let n=o.factory+o.equipment+o.research;
+      let f=n > 0 ? int(total*o.factory / n) : 0;
+      let q=n > 0 ? int(total*o.equipment / n) : 0;
+      return o.get(pending ? 'pendingProduction' : 'production',{'factory':f,'equipment':q,'research':total-f-q});
+    }
+    function poolIncrease(d,o,asset,amount) {
+      return d.keys().hasOnly(['factory','equipment','research']) && d[asset] == o[asset]+amount && d.diff(o).affectedKeys().hasOnly([asset]);
+    }
+    function poolLoss(d,o,asset,n,lost) {
+      return d.keys().hasOnly(['factory','equipment','research']) && d[asset] == o[asset]-(n > 0 ? int(o[asset]*lost / n) : 0) && d.diff(o).affectedKeys().hasOnly([asset]);
+    }
+    function destroyed(cid,eid,e) {
+      let o=operations(cid);
+      let d=getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data;
+      let n=o[e.asset];
+      let lost=n < e.count ? n : e.count;
+      let p=pool(o,false);
+      let q=pool(o,true);
+      return d.diff(o).affectedKeys().hasOnly([e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent']) &&
+        d[e.asset] == n-lost && poolLoss(d.production,p,e.asset,n,lost) && poolLoss(d.pendingProduction,q,e.asset,n,lost) &&
+        d.revenue == o.revenue-(n > 0 ? int(p[e.asset]*lost / n) : 0) && d.pendingRevenue == o.pendingRevenue-(n > 0 ? int(q[e.asset]*lost / n) : 0);
+    }
+    function choiceOperation(cid,d,o) {
+      let eid=d.pendingEvent;
+      let c=getAfter(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)).data;
+      return manager(cid) && !o.locked && o.get('pendingEvent','') == '' && !exists(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)) && c.chosenAt == request.time;
+    }
+    function eventOperation(cid,d,o) {
+      let eid=d.lastEvent;
+      let r=getAfter(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)).data;
+      return !o.locked && manager(cid) && (eventData(eid).type == 'choice' ? o.get('pendingEvent','') == eid && d.pendingEvent == '' : d.get('pendingEvent','') == o.get('pendingEvent','')) && !exists(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)) &&
+        r.appliedAt == request.time && (r.effect.kind == 'destroy' ? destroyed(cid,eid,r.effect) : d.diff(o).affectedKeys().hasOnly(['lastEvent','pendingEvent']));
     }
     function investment(cid,d,o,asset) {
       let config=get(/databases/$(database)/documents/economyConfig/main).data;
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
-      return !o.locked && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+      return !o.locked && o.get('pendingEvent','') == '' && (o.revenue == 0 && o.pendingRevenue == 0 || o.keys().hasAll(['production','pendingProduction'])) && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
         (o.pendingRevenue == 0 || o.pendingDay > dayNumber()) &&
-        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',asset,'pendingRevenue','pendingDay']) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',asset,'pendingRevenue','pendingDay','production','pendingProduction']) && d.production == pool(o,false) && poolIncrease(d.pendingProduction,pool(o,true),asset,config[asset+'Revenue']) &&
         d[asset] == o[asset]+1 && d.cash == o.cash+funding-o.receivedIssuerCash-config[asset+'Cost'] &&
         d.receivedIssuerCash == funding && d.pendingRevenue == o.pendingRevenue+config[asset+'Revenue'] && d.pendingDay == dayNumber()+1;
     }
@@ -374,8 +461,10 @@ service cloud.firestore {
         {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':0,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets with actual issuer funds, never mint cash.
-      allow update: if operationData(request.resource.data) &&
-        (admin() || investment(cid,request.resource.data,resource.data,'factory') || investment(cid,request.resource.data,resource.data,'equipment') || investment(cid,request.resource.data,resource.data,'research'));
+      allow update: if admin() ? operationData(request.resource.data) :
+        request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingEvent']) ? choiceOperation(cid,request.resource.data,resource.data) :
+        operationData(request.resource.data) && investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : 'research');
       allow list,delete: if false;
       match /days/{dayId} {
         allow get: if participant();
@@ -456,4 +545,7 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
+
+
+
 

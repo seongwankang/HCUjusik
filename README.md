@@ -60,3 +60,5 @@ pnpm dlx firebase-tools emulators:exec --only firestore --project demo-school-st
 
 프로토타입 Firestore Security Rules는 본인 데이터 읽기, 활성 참가자 확인 및
 모든 클라이언트 쓰기 차단을 목표로 합니다. 대규모 공개 전 운영 환경에서 검토·검증하세요.
+
+경영 이벤트 운영과 권한 구조: [docs/company-events.md](docs/company-events.md)
