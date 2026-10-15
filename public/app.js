@@ -3,7 +3,7 @@ import {parseRoute,companyRoute} from './routes.js';
 import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
 import {setupAdmin} from './admin.js';
-import {dataRequest, login, signup, logout, sessionVersion, verificationStatus, sendVerification} from './auth.bundle.js';
+import {dataRequest, login, signup, logout, sessionVersion, watchCompanyQuotes, verificationStatus, sendVerification} from './auth.bundle.js';
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -35,9 +35,12 @@ function navigate(page,writeRoute=true) {
   window.scrollTo({top:0,behavior:'instant'});
 }
 
+const quoteText=c=>Number.isSafeInteger(c.currentPrice)?won(c.currentPrice):c.quoteKind==='error'?'조회 실패':'—';
+let quoteRun=0,stopQuotes=()=>{};
+async function startQuotes(){const run=++quoteRun;stopQuotes();stopQuotes=()=>{};if(!state.user)return;const off=await watchCompanyQuotes(state.companies,(id,quote)=>{if(run!==quoteRun)return;const c=state.companies.find(c=>c.id===id);if(!c)return;Object.assign(c,quote);renderCompanies();if(state.page==='company'&&state.companyId===id){$('#company-current-price').textContent=quoteText(c);$('#company-price-label').textContent=c.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';}});if(run!==quoteRun)off();else stopQuotes=off;}
 function companyMark(name) {return esc(name.slice(0,1));}
 function companyRow(c) {
-  return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${won(c.referencePrice)}</strong><small>종목 거래 ↗</small></span></button>`;
+  return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${quoteText(c)}</strong><small>${c.quoteKind==='initial'?'첫 거래 전 · 초기 판매가':'종목 거래 ↗'}</small></span></button>`;
 }
 function renderWatchlist(){
  const search=($('#watch-search').value||'').trim().toLocaleLowerCase();
@@ -59,7 +62,7 @@ function renderCompanies() {
   const search = ($('#company-search').value || '').trim().toLocaleLowerCase();
   const rows = state.companies.filter(c=>(c.name+' '+c.ticker).toLocaleLowerCase().includes(search));
   $('#market-count').textContent = rows.length;
-  $('#market-rows').innerHTML = rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td class="muted">${esc(c.ticker)}</td><td>${won(c.referencePrice)}</td><td><span class="state-tag ${c.status==='listed'?'listed':''}">${c.status==='listed'?'상장':'준비 중'}</span></td><td><button class="row-button" data-company="${esc(c.id)}">보기 →</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">검색 결과가 없습니다.</td></tr>';
+  $('#market-rows').innerHTML = rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td class="muted">${esc(c.ticker)}</td><td>${quoteText(c)}${c.quoteKind==='initial'?'<small>첫 거래 전</small>':''}</td><td><span class="state-tag ${c.status==='listed'?'listed':''}">${c.status==='listed'?'상장':'준비 중'}</span></td><td><button class="row-button" data-company="${esc(c.id)}">보기 →</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">검색 결과가 없습니다.</td></tr>';
 }
 function newsCard(n,compact=false) {
   return compact ? `<div class="news-item"><small>공지사항</small><h4>${esc(n.title)}</h4><p>${esc(n.content)}</p></div>`:
@@ -81,7 +84,7 @@ function showCompany(id,writeRoute=true) {
   $('#detail-title').textContent=c?.name||'종목 거래';$('#current-title').textContent=c?.name||'종목 거래';
   document.title=(c?.name||'종목 거래')+' | 청운증권HTS';
   $('#company-symbol').textContent=c?.ticker||'';$('#company-category').textContent=c?.category||'';
-  $('#company-price-label').textContent='초기 기준가격';$('#company-current-price').textContent=c?won(c.referencePrice):'—';
+  $('#company-price-label').textContent=c?.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';$('#company-current-price').textContent=c?quoteText(c):'—';
   $('#company-listing').textContent=c?(c.status==='listed'?'거래 가능':'거래 준비 / 정지'):'';
   if(!c){$('#company-detail').textContent='';$('#test-trade').innerHTML=state.user?'<div class="placeholder">기업을 찾을 수 없습니다. 전체 종목에서 다시 선택하세요.</div>':loginPrompt('로그인하면 이 기업의 호가와 주문 화면을 사용할 수 있습니다.');return;}
   $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;
@@ -138,7 +141,9 @@ async function initialLoad() {
   else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
   state.events=results[3].status==='fulfilled'?results[3].value.events:[];
   renderCompanies();
+  await startQuotes();
   if(!state.user || results[1].status==='fulfilled' || results[3].status==='fulfilled')renderNews();
+  await startQuotes();
   applyRoute();
 }
 
@@ -157,7 +162,7 @@ $('#account-button').addEventListener('click',async()=>{
   if(!state.user){$('#login-dialog').showModal();return;}
   closeTrading();
   try {await logout();}catch(e){alert(e.message);return;}
-  state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
+  ++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();
   if(state.page==='management')loadManagement();
   if(state.page==='company')showCompany(state.companyId,false);

@@ -1,3 +1,4 @@
+import {subscribeQuotes} from './quotes.js';
 import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
 import {initializeApp} from 'firebase/app';
@@ -66,3 +67,5 @@ export async function dataRequest(path,options){
   throw error;
  }
 }
+
+export async function watchCompanyQuotes(companies,update){await ensure();if(!auth.currentUser)return ()=>{};return subscribeQuotes(getFirestore(auth.app),companies,update);}

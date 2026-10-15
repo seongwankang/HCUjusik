@@ -21,7 +21,7 @@ test('restoration finishes before private reads; reload retains login and logout
      export async function signOut(){f.currentUser=f.saved=null}
      export const createUserWithEmailAndPassword=signInWithEmailAndPassword;
      export async function sendEmailVerification(){} export async function reload(){}
-    `:a.path==='firebase/app'?'export const initializeApp=config=>config;':a.path==='firebase/firestore'?'export const getFirestore=()=>({});':'export const createClientApi=({getUser})=>async()=>getUser();'}));
+    `:a.path==='firebase/app'?'export const initializeApp=config=>config;':a.path==='firebase/firestore'?'export const getFirestore=()=>({});export const doc=()=>({});export const onSnapshot=()=>()=>{};':'export const createClientApi=({getUser})=>async()=>getUser();'}));
    }
   }]});
   const source=Buffer.from(result.outputFiles[0].contents).toString('base64');
