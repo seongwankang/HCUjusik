@@ -24,7 +24,8 @@ function navigate(page,writeRoute=true) {
   if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
   $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page)));
-  $('#current-title').textContent = {dashboard:'대시보드',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래'}[page];
+  document.querySelectorAll('.workspace-tabs button').forEach(el=>el.classList.toggle('selected',el.dataset.goto===(page==='company'?'market':page)));
+  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래'}[page];
   document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
   if(page==='management') loadManagement();
@@ -33,9 +34,11 @@ function navigate(page,writeRoute=true) {
 
 function companyMark(name) {return esc(name.slice(0,1));}
 function companyRow(c) {
-  return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right">기업 정보 →</span></button>`;
+  return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${won(c.referencePrice)}</strong><small>종목 거래 ↗</small></span></button>`;
 }
 function renderCompanies() {
+  $('#desk-company-count').textContent=state.companyError?'—':state.companies.length.toLocaleString('ko-KR');
+  $('#desk-listed-count').textContent=state.companyError?'—':state.companies.filter(c=>c.status==='listed').length.toLocaleString('ko-KR');
   if(state.companyError) {
     const message=esc(state.companyError);
     $('#featured-companies').innerHTML=`<div class="placeholder">${message}</div>`;
