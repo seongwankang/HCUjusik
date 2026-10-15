@@ -5,6 +5,7 @@
 GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare 계정은 필요하지 않습니다.
 
 - 배포: [GitHub Pages 안내](docs/github-pages.md)
+- 회사별 거래 화면·구버전 갱신: [안내](docs/company-pages.md)
 - 관리자·학교 이메일 인증: [설정 안내](docs/admin-setup.md)
 - 로컬: `pnpm install --frozen-lockfile`, `pnpm dev` (8789/HCUjusik/)
 - 빌드: `pnpm build` → `dist/`

@@ -12,7 +12,7 @@ let generation = 0;
 let api;
 export const sessionVersion = () => generation;
 async function init() {
-  const response = await fetch(new URL('firebase.config.json',import.meta.url));
+  const response = await fetch(new URL('firebase.config.json',document.baseURI),{cache:'no-store'});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
   auth = getAuth(initializeApp(data));
