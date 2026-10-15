@@ -452,7 +452,7 @@ service cloud.firestore {
       return number(d.pendingResearchBps,1000000) && number(d.cash,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingStaffRevenue,1000000000000) && (asset == 'employee' ? number(d.employees,1000) : number(d[asset],1000)) && !o.locked && o.get('pendingEvent','') == '' && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
         (o.revenue == 0 && o.pendingRevenue == 0 || o.keys().hasAll(['production','pendingProduction'])) &&
         (o.pendingRevenue+o.get('pendingStaffRevenue',0)+o.get('pendingResearchBps',0) == 0 || o.pendingDay > dayNumber()) &&
-        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',asset,'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',(asset == 'employee' ? 'employees' : asset),'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
         d.production == pool(o,false) && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,pool(o,true),asset,yieldAmount) : d.pendingProduction == pool(o,true)) &&
         (asset == 'employee' ? o.get('employees',0) < staffCapacity(o) : d[asset] == o[asset]+1) &&
         (asset != 'research' || (o.research < 6 && researchBps(o)+o.get('pendingResearchBps',0) < 3000)) &&

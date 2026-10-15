@@ -26,6 +26,7 @@ test('standard IPO finances exact starter plan atomically per purchase; hire req
  const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,1000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,90000);assert.equal(o.pendingRevenue,370000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
  assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,483000);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:100,staffRevenue:999999,activeResearchBps:3000}));
+ await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:6,pendingStaffRevenue:108000,cash:700000,employee:'unexpected-field'}));
 });
 test('matured staff and R&D pay dividends once from net income, preserving unmultipled base',async()=>{
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
