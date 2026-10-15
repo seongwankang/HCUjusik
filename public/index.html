@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#12273e">
+  <meta name="theme-color" content="#171b2b">
   <title>청운증권HTS | 모의투자 거래 시스템</title>
   <meta name="description" content="학교 동아리 21개가 기업이 되는 가상 주식시장 행사">
   <link rel="stylesheet" href="./style.css">
@@ -13,10 +13,10 @@
 <body>
   <div class="layout">
     <aside class="sidebar" aria-label="메뉴">
-      <div class="brand"><span class="brand-mark">청</span><div><strong>청운증권<span class="brand-hts">HTS</span></strong><small>CHEONGUN SECURITIES</small></div></div>
+      <div class="brand"><span class="brand-mark">C<span>↗</span></span><div><strong>청운증권<span class="brand-hts">HTS</span></strong><small>CHEONGUN SECURITIES</small></div></div>
       <div class="nav-title">MARKET</div>
       <nav class="nav-list">
-        <button class="nav active" data-page="dashboard"><span class="nav-code">0000</span> 대시보드</button>
+        <button class="nav active" data-page="dashboard"><span class="nav-code">0000</span> 종합화면</button>
         <button class="nav" data-page="market"><span class="nav-code">1000</span> 주식시장</button>
         <button class="nav" data-page="news"><span class="nav-code">2000</span> 시장 뉴스</button>
       </nav>
@@ -29,18 +29,19 @@
     </aside>
     <div class="main-shell">
       <header class="topbar">
-        <div class="top-left"><span class="live-dot"></span><span>청운증권HTS</span><span class="top-separator">/</span><b id="current-title">대시보드</b></div>
-        <div class="top-right"><span class="event-date">10.21 — 10.27</span><button id="account-button" class="account-btn">로그인</button></div>
-      </header>
+        <div class="top-left"><strong class="terminal-brand">청운증권<span>HTS</span></strong><span class="top-separator">/</span><b id="current-title">종합화면</b></div>
+        <div class="top-right"><span class="event-date"><span class="live-dot"></span>모의투자</span><button id="account-button" class="account-btn">로그인</button></div>
+      </header><div class="workspace-tabs" aria-label="빠른 화면 이동"><button data-goto="dashboard">종합화면 <small>0000</small></button><button data-goto="market">국내주식 <small>1000</small></button><button data-goto="portfolio">계좌잔고 <small>3000</small></button><span>CHEONGUN TRADING SYSTEM</span></div>
       <aside id="app-update" class="app-update" role="status" hidden>새 버전이 준비됐습니다. 입력 중인 주문을 확인한 뒤 새로고침하세요. <button id="app-update-reload">새 버전 열기</button></aside><main id="page" tabindex="-1">
         <section class="page active" id="page-dashboard">
-          <div class="terminal-heading"><div><span class="screen-code">0000</span><span class="eyebrow">청운증권 종합화면</span></div><span class="terminal-mode">모의투자 · 테스트 매매</span></div>
-          <div class="hero"><div><div class="hero-tag">청운증권 모의투자 터미널</div><h1>청운증권HTS<br><span>나의 투자, 나의 시장.</span></h1><p>종목을 탐색하고, 기업의 소식을 읽고,<br class="desktop-only"> 나의 가상 자산을 관리하세요.</p><div class="terminal-shortcuts"><button class="hero-button" data-goto="market"><small>1000 / MARKET</small>종목 조회 <span>↗</span></button><button class="hero-button secondary" data-goto="portfolio"><small>3000 / ACCOUNT</small>계좌 잔고 <span>↗</span></button><button class="hero-button secondary" data-goto="news"><small>2000 / NEWS</small>투자 정보 <span>↗</span></button></div></div><div class="hero-art"><div class="graph-label">CHEONGUN INDEX <small>PREVIEW</small></div><svg viewBox="0 0 400 210" role="img" aria-label="장식용 그래프. 실제 주가 데이터 아님"><defs><linearGradient id="chartfill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#75d7c0" stop-opacity=".22"/><stop offset="1" stop-color="#75d7c0" stop-opacity="0"/></linearGradient></defs><path d="M4 188 L4 158 L45 165 L73 135 L110 144 L146 110 L182 124 L219 79 L263 97 L297 65 L340 77 L386 29 L396 40 L396 208 L4 208Z" fill="url(#chartfill)"/><polyline points="4,158 45,165 73,135 110,144 146,110 182,124 219,79 263,97 297,65 340,77 386,29 396,40" fill="none" stroke="#77d8c3" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="386" cy="29" r="5" fill="#a1f6db"/></svg><small>* 화면 장식이며 실제 가격 흐름이 아닙니다.</small></div></div>
-          <div class="section-heading"><h2>시장 기본 정보</h2><span>SIMULATION SETUP</span></div>
-          <div class="stats"><div class="stat"><div class="stat-icon blue">⌂</div><div><span>참여 기업</span><strong>21<small>개 동아리</small></strong></div></div><div class="stat"><div class="stat-icon violet">◎</div><div><span>예상 활성 참가자</span><strong>200<small>명</small></strong></div></div><div class="stat"><div class="stat-icon mint">₩</div><div><span>학생 1인당 시작 자금</span><strong>1,000,000<small>원(가상)</small></strong></div></div></div>
-          <div class="two-column"><section class="panel"><div class="panel-title"><h3>종목 탐색</h3><button class="text-link" data-goto="market">전체 보기 →</button></div><div id="featured-companies" class="company-mini"><div class="placeholder">기업 목록을 불러오는 중…</div></div></section><section class="panel"><div class="panel-title"><h3>투자 정보 · 공시</h3><button class="text-link" data-goto="news">전체 보기 →</button></div><div id="featured-news"><div class="placeholder">공지를 불러오는 중…</div></div></section></div>
+          <div class="desk-heading"><div><span class="eyebrow">MY TRADING DESK</span><h1>오늘의 투자, 여기서 시작.</h1><p>작은 선택으로 만들어가는 우리 학교의 시장</p></div><span class="desk-label"><i></i> 청운 모의투자 시장</span></div>
+          <div class="market-ribbon"><div><span>등록 종목</span><strong id="desk-company-count">—</strong></div><div><span>거래 가능</span><strong id="desk-listed-count">—</strong></div><div><span>시작 자금</span><strong>1,000,000<small> KRW</small></strong></div><div class="ribbon-note">우리의 기업이,<br><b>우리의 시장이 되는 곳.</b></div></div>
+          <div class="desk-grid"><section class="panel desk-stocks"><div class="panel-title"><h2><span class="panel-number">01</span> 종목 둘러보기</h2><button class="text-link" data-goto="market">전체 종목 ↗</button></div><div class="watchlist-head"><span>종목 / 기업 코드</span><span>초기 기준가격</span></div><div id="featured-companies" class="company-mini"><div class="placeholder">기업 목록을 불러오는 중…</div></div><div class="panel-caption">종목을 선택하면 전용 거래 화면으로 이동합니다.</div></section>
+          <section class="desk-account"><div class="account-orbit" aria-hidden="true"><span>₩</span></div><span class="eyebrow">YOUR NEXT MOVE</span><h2>가능성을 보고,<br>나만의 선택으로.</h2><p>나의 보유 현금과 주식을 확인하고<br>다음 투자를 준비하세요.</p><button data-goto="portfolio">나의 계좌 보기 <span>↗</span></button><small>학생 교육용 · 가상 자산만 사용합니다</small></section>
+          <section class="panel desk-news"><div class="panel-title"><h2><span class="panel-number">02</span> 시장 소식</h2><button class="text-link" data-goto="news">뉴스룸 ↗</button></div><div id="featured-news"><div class="placeholder">공지를 불러오는 중…</div></div></section>
+          <section class="desk-guide"><span class="eyebrow">TRADING GUIDE</span><h2>가격을 정하고,<br>시장을 만나세요.</h2><p>지정한 가격에 맞는 반대 주문을 만나면 거래가 체결됩니다.</p><button data-goto="market">거래할 종목 찾기 →</button></section></div>
         </section>
-        <section class="page" id="page-market"><div class="terminal-heading"><div><span class="screen-code">1000</span><span class="eyebrow">주식 종목 조회</span></div><span class="terminal-mode">테스트 매매</span></div><div class="page-heading"><div><h1>주식시장</h1><p>테스트 기업 A·B를 선택해 별도 테스트 계좌로 매수·매도해 보세요.</p></div><span class="pill">테스트 운영</span></div><div class="panel"><div class="panel-title"><h3>기업 목록 <span class="count" id="market-count">0</span></h3><input class="search" id="company-search" placeholder="기업명 또는 코드 검색" aria-label="기업명 또는 코드 검색"></div><div class="table-wrap"><table><thead><tr><th>기업명</th><th>기업 코드</th><th>기준가격(예시)</th><th>상태</th><th></th></tr></thead><tbody id="market-rows"></tbody></table></div></div><div class="info-note">현재 표시되는 기준가격은 시연용 값입니다. 주식 발행 수량·매매 방식·가격 결정 규칙은 아직 확정되지 않았습니다.</div></section>
+        <section class="page" id="page-market"><div class="terminal-heading"><div><span class="screen-code">1000</span><span class="eyebrow">주식 종목 조회</span></div><span class="terminal-mode">테스트 매매</span></div><div class="page-heading"><div><h1>주식시장</h1><p>테스트 기업 A·B를 선택해 별도 테스트 계좌로 매수·매도해 보세요.</p></div><span class="pill">테스트 운영</span></div><div class="panel"><div class="panel-title"><h3>기업 목록 <span class="count" id="market-count">0</span></h3><input class="search" id="company-search" placeholder="기업명 또는 코드 검색" aria-label="기업명 또는 코드 검색"></div><div class="table-wrap"><table><thead><tr><th>기업명</th><th>기업 코드</th><th>기준가격(예시)</th><th>상태</th><th></th></tr></thead><tbody id="market-rows"></tbody></table></div></div><div class="info-note">목록의 가격은 초기 기준가격입니다. 최근 체결가와 대기 호가는 각 종목의 거래 화면에서 확인하세요.</div></section>
         <section class="page" id="page-company"><div class="company-navigation"><button class="back-market" data-goto="market">← 전체 종목</button><nav id="company-switch" aria-label="기업 선택"></nav><span class="workspace-tag">1100 · 종목 거래</span></div><header class="company-heading"><div><span class="company-symbol" id="company-symbol"></span><h1 id="detail-title">기업 거래</h1><p id="company-category"></p></div><div class="company-quote"><small id="company-price-label">기준가격</small><strong id="company-current-price">—</strong><span id="company-listing"></span></div></header><section id="test-trade" class="trade-terminal"></section><section class="company-information panel"><div class="panel-title"><h2>기업 정보</h2></div><div id="company-detail"></div></section></section>
         <section class="page" id="page-news"><div class="terminal-heading"><div><span class="screen-code">2000</span><span class="eyebrow">투자 정보 · 공시</span></div></div><div class="page-heading"><div><h1>시장 뉴스</h1><p>행사 공지와 기업별 이벤트가 게시될 공간입니다.</p></div></div><div id="all-news" class="news-grid"></div></section>
         <section class="page" id="page-portfolio"><div class="terminal-heading"><div><span class="screen-code">3000</span><span class="eyebrow">계좌 잔고 조회</span></div></div><div class="page-heading"><div><h1>내 자산</h1><p>로그인하면 가상 보유금과 보유 주식을 확인할 수 있습니다.</p></div></div><div id="portfolio-content" class="panel empty-state">로그인 후 내 자산을 확인할 수 있습니다.</div></section>
