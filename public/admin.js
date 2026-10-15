@@ -17,7 +17,7 @@ export function setupAdmin(api){
  else if(k==='companyIds')control=`<select ${attrs} multiple size="5">${companies.map(c=>`<option value="${escape(c.id)}" ${Array.isArray(value)&&value.includes(c.id)?'selected':''}>${escape(c.name)}</option>`).join('')}</select>`;
  else if(options[k])control=`<select ${attrs}>${options[k].map(([v,l])=>`<option value="${v}" ${String(value)===v?'selected':''}>${l}</option>`).join('')}</select>`;
  else if(['description','content'].includes(k))control=`<textarea ${attrs} required maxlength="${k==='content'?5000:2000}">${escape(value)}</textarea>`;
- else control=`<input ${attrs} value="${escape(Array.isArray(value)?value.join(','):value)}" type="${k.endsWith('At')?'datetime-local':['referencePrice','issuedShares'].includes(k)?'number':'text'}" ${['companyIds','companyId'].includes(k)?'':'required'} maxlength="${k==='title'?120:k==='description'?2000:k==='id'||k==='companyId'?128:80}" ${['referencePrice','issuedShares'].includes(k)?'min="1" max="100000000" step="1"':''}>`;
+ else control=`<input ${attrs} value="${escape(Array.isArray(value)?value.join(','):value)}" type="${k.endsWith('At')?'datetime-local':['referencePrice','issuedShares'].includes(k)?'number':'text'}" ${['companyIds','companyId'].includes(k)?'':'required'} maxlength="${k==='title'?120:k==='description'?2000:k==='id'||k==='companyId'?128:80}" ${['referencePrice','issuedShares'].includes(k)?'min="1" max="1000000" step="1"':''}>`;
  return `<label>${kind==='events'&&k==='companyId'?'대상 기업':labels[k]}${control}</label>`;
  }).join('');
  document.querySelector('#admin-editor').innerHTML=`<form id="admin-form" class="admin-form"><h3>${editing?escape(item.name||item.title||item.displayName)+' · 수정':'새로 등록'}</h3>${controls}<button class="account-btn" type="submit">저장</button></form>`;
@@ -27,7 +27,7 @@ export function setupAdmin(api){
  if(kind==='companies'){data.initial=!editing;if(!editing){data.referencePrice=Number(data.referencePrice);data.issuedShares=Number(data.issuedShares);}}
  if(kind==='users'){data.active=data.active==='true';data.companyIds=new FormData(e.target).getAll('companyIds');}
  if(kind==='events'){data.startsAt=new Date(data.startsAt).toISOString();data.endsAt=new Date(data.endsAt).toISOString();}
- try{await api('/api/admin/'+kind,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});await load();message('저장했습니다.');}catch(err){message(err.message);}finally{button.disabled=false;}
+ try{await api('/api/admin/'+kind,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});await load();message('저장했습니다.');window.dispatchEvent(new CustomEvent('admin-saved',{detail:{kind}}));}catch(err){message(err.message);}finally{button.disabled=false;}
  };
  }
  function message(s){document.querySelector('#admin-message').textContent=s;}

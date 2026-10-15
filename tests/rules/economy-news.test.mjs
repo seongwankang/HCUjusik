@@ -1,0 +1,81 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
+import {doc,getDoc,setDoc,updateDoc,getDocs,collection,query,limit,serverTimestamp} from 'firebase/firestore';
+import {createClientApi} from '../../client/data.js';
+import {initializeSpark,placeSpark,matchSpark,cancelSpark} from '../../client/spark-exchange.js';
+import {DEFAULT_CONFIG,initializeOperations,invest,beginDay,payHolder,finishDay,settleDay,operationsView,koreaDay} from '../../client/economy.js';
+if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw new Error('Loopback emulator required');
+let env,admin,president,student,other,api,studentApi;
+const claims={email:'test@hcu.hs.kr',email_verified:true},cid='club-economy-new';
+const order=(id,extra={})=>({orderId:id,companyId:cid,side:'buy',price:10000,quantity:20,...extra});
+before(async()=>{
+ env=await initializeTestEnvironment({projectId:'demo-economy-news',firestore:{rules:readFileSync('firestore.rules','utf8')}});await env.clearFirestore();
+ await env.withSecurityRulesDisabled(async context=>{const db=context.firestore();for(const [id,role] of [['admin','admin'],['president','president'],['student','student'],['other','president']])await setDoc(doc(db,'users',id),{displayName:id,role,active:true});await setDoc(doc(db,'assignments/president'),{companyIds:[cid]});await setDoc(doc(db,'assignments/other'),{companyIds:[]});await setDoc(doc(db,'companies',cid),{name:'뉴스·경제 테스트',ticker:'ECON',status:'listed',referencePrice:10000,issuedShares:100});});
+ admin=env.authenticatedContext('admin',claims).firestore();president=env.authenticatedContext('president',claims).firestore();student=env.authenticatedContext('student',claims).firestore();other=env.authenticatedContext('other',claims).firestore();
+ api=createClientApi({db:admin,getUser:async()=>({uid:'admin',getIdTokenResult:async()=>({claims})})});studentApi=createClientApi({db:student,getUser:async()=>({uid:'student',getIdTokenResult:async()=>({claims})})});
+});
+after(async()=>env?.cleanup());
+test('news admin publishes, students read, edits preserve ID, general notices clear old company names',async()=>{
+ const body={id:'news-test-1',title:'설비 투자 뉴스 <img src=x onerror=alert(1)>',content:'첫째 줄\n둘째 줄',companyId:cid};
+ await api('/api/admin/news',{method:'POST',body:JSON.stringify(body)});let n=(await studentApi('/api/news')).news[0];assert.equal(n.id,body.id);assert.equal(n.companyName,'뉴스·경제 테스트');assert.equal(n.content,body.content);assert.ok(Date.parse(n.publishedAt));
+ await api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,title:'수정한 전체 공지',companyId:''})});n=(await studentApi('/api/news')).news[0];assert.equal(n.id,body.id);assert.equal(n.companyName,'');assert.equal(n.companyId,'');assert.equal(n.title,'수정한 전체 공지');
+ await assert.rejects(studentApi('/api/admin/news',{method:'POST',body:JSON.stringify(body)}),/관리자/);
+ await assertFails(setDoc(doc(student,'news/student-forged'),{...body,publishedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(admin,'news/backdate'),{title:'T',content:'C',companyId:'',companyName:'',publishedAt:new Date(0)}));
+ await assert.rejects(api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,title:'',companyId:''})}));
+ await assert.rejects(api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,companyId:'missing'})}));
+ await assertFails(getDocs(collection(student,'news')));
+});
+test('IPO proceeds finance only assigned presidents, purchases mature tomorrow, funds cannot be fabricated',async()=>{
+ await initializeSpark(student,'student',cid);await initializeSpark(president,'president',cid);
+ await placeSpark(student,'student',order('economy-ipo-first'));await matchSpark(student,'student',cid);
+ await placeSpark(president,'president',order('economy-ipo-second'));await matchSpark(president,'president',cid);
+ await initializeOperations(president,cid);await setDoc(doc(admin,'economyConfig/main'),DEFAULT_CONFIG);
+ let v=await operationsView(president,cid);assert.equal(v.available,400000);
+ await invest(president,cid,'factory');v=await operationsView(president,cid);assert.equal(v.available,300000);assert.equal(v.ops.receivedIssuerCash,400000);assert.equal(v.ops.revenue,0);assert.equal(v.ops.pendingRevenue,5000);assert.equal(v.ops.pendingDay,koreaDay()+1);
+ await assertFails(invest(other,cid,'equipment'));await assertFails(invest(student,cid,'equipment'));
+ await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:99999999}));await assertFails(updateDoc(doc(president,'companyOperations',cid),{dividendBps:10000}));
+ await invest(president,cid,'equipment');v=await operationsView(president,cid);assert.equal(v.available,250000);assert.equal(v.ops.pendingRevenue,7000);
+ await assertFails(getDocs(query(collection(student,'sparkAccounts'),limit(100))));
+ await assertFails(getDoc(doc(student,'sparkAccounts/president')));
+});
+test('locked daily settlement snapshots holdings, credits each holder once and resumes after interruption',async()=>{
+ // Emulator setup represents facilities purchased yesterday; no production clock/data changes.
+ await env.withSecurityRulesDisabled(async context=>updateDoc(doc(context.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
+ const beforeStudent=(await getDoc(doc(student,'sparkAccounts/student'))).data(),beforePresident=(await getDoc(doc(president,'sparkAccounts/president'))).data();
+ const key=await beginDay(admin,cid);const day=(await getDoc(doc(admin,'companyOperations',cid,'days',key))).data();assert.equal(day.revenue,7000);assert.equal(day.sold,40);assert.equal(day.perShare,87);assert.equal(day.retained,3520);
+ await assertFails(placeSpark(student,'student',order('during-settlement')));await assert.rejects(invest(president,cid,'equipment'),/정산 중/);
+ await assert.rejects(finishDay(admin,cid,key),/수量|수량/);await assertFails(payHolder(student,cid,key,'student'));
+ assert.equal(await payHolder(admin,cid,key,'student'),true);assert.equal(await payHolder(admin,cid,key,'student'),false);
+ assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,beforeStudent.cash+1740);
+ await settleDay(admin,cid);
+ assert.equal((await getDoc(doc(president,'sparkAccounts/president'))).data().cash,beforePresident.cash+1740);
+ const v=await operationsView(admin,cid);assert.equal(v.ops.locked,false);assert.equal(v.ops.lastSettledDay,koreaDay());assert.equal(v.ops.paidShares,40);assert.equal(v.ops.paidAmount,3480);assert.equal(v.available,253520);
+ await assert.rejects(settleDay(admin,cid),/이미 완료/);
+ await assertFails(updateDoc(doc(student,'sparkAccounts/student'),{cash:999999}));
+ await assertFails(updateDoc(doc(admin,'companyOperations',cid,'days',key),{perShare:999}));
+ const payments=(await studentApi('/api/dividends')).dividends;assert.equal(payments.length,1);assert.equal(payments[0].amount,1740);assert.equal(payments[0].shares,20);
+ await assertFails(getDoc(doc(president,'sparkAccounts/student/dividends',cid+'_'+key)));
+ await assertFails(setDoc(doc(student,'sparkAccounts/student/dividends/forged'),{companyId:cid,dayId:key,day:koreaDay(),shares:20,amount:99999,createdAt:serverTimestamp()}));
+ await placeSpark(student,'student',order('after-settlement',{price:9000,quantity:1}));await cancelSpark(student,'student',{companyId:cid,orderId:'after-settlement'});
+});
+test('API keeps financial configuration and settlement admin-only; old investment yield survives catalog changes',async()=>{
+ await assert.rejects(studentApi('/api/economy-config',{method:'POST',body:JSON.stringify(DEFAULT_CONFIG)}),/관리자/);
+ await assert.rejects(studentApi('/api/economy-settle',{method:'POST',body:JSON.stringify({companyId:cid})}),/담당 사장/);
+ const pApi=createClientApi({db:president,getUser:async()=>({uid:'president',getIdTokenResult:async()=>({claims})})});
+ await assert.rejects(pApi('/api/economy-rate',{method:'POST',body:JSON.stringify({companyId:cid,dividendBps:10000})}),/관리자/);
+ await api('/api/economy-config',{method:'POST',body:JSON.stringify({...DEFAULT_CONFIG,factoryRevenue:1})});
+ const old=(await operationsView(president,cid)).ops;assert.equal(old.revenue,7000);
+ await invest(president,cid,'factory');const next=(await operationsView(president,cid)).ops;assert.equal(next.revenue,7000);assert.equal(next.pendingRevenue,1);assert.equal(next.cash,old.cash-100000);
+ await assertFails(updateDoc(doc(president,'companyOperations',cid),{receivedIssuerCash:0,cash:999999}));
+});
+test('dividend processing crosses 100-account pages without skipping or duplicating shareholders',async()=>{
+ const id='paged-company';
+ await env.withSecurityRulesDisabled(async context=>{const db=context.firestore();await setDoc(doc(db,'companies',id),{name:'Paged',status:'listed',referencePrice:1,issuedShares:200});await setDoc(doc(db,'sparkBooks',id),{issuerCash:105,issuedShares:200,treasuryShares:95});
+ for(let i=0;i<105;i++)await setDoc(doc(db,'sparkAccounts','holder-'+String(i).padStart(3,'0')),{cash:999999,reservedCash:0,positions:{[id]:1},reservedPositions:{},version:1,lastMarket:id});});
+ await initializeOperations(admin,id);await updateDoc(doc(admin,'companyOperations',id),{revenue:1000,dividendBps:10000});
+ const result=await settleDay(admin,id);assert.equal(result.recipients,105);const v=await operationsView(admin,id);assert.equal(v.ops.paidShares,105);assert.equal(v.ops.paidAmount,945);assert.equal(v.available,160);assert.equal(v.ops.locked,false);
+ assert.equal((await getDoc(doc(admin,'sparkAccounts/holder-104'))).data().cash,1000008);
+});

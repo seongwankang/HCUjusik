@@ -11,7 +11,7 @@ export function validateAdmin(kind,b){
     data={name:text(b.name,80),ticker:text(b.ticker,20),description:text(b.description,2000),category:text(b.category,40),status:b.status};
     if(!/^[A-Z0-9_-]{1,20}$/.test(data.ticker))fail();
     // Economic fields are only initial demonstration values; existing values cannot be edited.
-    if(b.initial===true){for(const k of ['referencePrice','issuedShares'])if(!Number.isSafeInteger(b[k])||b[k]<1||b[k]>100000000)fail();Object.assign(data,{referencePrice:b.referencePrice,issuedShares:b.issuedShares,companyCash:0,dailyRevenue:0});}
+    if(b.initial===true){for(const k of ['referencePrice','issuedShares'])if(!Number.isSafeInteger(b[k])||b[k]<1||b[k]>1000000)fail();Object.assign(data,{referencePrice:b.referencePrice,issuedShares:b.issuedShares,companyCash:0,dailyRevenue:0});}
   } else if(kind==='news'){
     data={title:text(b.title,120),content:text(b.content,5000),companyId:b.companyId?id(b.companyId):'',publishedAt:new Date().toISOString()};
   } else if(kind==='events'){
