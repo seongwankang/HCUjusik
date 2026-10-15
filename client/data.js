@@ -1,3 +1,4 @@
+import {tradingPortfolio} from './portfolio.js';
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
 import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView,marketHistory} from './spark-exchange.js';
@@ -64,6 +65,11 @@ export function createClientApi({db,getUser}){
   }
   const kind=route.split('/').at(-1);
   if(method==='GET'&&kinds[kind])return {[kind]:await list(kind,kinds[kind][1],kinds[kind][0])};
+  if(route==='/api/trading-portfolio'&&method==='GET'){
+   const account=await get(`sparkAccounts/${user.uid}`);
+   const ids=['test-a','test-b'];const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
+   return tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
+  }
   if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
   if(route==='/api/my-company'&&method==='GET'){const ids=(await get(`assignments/${user.uid}`))?.companyIds||[];if(ids.length>5||ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(x)))message('담당 기업 설정을 확인하세요.');return {companies:(await Promise.all(ids.map(id=>get(`companies/${id}`)))).filter(Boolean)};}
   message('지원하지 않는 요청입니다.');

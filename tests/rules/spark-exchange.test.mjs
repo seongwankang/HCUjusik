@@ -145,3 +145,19 @@ test('rules rollout preserves old trading and activates mandatory market history
   v=await api('/api/exchange?companyId=test-a');assert.equal(v.marketHistoryAvailable,true);assert.equal(v.marketTrades.length,1);assert.equal(v.account.positions['test-a'],2);
  }finally{await old.cleanup();await upgraded?.cleanup();}
 });
+
+test('portfolio reflects executed trades, reservations and cancellation from the trading account',async()=>{
+ const {createClientApi}=await import('../../client/data.js');
+ const api=createClientApi({db:a,getUser:async()=>({uid:'a',getIdTokenResult:async()=>({claims})})});
+ const before=await api('/api/trading-portfolio'),q=before.holdings.find(h=>h.companyId==='test-b')?.quantity||0;
+ await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('portfolio-buy',{companyId:'test-b',quantity:2}))});
+ let p=await api('/api/trading-portfolio?uid=b');assert.equal(p.cash,before.cash-20000);assert.equal(p.holdings.find(h=>h.companyId==='test-b').quantity,q+2);
+ const bookVersion=(await getDoc(doc(a,'sparkBooks/test-b'))).data().version;await api('/api/trading-portfolio');assert.equal((await getDoc(doc(a,'sparkBooks/test-b'))).data().version,bookVersion);
+ await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('portfolio-reserve',{companyId:'test-b',price:9000}))});
+ p=await api('/api/trading-portfolio');assert.equal(p.cash,before.cash-20000);assert.equal(p.reservedCash,9000);assert.equal(p.availableCash,p.cash-9000);
+ await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'portfolio-reserve'})});
+ p=await api('/api/trading-portfolio');assert.equal(p.reservedCash,0);assert.equal(p.availableCash,p.cash);
+ await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('portfolio-sell',{companyId:'test-b',side:'sell',price:12000}))});
+ p=await api('/api/trading-portfolio');const h=p.holdings.find(h=>h.companyId==='test-b');assert.equal(h.quantity,q+2);assert.equal(h.reserved,1);assert.equal(h.available,q+1);
+ await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'portfolio-sell'})});
+});

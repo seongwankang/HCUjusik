@@ -86,19 +86,17 @@ window.addEventListener('hashchange',applyRoute);
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
 }
+let portfolioRead=0;
 async function loadPortfolio() {
-  const target = $('#portfolio-content');
-  if(!state.user){target.innerHTML=loginPrompt('로그인하면 현재 가상 자산을 조회할 수 있습니다.');return;}
-  target.innerHTML='<div class="placeholder">자산을 불러오는 중…</div>';
-  try {
-    const data=await getJSON('/api/portfolio');
-    const holdings=(data.holdings||[]);
-    const positions=holdings.reduce((sum,h)=>sum+h.quantity*h.referencePrice,0);
-    target.innerHTML=`<div class="asset-summary"><div><span>보유 현금</span><strong>${won(data.cash)}</strong></div><div><span>주식 평가액(참고)</span><strong>${won(positions)}</strong></div><div><span>총 평가 자산(참고)</span><strong>${won(data.cash+positions)}</strong></div></div><div class="list-title">보유 주식</div>${holdings.length?holdings.map(h=>`<div class="asset-row"><span>${esc(h.name)} (${esc(h.ticker)})</span><strong>${h.quantity}주</strong></div>`).join(''):'<div class="placeholder">보유 주식이 없습니다.</div>'}<div class="info-note">주식 평가액은 임시 기준가격을 사용한 참고값입니다. 행사 공식 순위 점수가 아닙니다.</div>`;
-    const dataMarket=await getJSON('/api/exchange?companyId=test-a');
-    const a=dataMarket.account;
-    target.insertAdjacentHTML('beforeend',`<h3>지정가 테스트 계좌 (기존 자산과 별도)</h3><p>보유 현금 ${won(a.cash)} · 주문 예약 ${won(a.reservedCash)} · 주문 가능 ${won(a.cash-a.reservedCash)}</p>${Object.entries(a.positions).map(([id,q])=>`<div class="asset-row"><span>${esc(state.companies.find(c=>c.id===id)?.name||id)}</span><strong>${q}주 (예약 ${a.reservedPositions[id]||0}주)</strong></div>`).join('')}<p>주식시장에서 종목을 열어 미체결 주문·체결 내역을 확인하세요.</p>`);
-  }catch(e){target.insertAdjacentHTML('beforeend',`<p>${esc(e.message)}</p>`);}
+ const target=$('#portfolio-content'),uid=state.user?.id,read=++portfolioRead;
+ if(!uid){target.innerHTML=loginPrompt('로그인하면 현재 가상 자산을 조회할 수 있습니다.');return;}
+ const current=()=>read===portfolioRead&&state.page==='portfolio'&&state.user?.id===uid;
+ target.classList.remove('empty-state');target.innerHTML='<div class="placeholder portfolio-loading">거래 계좌를 조회하는 중…</div>';
+ try{
+  const p=await getJSON('/api/trading-portfolio');if(!current())return;
+  const value=n=>n===null?'—':won(n);
+  target.innerHTML=`<div class="panel-title"><h2>나의 거래 계좌</h2><button type="button" class="text-link" id="portfolio-refresh">↻ 새로고침</button></div><div class="portfolio-totals"><div class="portfolio-total"><span>총 평가 자산</span><strong>${value(p.totalValue)}</strong><small>보유 현금 + 주식 평가액</small></div><div><span>보유 현금</span><strong>${won(p.cash)}</strong><small>주문 예약금 포함</small></div><div><span>주식 평가액</span><strong>${value(p.stockValue)}</strong><small>최근 체결가 기준</small></div></div><div class="portfolio-reserves"><span>주문 가능 현금 <b>${won(p.availableCash)}</b></span><span>미체결 주문 예약금 <b>${won(p.reservedCash)}</b></span></div><div class="panel-title"><h2>보유 주식 <span class="count">${p.holdings.length}</span></h2><span>매도 예약 수량도 보유 주식에 포함됩니다</span></div>${p.holdings.length?`<div class="trade-table-wrap"><table class="portfolio-table"><thead><tr><th>종목</th><th>보유 수량</th><th>매도 가능</th><th>매도 예약</th><th>평가 가격</th><th>평가 금액</th><th></th></tr></thead><tbody>${p.holdings.map(h=>`<tr><td><strong>${esc(h.name)}</strong><small>${esc(h.ticker)}</small></td><td>${h.quantity.toLocaleString('ko-KR')}주</td><td>${h.available.toLocaleString('ko-KR')}주</td><td>${h.reserved.toLocaleString('ko-KR')}주</td><td>${value(h.price)}${h.priceSource==='initial'?'<small>초기 기준가</small>':''}</td><td>${value(h.value)}</td><td><button class="row-button" data-company="${esc(h.companyId)}">거래 ↗</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="portfolio-empty">현재 보유한 주식이 없습니다. 종목 화면에서 매수한 주식이 여기에 표시됩니다.</div>'}<p class="portfolio-note">미체결 매수 주문은 체결 전까지 보유 주식에 반영되지 않습니다.${!p.initialized?' 첫 거래 전의 시작 자금입니다.':''}${!p.valuationComplete?' 가격을 확인할 수 없는 종목이 있어 평가 금액은 표시하지 않았습니다.':''}</p>`;
+ }catch(e){if(current())target.innerHTML=`<div class="portfolio-empty">${esc(e.message)}<br><button type="button" class="text-link" id="portfolio-refresh">다시 조회</button></div>`;}
 }
 async function loadManagement() {
   const target=$('#management-content');
@@ -142,6 +140,7 @@ async function initialLoad() {
 
 $$('button[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
 document.addEventListener('click',event=>{
+  if(event.target.closest('#portfolio-refresh')){loadPortfolio();return;}
   const go=event.target.closest('button[data-goto]');
   if(go)navigate(go.dataset.goto);
   const company=event.target.closest('button[data-company]');
