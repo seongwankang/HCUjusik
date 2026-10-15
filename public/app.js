@@ -1,7 +1,9 @@
+import {parseRoute,companyRoute} from './routes.js';
+import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
 import {setupAdmin} from './admin.js';
 import {dataRequest, login, signup, logout, sessionVersion, verificationStatus, sendVerification} from './auth.bundle.js';
-const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null};
+const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
@@ -14,13 +16,16 @@ async function getJSON(url,options={}) {
   return data;
 }
 
-function navigate(page) {
-  if (!['dashboard','market','news','portfolio','management','admin'].includes(page)) return;
+function navigate(page,writeRoute=true) {
+  if (!['dashboard','market','news','portfolio','management','admin','company'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')return;
+  closeTrading();
   state.page = page;
+  if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
-  $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  $('#current-title').textContent = {dashboard:'대시보드',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자'}[page];
+  $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page)));
+  $('#current-title').textContent = {dashboard:'대시보드',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래'}[page];
+  document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
   if(page==='management') loadManagement();
   window.scrollTo({top:0,behavior:'instant'});
@@ -52,14 +57,22 @@ function renderNews() {
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
   $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard({title:`기업 이벤트 · ${e.title}`,content:`${e.content}\n기간: ${new Date(e.startsAt).toLocaleString('ko-KR')} ~ ${new Date(e.endsAt).toLocaleString('ko-KR')} (게시용)`,companyName:e.companyId})).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
 }
-function showCompany(id) {
-  const c = state.companies.find(c=>c.id===id);
-  if (!c) return;
-  $('#detail-title').textContent=c.name;
-  $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><div class="detail-list"><div><span>기업 코드</span><strong>${esc(c.ticker)}</strong></div><div><span>상장 상태</span><strong>${c.status==='listed'?'상장':'준비 중'}</strong></div><div><span>시연용 기준가격</span><strong>${won(c.referencePrice)}</strong></div><div><span>발행 주식</span><strong>${Number(c.issuedShares).toLocaleString('ko-KR')}주</strong></div></div><div class="info-note">실제 기업 실적과 거래 가격은 행사 규칙을 확정한 후 적용됩니다.</div>`;
-  $('#company-dialog').showModal();
+function showCompany(id,writeRoute=true) {
+  navigate('company',false);state.companyId=id;
+  if(writeRoute&&location.hash!==companyRoute(id))history.pushState(null,'',companyRoute(id));
+  const c=state.companies.find(c=>c.id===id);
+  $('#company-switch').innerHTML=state.companies.map(x=>`<button data-company="${esc(x.id)}" class="${x.id===id?'selected':''}" ${x.id===id?'aria-current="page"':''}>${esc(x.name)}</button>`).join('');
+  $('#detail-title').textContent=c?.name||'종목 거래';$('#current-title').textContent=c?.name||'종목 거래';
+  document.title=(c?.name||'종목 거래')+' | 청운증권HTS';
+  $('#company-symbol').textContent=c?.ticker||'';$('#company-category').textContent=c?.category||'';
+  $('#company-price-label').textContent='초기 기준가격';$('#company-current-price').textContent=c?won(c.referencePrice):'—';
+  $('#company-listing').textContent=c?(c.status==='listed'?'거래 가능':'거래 준비 / 정지'):'';
+  if(!c){$('#company-detail').textContent='';$('#test-trade').innerHTML=state.user?'<div class="placeholder">기업을 찾을 수 없습니다. 전체 종목에서 다시 선택하세요.</div>':loginPrompt('로그인하면 이 기업의 호가와 주문 화면을 사용할 수 있습니다.');return;}
+  $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;
   showTrading(c,getJSON);
 }
+function applyRoute(){const r=parseRoute(location.hash);if(r.page==='company')showCompany(r.companyId,false);else navigate(r.page,false);}
+window.addEventListener('hashchange',applyRoute);
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
 }
@@ -114,6 +127,7 @@ async function initialLoad() {
   state.events=results[3].status==='fulfilled'?results[3].value.events:[];
   renderCompanies();
   if(results[1].status==='fulfilled' || results[3].status==='fulfilled')renderNews();
+  applyRoute();
 }
 
 $$('button[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
@@ -128,16 +142,14 @@ document.addEventListener('click',event=>{
 $('#company-search').addEventListener('input',renderCompanies);
 $('#account-button').addEventListener('click',async()=>{
   if(!state.user){$('#login-dialog').showModal();return;}
-  closeTrading();$('#company-dialog').close();
+  closeTrading();
   try {await logout();}catch(e){alert(e.message);return;}
   state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 테스트 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();
   if(state.page==='management')loadManagement();
+  if(state.page==='company')showCompany(state.companyId,false);
 });
 $('#close-login').addEventListener('click',()=>$('#login-dialog').close());
-$('#company-dialog').addEventListener('close',closeTrading);
-$('#close-detail').addEventListener('click',()=>$('#company-dialog').close());
-$('#detail-close').addEventListener('click',()=>$('#company-dialog').close());
 let signupMode=false;
 function verificationPanel(show){
   $('#verification-panel').hidden=!show;
@@ -210,4 +222,5 @@ $('#login-form').addEventListener('submit',async(e)=>{
   finally{submit.disabled=false;}
 });
 const adminUI=setupAdmin(getJSON);
+installUpdateNotice(typeof __APP_BUILD__==='string'?__APP_BUILD__:'dev');
 initialLoad();

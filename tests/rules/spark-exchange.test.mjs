@@ -97,3 +97,12 @@ test('initial shares use eligible first arrival even when a later buyer bids hig
  assert.equal((await getDoc(doc(b,'sparkAccounts/b/orders/initial-high-next'))).data().status,'open');
  await matchSpark(a,'a','test-b');
 });
+test('ordinary student uses the same direct Firebase trade API without backend configuration',async()=>{
+ const {createClientApi}=await import('../../client/data.js');
+ const api=createClientApi({db:a,getUser:async()=>({uid:'a',getIdTokenResult:async()=>({claims})})});
+ const view=await api('/api/exchange?companyId=test-b');assert.equal(view.mode,'spark-limit-v1');
+ const placed=await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('student-api-order',{companyId:'test-b',price:9999}))});
+ assert.equal(placed.order.status,'open');
+ await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'student-api-order'})});
+ assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/student-api-order'))).data().status,'cancelled');
+});
