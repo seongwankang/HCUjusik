@@ -1,3 +1,4 @@
+import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
@@ -21,6 +22,21 @@ export function createClientApi({db,getUser}){
    return {ok:true,registered:true};
   }
   if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+  if(route==='/api/economy'&&method==='GET')return operationsView(db,url.searchParams.get('companyId'));
+  if(route==='/api/economy-config'&&method==='GET')return {config:await get('economyConfig/main')};
+  if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
+   const b=JSON.parse(options.body||'{}');
+   if(route==='/api/economy-config'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const c=validateConfig(b);await runTransaction(db,async t=>t.set(doc(db,'economyConfig','main'),c));return {ok:true};}
+   const cid=b.companyId;if(typeof cid!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(cid))message('기업을 선택하세요.');
+   const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
+   if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 사용할 수 있습니다.');
+   if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
+   if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
+   if(profile.role!=='admin')message('일일 정산과 배당률 설정은 관리자만 할 수 있습니다.');
+   if(route==='/api/economy-settle')return settleDay(db,cid);
+   if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<0||b.dividendBps>10000)message('배당률은 0~100%로 입력하세요.');
+   await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists()||o.data().locked)message('회사 계좌 준비 또는 진행 중인 정산 완료가 필요합니다.');t.update(r,{dividendBps:b.dividendBps});});return {ok:true};
+  }
   if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role);
   if(route==='/api/limit-order'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');await initializeSpark(db,user.uid,b.companyId);
@@ -48,7 +64,7 @@ export function createClientApi({db,getUser}){
   if(method==='POST'&&route.startsWith('/api/admin/')){
    if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');const kind=route.split('/').at(-1),body=JSON.parse(options.body||'{}'),item=validateAdmin(kind,body);
    const data={...item.data};
-   if(kind==='news')data.publishedAt=serverTimestamp();
+   if(kind==='news'){data.publishedAt=serverTimestamp();data.companyName='';}
    if(kind==='events'){data.startsAt=Timestamp.fromDate(new Date(data.startsAt));data.endsAt=Timestamp.fromDate(new Date(data.endsAt));}
    await runTransaction(db,async t=>{
     const ref=doc(db,kind,item.id),old=await t.get(ref);
@@ -70,6 +86,7 @@ export function createClientApi({db,getUser}){
    const ids=[...new Set([...Object.keys(account?.positions||{}),...Object.keys(account?.reservedPositions||{})])];if(ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))message('보유 기업 ID를 확인하세요.');const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
    return tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
   }
+  if(route==='/api/dividends'&&method==='GET')return {dividends:await list('sparkAccounts/'+user.uid+'/dividends',30,'createdAt desc')};
   if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
   if(route==='/api/my-company'&&method==='GET'){const ids=(await get(`assignments/${user.uid}`))?.companyIds||[];if(ids.length>5||ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(x)))message('담당 기업 설정을 확인하세요.');return {companies:(await Promise.all(ids.map(id=>get(`companies/${id}`)))).filter(Boolean)};}
   message('지원하지 않는 요청입니다.');

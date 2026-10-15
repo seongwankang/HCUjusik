@@ -127,7 +127,7 @@ test('ordinary student uses the same direct Firebase trade API without backend c
 test('rules rollout preserves old trading and activates mandatory market history',async()=>{
  const current=readFileSync('firestore.rules','utf8');
  const requirement=" &&\n        getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data ==\n          {'companyId':d.companyId,'price':d.price,'quantity':d.quantity,'marketVersion':d.marketVersion,'createdAt':request.time}";
- const legacy=current.replace(requirement,'').replace(/    function publicTrade[\s\S]*?(?=    \/\/ Official orders)/,'');
+ const legacy=current.replace(requirement,'').replace(/    function publicTrade[\s\S]*?(?=    function manager)/,'');
  assert.notEqual(legacy,current);assert.ok(!legacy.includes('function publicTrade'));
  const projectId='demo-history-rollout';
  const old=await initializeTestEnvironment({projectId,firestore:{rules:legacy}});let upgraded;

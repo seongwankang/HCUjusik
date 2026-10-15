@@ -1,0 +1,32 @@
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const won=n=>Number(n||0).toLocaleString('ko-KR')+'원';
+const assets={factory:'공장',equipment:'생산 설비',research:'연구 시설'};
+const defaults={factoryCost:100000,factoryRevenue:5000,equipmentCost:50000,equipmentRevenue:2000,researchCost:200000,researchRevenue:12000};
+export async function showManagement(host,api,user,isCurrent=()=>true){
+ let alive=true,selected='',companies=[],view=null;
+ const current=()=>alive&&isCurrent()&&document.querySelector('#page-management')?.classList.contains('active');
+ const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
+ host.classList.remove('empty-state');host.innerHTML='<p>회사 회계를 불러오는 중…</p>';
+ try{companies=(await api(user.role==='admin'?'/api/companies':'/api/my-company')).companies;if(!current())return;
+ if(!companies.length){host.innerHTML='<p>담당 기업이 없습니다. 관리자가 기업을 등록하고 사장을 지정하면 사용할 수 있습니다.</p>';return;}selected=companies[0].id;
+ host.innerHTML=`<div class="management-toolbar"><label>운영 기업 <select id="business-company">${companies.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><button id="business-refresh" class="ghost">새로 조회</button></div><p role="status" id="business-message"></p><div id="business-body"></div>`;
+ const message=s=>host.querySelector('#business-message').textContent=s;
+ async function load(){const id=selected;try{const data=await api('/api/economy?companyId='+encodeURIComponent(id));if(!current()||selected!==id)return;view=data;render();}catch(e){if(current())message(e.message);}}
+ function render(){const {ops:o,book,config,available,days}=view;host.querySelector('#business-body').innerHTML=`
+ <div class="business-cards"><article><small>투자 가능 회사 자금</small><strong>${won(available)}</strong></article><article><small>최초 주식 판매 누적 수입</small><strong>${won(book?.issuerCash)}</strong></article><article><small>가동 설비 일매출</small><strong>${won(o.revenue)}</strong></article><article><small>다음 정산부터 추가 매출</small><strong>${won(o.pendingRevenue)}</strong></article></div>
+ <p class="info-note">최초 발행 주식 판매금만 회사로 들어옵니다. 학생 간 매매대금은 회사 수입이 아닙니다. 설비는 구매 다음 날부터 매출에 반영됩니다.</p>
+ ${o.locked?'<p class="business-lock">배당 지급 중 · 이 기업의 거래와 설비 투자가 잠겨 있습니다. 관리자가 정산 이어하기를 눌러 완료해 주세요.</p>':''}
+ <button class="account-btn" data-business="prepare" ${view.initialized?'disabled':''}>${view.initialized?'회사 계좌 준비 완료':'회사 계좌 준비'}</button>
+ <h2>설비 투자</h2>${!config?'<p class="info-note">관리자가 아래 설비 가격·일매출 설정을 먼저 저장해야 투자가 열립니다.</p>':''}
+ <div class="facility-grid">${Object.entries(assets).map(([id,name])=>`<article class="facility-card"><h3>${name}</h3><p>보유 <b>${o[id]}</b>개</p><dl><div><dt>건설 비용</dt><dd>${config?won(config[id+'Cost']):'미설정'}</dd></div><div><dt>추가 일매출</dt><dd>${config?won(config[id+'Revenue']):'미설정'}</dd></div></dl><button class="account-btn" data-business="invest" data-asset="${id}" ${!config||o.locked||available<config[id+'Cost']?'disabled':''}>1개 건설</button></article>`).join('')}</div>
+ <h2>매출 · 배당</h2><p>매출 배당률 <b>${o.dividendBps/100}%</b> · 하루 1회, 한국 시간 기준. 정산 시점 주주에게 보유 수량대로 지급합니다. 미판매 주식은 제외하고 원 단위 나머지는 회사가 보유합니다.</p>
+ ${user.role==='admin'?`<form id="dividend-form"><label>배당률 (%) <input name="rate" type="number" min="0" max="100" step="0.01" value="${o.dividendBps/100}" required></label><button class="account-btn" ${o.locked?'disabled':''}>배당률 저장</button></form><button class="account-btn settlement-btn" data-business="settle" ${!o.locked&&o.lastSettledDay>=Math.floor((Date.now()+32400000)/86400000)?'disabled':''}>${!o.locked&&o.lastSettledDay>=Math.floor((Date.now()+32400000)/86400000)?'오늘 정산 완료':o.locked?'정산 이어하기':'오늘 매출·배당 정산'}</button><p class="muted">정산 중에는 이 화면을 유지하세요. 중단되어도 다시 누르면 지급한 사람은 건너뛰고 이어집니다. 지난 날짜를 소급해 자동 정산하지 않습니다.</p>`:'<p class="muted">배당률 변경과 일일 정산은 관리자가 실행합니다.</p>'}
+ <div class="portfolio-table-wrap"><table><thead><tr><th>정산일 (한국)</th><th>일매출</th><th>1주당 배당</th><th>주주 배당 총액</th><th>회사 유보</th></tr></thead><tbody>${days.map(d=>`<tr><td>${new Date(d.day*86400000).toISOString().slice(0,10)}${o.currentDay===d.id?' · 지급 중':''}</td><td>${won(d.revenue)}</td><td>${won(d.perShare)}</td><td>${won(d.dividend)}</td><td>${won(d.retained)}</td></tr>`).join('')||'<tr><td colspan="5">아직 정산 내역이 없습니다.</td></tr>'}</tbody></table></div>
+ ${user.role==='admin'?`<details class="economy-settings"><summary>공통 설비 가격·매출 설정</summary><p>아래 금액은 설정 예시입니다. 저장한 뒤 구매하는 설비에 적용되며 기존 설비의 매출은 바꾸지 않습니다.</p><form id="economy-config-form" class="admin-form">${Object.keys(defaults).map(k=>`<label>${assets[k.replace(/Cost|Revenue/,'')]} ${k.endsWith('Cost')?'건설 비용':'일매출'}<input name="${k}" type="number" min="1" max="100000000" step="1" value="${config?.[k]??defaults[k]}" required></label>`).join('')}<button class="account-btn">설비 정책 저장</button></form></details>`:''}`;}
+ host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};host.querySelector('#business-refresh').onclick=load;
+ host.onclick=async e=>{const button=e.target.closest('[data-business]');if(!button||button.disabled)return;const action=button.dataset.business,cid=selected;button.disabled=true;host.querySelector('#business-company').disabled=true;message(action==='settle'?'정산 및 배당 지급 중입니다. 완료 메시지가 나올 때까지 기다려 주세요.':'처리 중…');try{await post('/api/economy-'+({prepare:'prepare',invest:'invest',settle:'settle'}[action]),{companyId:cid,asset:button.dataset.asset});await load();message(action==='settle'?'오늘 매출·배당 정산을 완료했습니다.':'반영했습니다.');}catch(e){await load();message(e.message);}finally{if(current())host.querySelector('#business-company').disabled=false;}};
+ host.onsubmit=async e=>{if(!['dividend-form','economy-config-form'].includes(e.target.id))return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,Number(v)])));await load();message('설정을 저장했습니다.');}catch(err){message(err.message);button.disabled=false;}};
+ await load();
+ }catch(e){if(current())host.textContent=e.message;}
+ return ()=>{alive=false;};
+}

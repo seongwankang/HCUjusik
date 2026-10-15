@@ -52,14 +52,15 @@ service cloud.firestore {
     match /companies/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && companyData() && request.resource.data.referencePrice is int && request.resource.data.referencePrice > 0 && request.resource.data.referencePrice <= 100000000 && request.resource.data.issuedShares is int && request.resource.data.issuedShares > 0 && request.resource.data.issuedShares <= 100000000 && request.resource.data.companyCash == 0 && request.resource.data.dailyRevenue == 0;
+      allow create: if admin() && companyData() && request.resource.data.referencePrice is int && request.resource.data.referencePrice > 0 && request.resource.data.referencePrice <= 1000000 && request.resource.data.issuedShares is int && request.resource.data.issuedShares > 0 && request.resource.data.issuedShares <= 1000000 && request.resource.data.companyCash == 0 && request.resource.data.dailyRevenue == 0;
       allow update: if admin() && companyData() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','ticker','description','category','status']);
       allow delete: if false;
     }
     match /news/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','companyName','publishedAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt is timestamp;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','companyName','publishedAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt == request.time && request.resource.data.companyName is string &&
+        (request.resource.data.companyId == '' ? request.resource.data.companyName == '' : request.resource.data.companyName == get(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.name);
       allow delete: if false;
     }
     match /events/{id} {
@@ -219,7 +220,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
         number(request.resource.data.initialPrice,1000000) && request.resource.data.initialPrice > 0 &&
         number(request.resource.data.issuedShares,1000000) && request.resource.data.issuedShares > 0;
-      allow update: if sparkId(cid) && participant() &&
+      allow update: if sparkId(cid) && participant() && tradingUnlocked(cid) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders','version','lastAction','updatedAt','treasuryShares','issuerCash','lastPrice']) &&
         request.resource.data.version == resource.data.version+1 && request.resource.data.version <= 1000000000 &&
         request.resource.data.updatedAt == request.time && request.resource.data.lastAction.actor == request.auth.uid &&
@@ -286,16 +287,24 @@ service cloud.firestore {
          (a.kind == 'fill' && (e == a.buy || e == a.sell) && d.remaining == o.remaining-q && d.filled == o.filled+q && d.cancelled == o.cancelled && d.status == (d.remaining == 0 ? 'filled' : 'open')));
     }
     match /sparkAccounts/{uid} {
-      allow get: if owner(uid) && participant();
+      allow get: if (owner(uid) && participant()) || admin();
       allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
-      allow update: if participant() && accountChange(uid);
-      allow list,delete: if false;
+      allow update: if (admin() && exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked && dividendAccount(uid)) || (participant() && accountChange(uid));
+      allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
+      allow delete: if false;
       match /orders/{id} {
         allow get: if owner(uid) && participant();
         allow list: if owner(uid) && participant() && request.query.limit != null && request.query.limit <= 30;
         allow create: if participant() && privateOrderCreate(uid,id);
         allow update: if participant() && privateOrderUpdate(uid,id);
         allow delete: if false;
+      }
+      match /dividends/{id} {
+        allow get: if owner(uid) && participant();
+        allow list: if owner(uid) && participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if admin() && id == request.resource.data.companyId+'_'+request.resource.data.dayId &&
+          request.resource.data == {'companyId':request.resource.data.companyId,'dayId':request.resource.data.dayId,'day':get(/databases/$(database)/documents/companyOperations/$(request.resource.data.companyId)/days/$(request.resource.data.dayId)).data.day,'shares':getAfter(/databases/$(database)/documents/companyOperations/$(request.resource.data.companyId)/days/$(request.resource.data.dayId)/payouts/$(uid)).data.shares,'amount':getAfter(/databases/$(database)/documents/companyOperations/$(request.resource.data.companyId)/days/$(request.resource.data.dayId)/payouts/$(uid)).data.amount,'createdAt':request.time};
+        allow update,delete: if false;
       }
       match /fills/{id} {
         allow get: if owner(uid) && participant();
@@ -328,7 +337,81 @@ service cloud.firestore {
       allow create: if participant() && publicTrade(cid,id,request.resource.data);
       allow update,delete: if false;
     }
+    function manager(cid) {
+      return admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' &&
+        cid in get(/databases/$(database)/documents/assignments/$(request.auth.uid)).data.companyIds);
+    }
+    function dayNumber() { return int((request.time.toMillis()+32400000) / 86400000); }
+    function operations(cid) { return get(/databases/$(database)/documents/companyOperations/$(cid)).data; }
+    function tradingUnlocked(cid) {
+      return !exists(/databases/$(database)/documents/companyOperations/$(cid)) || operations(cid).locked == false;
+    }
+    function operationData(d) {
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount']) &&
+        number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+        number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
+    }
+    function investment(cid,d,o,asset) {
+      let config=get(/databases/$(database)/documents/economyConfig/main).data;
+      let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      return !o.locked && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+        (o.pendingRevenue == 0 || o.pendingDay > dayNumber()) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',asset,'pendingRevenue','pendingDay']) &&
+        d[asset] == o[asset]+1 && d.cash == o.cash+funding-o.receivedIssuerCash-config[asset+'Cost'] &&
+        d.receivedIssuerCash == funding && d.pendingRevenue == o.pendingRevenue+config[asset+'Revenue'] && d.pendingDay == dayNumber()+1;
+    }
+    match /economyConfig/{id} {
+      allow get: if id == 'main' && participant();
+      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchRevenue']) &&
+        number(request.resource.data.factoryCost,100000000) && request.resource.data.factoryCost > 0 && number(request.resource.data.factoryRevenue,100000000) && request.resource.data.factoryRevenue > 0 &&
+        number(request.resource.data.equipmentCost,100000000) && request.resource.data.equipmentCost > 0 && number(request.resource.data.equipmentRevenue,100000000) && request.resource.data.equipmentRevenue > 0 &&
+        number(request.resource.data.researchCost,100000000) && request.resource.data.researchCost > 0 && number(request.resource.data.researchRevenue,100000000) && request.resource.data.researchRevenue > 0;
+      allow list,delete: if false;
+    }
+    match /companyOperations/{cid} {
+      allow get: if participant();
+      allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
+        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':0,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
+      // Admin is the trusted simulation operator. Students/presidents can only
+      // buy configured assets with actual issuer funds, never mint cash.
+      allow update: if operationData(request.resource.data) &&
+        (admin() || investment(cid,request.resource.data,resource.data,'factory') || investment(cid,request.resource.data,resource.data,'equipment') || investment(cid,request.resource.data,resource.data,'research'));
+      allow list,delete: if false;
+      match /days/{dayId} {
+        allow get: if participant();
+        allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if admin() && !operations(cid).locked && request.resource.data.day == dayNumber() && request.resource.data.day > operations(cid).lastSettledDay &&
+          request.resource.data.createdAt == request.time && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.currentDay == dayId;
+        allow update,delete: if false;
+        match /payouts/{uid} {
+          allow get: if admin() || (owner(uid) && participant());
+          allow create: if admin() && validDividend(cid,dayId,uid,request.resource.data);
+          allow list,update,delete: if false;
+        }
+      }
+    }
+    function validDividend(cid,dayId,uid,receipt) {
+      let o=operations(cid);
+      let day=get(/databases/$(database)/documents/companyOperations/$(cid)/days/$(dayId)).data;
+      let a=get(/databases/$(database)/documents/sparkAccounts/$(uid)).data;
+      let after=getAfter(/databases/$(database)/documents/sparkAccounts/$(uid)).data;
+      let opAfter=getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data;
+      let history=getAfter(/databases/$(database)/documents/sparkAccounts/$(uid)/dividends/$(cid+'_'+dayId)).data;
+      return o.locked && o.currentDay == dayId && history == {'companyId':cid,'dayId':dayId,'day':day.day,'shares':receipt.shares,'amount':receipt.amount,'createdAt':request.time} &&
+        receipt == {'shares':a.positions[cid],'amount':day.perShare*a.positions[cid],'createdAt':request.time} && receipt.shares > 0 &&
+        after.cash == a.cash+receipt.amount && after.version == a.version+1 && after.lastMarket == cid &&
+        after.diff(a).affectedKeys().hasOnly(['cash','version','lastMarket']) && number(after.cash,1000000000000) &&
+        opAfter.paidShares == o.paidShares+receipt.shares && opAfter.paidAmount == o.paidAmount+receipt.amount;
+    }
+    function dividendAccount(uid) {
+      let cid=request.resource.data.lastMarket;
+      let key=operations(cid).currentDay;
+      let receipt=getAfter(/databases/$(database)/documents/companyOperations/$(cid)/days/$(key)/payouts/$(uid)).data;
+      return !exists(/databases/$(database)/documents/companyOperations/$(cid)/days/$(key)/payouts/$(uid)) && validDividend(cid,key,uid,receipt);
+    }
+
     // Official orders and remaining collections default deny.
     match /{document=**} { allow read, write: if false; }
   }
 }
+

@@ -1,3 +1,4 @@
+import {showManagement} from './management.js';
 import {parseRoute,companyRoute} from './routes.js';
 import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
@@ -30,6 +31,7 @@ function navigate(page,writeRoute=true) {
   document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
   if(page==='management') loadManagement();
+  if(page==='news')refreshNews();
   window.scrollTo({top:0,behavior:'instant'});
 }
 
@@ -61,8 +63,11 @@ function renderCompanies() {
 }
 function newsCard(n,compact=false) {
   return compact ? `<div class="news-item"><small>공지사항</small><h4>${esc(n.title)}</h4><p>${esc(n.content)}</p></div>`:
-  `<article class="news-card"><small>${n.companyName?'기업 뉴스 · '+esc(n.companyName):'운영 공지'}</small><h3>${esc(n.title)}</h3><p>${esc(n.content)}</p></article>`;
+  `<article class="news-card"><small>${n.companyName?'기업 뉴스 · '+esc(n.companyName):'운영 공지'}</small>${n.publishedAt?'<time>'+esc(new Date(n.publishedAt).toLocaleString('ko-KR'))+'</time>':''}<h3>${esc(n.title)}</h3><p>${esc(n.content)}</p></article>`;
 }
+let newsRead=0;
+async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid)return;try{const [n,e]=await Promise.all([getJSON('/api/news'),getJSON('/api/events')]);if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;state.events=e.events;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
+window.addEventListener('admin-saved',e=>{if(e.detail?.kind==='companies')initialLoad();else refreshNews();});
 function renderNews() {
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
   $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard({title:`기업 이벤트 · ${e.title}`,content:`${e.content}\n기간: ${new Date(e.startsAt).toLocaleString('ko-KR')} ~ ${new Date(e.endsAt).toLocaleString('ko-KR')} (게시용)`,companyName:e.companyId})).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
@@ -96,17 +101,15 @@ async function loadPortfolio() {
   const p=await getJSON('/api/trading-portfolio');if(!current())return;
   const value=n=>n===null?'—':won(n);
   target.innerHTML=`<div class="panel-title"><h2>나의 거래 계좌</h2><button type="button" class="text-link" id="portfolio-refresh">↻ 새로고침</button></div><div class="portfolio-totals"><div class="portfolio-total"><span>총 평가 자산</span><strong>${value(p.totalValue)}</strong><small>보유 현금 + 주식 평가액</small></div><div><span>보유 현금</span><strong>${won(p.cash)}</strong><small>주문 예약금 포함</small></div><div><span>주식 평가액</span><strong>${value(p.stockValue)}</strong><small>최근 체결가 기준</small></div></div><div class="portfolio-reserves"><span>주문 가능 현금 <b>${won(p.availableCash)}</b></span><span>미체결 주문 예약금 <b>${won(p.reservedCash)}</b></span></div><div class="panel-title"><h2>보유 주식 <span class="count">${p.holdings.length}</span></h2><span>매도 예약 수량도 보유 주식에 포함됩니다</span></div>${p.holdings.length?`<div class="trade-table-wrap"><table class="portfolio-table"><thead><tr><th>종목</th><th>보유 수량</th><th>매도 가능</th><th>매도 예약</th><th>평가 가격</th><th>평가 금액</th><th></th></tr></thead><tbody>${p.holdings.map(h=>`<tr><td><strong>${esc(h.name)}</strong><small>${esc(h.ticker)}</small></td><td>${h.quantity.toLocaleString('ko-KR')}주</td><td>${h.available.toLocaleString('ko-KR')}주</td><td>${h.reserved.toLocaleString('ko-KR')}주</td><td>${value(h.price)}${h.priceSource==='initial'?'<small>초기 기준가</small>':''}</td><td>${value(h.value)}</td><td><button class="row-button" data-company="${esc(h.companyId)}">거래 ↗</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="portfolio-empty">현재 보유한 주식이 없습니다. 종목 화면에서 매수한 주식이 여기에 표시됩니다.</div>'}<p class="portfolio-note">미체결 매수 주문은 체결 전까지 보유 주식에 반영되지 않습니다.${!p.initialized?' 첫 거래 전의 시작 자금입니다.':''}${!p.valuationComplete?' 가격을 확인할 수 없는 종목이 있어 평가 금액은 표시하지 않았습니다.':''}</p>`;
+  try{const {dividends}=await getJSON('/api/dividends');if(current())target.insertAdjacentHTML('beforeend','<div class="panel-title"><h2>받은 배당 · 최근 30건</h2></div>'+ (dividends.length?'<div class="trade-table-wrap"><table><thead><tr><th>정산일</th><th>기업</th><th>보유 주식</th><th>받은 배당</th></tr></thead><tbody>'+dividends.map(d=>'<tr><td>'+new Date(d.day*86400000).toISOString().slice(0,10)+'</td><td>'+esc(state.companies.find(c=>c.id===d.companyId)?.name||d.companyId)+'</td><td>'+d.shares+'주</td><td>'+won(d.amount)+'</td></tr>').join('')+'</tbody></table></div>':'<p class="muted">아직 받은 배당이 없습니다.</p>'));}catch(e){if(current())target.insertAdjacentHTML('beforeend','<p class="muted">배당 내역: '+esc(e.message)+'</p>');}
  }catch(e){if(current())target.innerHTML=`<div class="portfolio-empty">${esc(e.message)}<br><button type="button" class="text-link" id="portfolio-refresh">다시 조회</button></div>`;}
 }
+let managementRead=0;
 async function loadManagement() {
-  const target=$('#management-content');
-  if(!state.user){target.innerHTML=loginPrompt('사장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
-  target.innerHTML='<div class="placeholder">기업 정보를 불러오는 중…</div>';
-  try {
-    const {companies}=await getJSON('/api/my-company');
-    if(!companies.length){target.innerHTML='<div>현재 계정에는 담당 기업이 지정되어 있지 않습니다.</div>';return;}
-    target.innerHTML=companies.map(c=>`<div class="asset-row"><strong>${esc(c.name)} (${esc(c.ticker)})</strong><span>${esc(c.status==='listed'?'상장':'준비 중')}</span></div>`).join('')+'<div class="info-note">공장 건설·부지 확장·이벤트 응답 등 경영 기능은 향후 구현합니다.</div>';
-  }catch(e){target.textContent=e.message;}
+ const target=$('#management-content'),user=state.user,read=++managementRead;
+ if(!user){target.innerHTML=loginPrompt('사장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
+ if(!['admin','president'].includes(user.role)){target.textContent='담당 사장 또는 관리자 계정으로 이용할 수 있습니다.';return;}
+ await showManagement(target,getJSON,user,()=>read===managementRead&&state.user?.id===user.id&&state.page==='management');
 }
 function updateAccountButton() {
   adminUI.session(state.user);

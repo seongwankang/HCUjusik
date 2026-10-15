@@ -13,24 +13,24 @@ export async function showTrading(c,request){
  });
  const priceChart=createPriceChart(box.querySelector('#limit-chart'));
  const form=box.querySelector('form'),status=box.querySelector('#limit-status'),button=box.querySelector('#limit-submit');
- const controls=[...form.querySelectorAll('input,select')];let pending=null,busy=false,connected=false,lastMatchError=null;
+ const controls=[...form.querySelectorAll('input,select')];let pending=null,busy=false,connected=false,lastMatchError=null,settlementLocked=false;
  const alive=()=>token===generation;
- const lock=()=>{button.disabled=busy||!connected;controls.forEach(e=>e.disabled=busy||!!pending);box.querySelector('#limit-refresh').disabled=busy;};
+ const lock=()=>{button.disabled=busy||!connected;controls.forEach(e=>e.disabled=busy||!!pending||settlementLocked);box.querySelector('#limit-refresh').disabled=busy;box.querySelectorAll('[data-cancel-order]').forEach(e=>e.disabled=busy||settlementLocked);};
  const total=()=>{form.dataset.side=form.elements.side.value;box.querySelector('#limit-total').innerHTML=`<span>예상 주문금액</span><strong>${won(Number(form.elements.price.value)*Number(form.elements.quantity.value))}</strong>`;if(!pending)button.textContent=form.elements.side.value==='buy'?'매수 주문 접수':'매도 주문 접수';};controls.forEach(e=>e.addEventListener('input',total));total();
  async function refresh(){
   const data=await request('/api/exchange?companyId='+c.id);if(!alive())return;
-  const a=data.account;lastMatchError=data.matchError;
+  const a=data.account;lastMatchError=data.matchError;settlementLocked=!!data.settlementLocked;
   box.querySelector('#limit-account').innerHTML=`<div><span>주문 가능 현금</span><strong>${won(a.cash-a.reservedCash)}</strong></div><div><span>주문 예약금</span><strong>${won(a.reservedCash)}</strong></div><div><span>보유 수량</span><strong>${a.positions[c.id]||0}<small>주</small></strong></div><div><span>매도 가능</span><strong>${(a.positions[c.id]||0)-(a.reservedPositions[c.id]||0)}<small>주</small></strong></div>`;
   const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(data.market?.lastPrice||c.referencePrice);quoteLabel.textContent=data.market?.lastPrice?'최근 체결가':'초기 판매가';}
   const max=Math.max(1,...data.book.asks.map(x=>x.quantity),...data.book.bids.map(x=>x.quantity));
-  box.querySelector('#limit-book').innerHTML=`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${data.companyStatus==='paused'?'거래 정지':'지정가 거래'}</span></div><div class="order-depth">${['asks','bids'].map(side=>`<section class="depth-side ${side}"><h3>${side==='asks'?'매도 호가':'매수 호가'}</h3><div class="depth-columns"><span>가격</span><span>대기 수량</span></div>${data.book[side].map(x=>`<button type="button" class="depth-level" data-limit-price="${x.price}" aria-label="호가 ${won(x.price)}"><span class="depth-bar" style="width:${Math.max(2,Math.round(x.quantity/max*100))}%"></span><strong>${won(x.price)}</strong><span>${x.quantity.toLocaleString('ko-KR')}주</span></button>`).join('')||'<p class="trade-empty">대기 주문 없음</p>'}</section>`).join('')}</div>`;
+  box.querySelector('#limit-book').innerHTML=`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':data.companyStatus==='paused'?'거래 정지':'지정가 거래'}</span></div><div class="order-depth">${['asks','bids'].map(side=>`<section class="depth-side ${side}"><h3>${side==='asks'?'매도 호가':'매수 호가'}</h3><div class="depth-columns"><span>가격</span><span>대기 수량</span></div>${data.book[side].map(x=>`<button type="button" class="depth-level" data-limit-price="${x.price}" aria-label="호가 ${won(x.price)}"><span class="depth-bar" style="width:${Math.max(2,Math.round(x.quantity/max*100))}%"></span><strong>${won(x.price)}</strong><span>${x.quantity.toLocaleString('ko-KR')}주</span></button>`).join('')||'<p class="trade-empty">대기 주문 없음</p>'}</section>`).join('')}</div>`;
 
   const orders=data.orders.filter(o=>o.companyId===c.id),fills=data.fills.filter(f=>f.companyId===c.id);
   priceChart.update(data.marketTrades||[],{available:data.marketHistoryAvailable===true});
   box.querySelector('#limit-orders').innerHTML=orders.length?`<div class="trade-table-wrap"><table class="trade-table"><thead><tr><th>구분</th><th>지정가격</th><th>주문</th><th>체결</th><th>잔량</th><th>상태 / 취소</th></tr></thead><tbody>${orders.map(o=>`<tr><td class="side-${o.side}">${o.side==='buy'?'매수':'매도'}</td><td>${won(o.price)}</td><td>${o.quantity}주</td><td>${o.filled}주</td><td>${o.remaining}주</td><td>${o.status==='open'?`<button type="button" class="cancel-order" data-cancel-order="${esc(o.orderId)}" data-company-id="${esc(o.companyId)}">잔량 취소</button>`:o.status==='filled'?'체결 완료':'취소 완료'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">이 기업의 주문 내역이 없습니다.</p>';
   box.querySelector('#limit-fills').innerHTML=fills.length?`<div class="trade-table-wrap"><table class="trade-table"><thead><tr><th>구분</th><th>체결가격</th><th>수량</th><th>체결금액</th></tr></thead><tbody>${fills.map(f=>`<tr><td class="side-${f.side}">${f.side==='buy'?'매수':'매도'}</td><td>${won(f.price)}</td><td>${f.quantity}주</td><td>${won(f.price*f.quantity)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">아직 체결된 주문이 없습니다.</p>';
   const admin=box.querySelector('#limit-admin');admin.hidden=!data.adminOrders?.length;if(!admin.hidden)admin.innerHTML=`<div class="panel-title"><h2>관리자 · 전체 대기 주문</h2></div><div class="admin-book">${data.adminOrders.map(o=>`<div class="asset-row"><span>${o.side==='buy'?'매수':'매도'} ${won(o.price)} · ${o.remaining}주</span><button type="button" data-cancel-order="${esc(o.id)}" data-owner-uid="${esc(o.uid)}" data-company-id="${esc(c.id)}">관리자 취소</button></div>`).join('')}</div>`;
-  connected=true;lock();
+  connected=!settlementLocked;lock();
  }
  form.addEventListener('submit',async e=>{
   e.preventDefault();if(busy||!connected)return;
@@ -42,7 +42,7 @@ export async function showTrading(c,request){
  });
  box.addEventListener('click',async e=>{
   const level=e.target.closest('[data-limit-price]');if(level&&!busy&&!pending){form.elements.price.value=level.dataset.limitPrice;total();form.elements.quantity.focus();return;}
-  const cancel=e.target.closest('[data-cancel-order]');if(!cancel||busy)return;busy=true;lock();cancel.disabled=true;
+  const cancel=e.target.closest('[data-cancel-order]');if(!cancel||busy||settlementLocked)return;busy=true;lock();cancel.disabled=true;
   try{await request('/api/cancel-order',{method:'POST',body:JSON.stringify({orderId:cancel.dataset.cancelOrder,companyId:cancel.dataset.companyId,...(cancel.dataset.ownerUid?{ownerUid:cancel.dataset.ownerUid}:{})})});if(!alive())return;status.textContent='남은 주문을 취소하고 예약 자산을 반환했습니다.';await refresh();}catch(error){if(alive())status.textContent=error.code==='permission-denied'?'최신 Firestore 거래 규칙 게시와 계정 권한을 확인하세요.':error.message;}
   finally{busy=false;if(alive()){cancel.disabled=false;lock();}}
  });
