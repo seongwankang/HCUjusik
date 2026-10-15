@@ -16,7 +16,7 @@ export function candleMarkup(bars,interval,slots,window){
  const g=geometry(bars,slots,window),width=Math.max(2,Math.min(18,g.slot*.62)),volumeMax=Math.max(1,...bars.map(b=>b.volume));
  const latest=bars.at(-1),color=b=>b.close>b.open?UP:b.close<b.open?DOWN:FLAT;
  const grid=[0,1,2,3,4].map(i=>{const p=g.max-(g.max-g.min)*i/4,y=g.y(p);return `<line x1="20" x2="756" y1="${y}" y2="${y}" class="candle-grid"/><text x="770" y="${y+4}" class="candle-axis">${n(Math.round(p))}</text>`}).join('');
- const marks=bars.map((b,i)=>{const x=g.x(i),y=g.y(Math.max(b.open,b.close)),height=Math.max(1.5,Math.abs(g.y(b.open)-g.y(b.close))),v=b.volume/volumeMax*54;return `<g class="candle-mark"><title>${stamp(b.time,interval==='day')} · 시가 ${n(b.open)} · 고가 ${n(b.high)} · 저가 ${n(b.low)} · 종가 ${n(b.close)} · 거래량 ${n(b.volume)}주</title><line x1="${x}" x2="${x}" y1="${g.y(b.high)}" y2="${g.y(b.low)}" stroke="${color(b)}" stroke-width="1.4"/><rect x="${x-width/2}" y="${y}" width="${width}" height="${height}" fill="${color(b)}"/><rect x="${x-width/2}" y="${315-v}" width="${width}" height="${v}" fill="${color(b)}" opacity=".65"/></g>`}).join('');
+ const marks=bars.map((b,i)=>{const x=g.x(i),y=g.y(Math.max(b.open,b.close)),height=Math.max(1.5,Math.abs(g.y(b.open)-g.y(b.close))),v=b.volume/volumeMax*54;return `<g class="candle-mark" aria-label="${stamp(b.time,interval==='day')} · 시가 ${n(b.open)} · 고가 ${n(b.high)} · 저가 ${n(b.low)} · 종가 ${n(b.close)} · 거래량 ${n(b.volume)}주"><line x1="${x}" x2="${x}" y1="${g.y(b.high)}" y2="${g.y(b.low)}" stroke="${color(b)}" stroke-width="1.4"/><rect x="${x-width/2}" y="${y}" width="${width}" height="${height}" fill="${color(b)}"/><rect x="${x-width/2}" y="${315-v}" width="${width}" height="${v}" fill="${color(b)}" opacity=".65"/></g>`}).join('');
  const ma=bars.map((b,i)=>i<4?null:[g.x(i),g.y(bars.slice(i-4,i+1).reduce((s,x)=>s+x.close,0)/5)]).filter(Boolean);
  const ticks=window?[0,.5,1].map(p=>`<text x="${28+720*p}" y="342" text-anchor="${p===0?'start':p===1?'end':'middle'}" class="candle-axis">${stamp(window.from+(window.to-window.from)*p,window.to-window.from>2*86400000)}</text>`).join(''):[...new Set([0,Math.floor((bars.length-1)/2),bars.length-1])].map(i=>`<text x="${g.x(i)}" y="342" text-anchor="middle" class="candle-axis">${stamp(bars[i].time,interval==='day')}</text>`).join('');
  return `<svg class="candle-svg" viewBox="0 0 850 360" role="img" tabindex="0" aria-label="종목 전체 ${window?window.label:period[interval]} ${bars.length}개. 빨강은 양봉, 파랑은 음봉. 아래 막대는 거래량. 좌우 방향키로 봉 정보를 확인하세요.">${grid}<line x1="20" x2="756" y1="248" y2="248" class="candle-grid"/><text x="25" y="267" class="candle-axis">거래량</text><text x="770" y="280" class="candle-axis">${n(volumeMax)}주</text>${marks}${ma.length>1?`<polyline points="${ma.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#aa8dca" stroke-width="1.4"/>`:''}<line x1="20" x2="756" y1="${g.y(latest.close)}" y2="${g.y(latest.close)}" stroke="${color(latest)}" opacity=".5" stroke-dasharray="4 4"/><rect x="762" y="${g.y(latest.close)-9}" width="80" height="19" rx="2" fill="${color(latest)}"/><text x="802" y="${g.y(latest.close)+4}" text-anchor="middle" fill="white" font-size="11">${n(latest.close)}</text>${ticks}<g class="candle-crosshair" hidden><line data-cross-x y1="20" y2="320"/><line data-cross-y x1="20" x2="756"/></g></svg>`;
@@ -29,7 +29,7 @@ export function createPriceChart(container){
  container.innerHTML=`<div class="candle-controls"><div role="group" aria-label="차트 기간">${Object.entries(CHART_RANGES).map(([key,{label}])=>`<button type="button" data-range="${key}" aria-pressed="${key===range}">${label}</button>`).join('')}</div><div role="group" aria-label="차트 확대 축소"><button type="button" data-zoom="in" aria-label="차트 확대">＋</button><button type="button" data-zoom="out" aria-label="차트 축소">−</button></div><span>전체 참가자 · 최근 100건</span></div><div class="candle-info" aria-live="off"></div><div class="candle-plot"><div class="chart-empty">종목 체결을 불러오는 중…</div></div><div class="candle-caption"><span><i class="candle-up"></i>양봉 <i class="candle-down"></i>음봉 <i class="candle-ma"></i>MA 5</span><span>한국시간 · 최근 100건 집계</span></div><p class="candle-window-note">봉 간격은 자동으로 조절됩니다. 최근 100건에 없는 과거 체결은 표시되지 않습니다.</p>`;
  const plot=container.querySelector('.candle-plot'),info=container.querySelector('.candle-info');
  function show(index){
-  const b=bars[index];if(!b)return;selected=index;
+  const b=bars[index];if(!b||selected===index)return;selected=index;
   info.innerHTML=`<time>${stamp(b.time,interval==='day')}</time>${[['시',b.open],['고',b.high],['저',b.low],['종',b.close],['거래량',b.volume]].map(([label,value])=>`<span>${label} <b>${n(value)}${label==='거래량'?'주':''}</b></span>`).join('')}`;
  }
  function render(){
@@ -39,11 +39,34 @@ export function createPriceChart(container){
   info.textContent='';selected=-1;
   plot.innerHTML=available===false?'<div class="chart-empty"><strong>종목 차트 연결 준비 중</strong><p>전체 체결 기록용 Firestore 규칙을 게시하면 활성화됩니다.</p></div>':bars.length?candleMarkup(bars,interval,undefined,view):'<div class="chart-empty candle-empty"><span aria-hidden="true">▥</span><strong>선택한 기간에 체결이 없습니다</strong><p>다른 기간을 선택하거나 새로운 체결을 기다려 주세요.</p></div>';
   if(!bars.length)return;show(bars.length-1);
+  plot.insertAdjacentHTML('beforeend','<div class="candle-tooltip" role="tooltip" hidden></div>');
+  const tooltip=plot.querySelector('.candle-tooltip');let tipIndex=-1;
   const svg=plot.querySelector('svg'),g=geometry(bars,undefined,view),cross=svg.querySelector('.candle-crosshair');
+  function popup(index,clientX,clientY){
+   const b=bars[index];if(tipIndex!==index){tooltip.innerHTML=`<strong>${stamp(b.time)}</strong><dl>${[['시가',b.open],['고가',b.high],['저가',b.low],['종가',b.close],['거래량',b.volume]].map(([label,v])=>`<div><dt>${label}</dt><dd>${n(v)}${label==='거래량'?'주':'원'}</dd></div>`).join('')}</dl>`;tipIndex=index;}
+   tooltip.hidden=false;const rect=plot.getBoundingClientRect(),w=tooltip.offsetWidth,h=tooltip.offsetHeight;
+   let x=clientX-rect.left+14,y=clientY-rect.top-h-12;
+   if(x+w>rect.width-8)x=clientX-rect.left-w-14;if(y<8)y=clientY-rect.top+14;
+   tooltip.style.left=Math.max(8,Math.min(rect.width-w-8,x))+'px';tooltip.style.top=Math.max(8,Math.min(rect.height-h-8,y))+'px';
+  }
+  function hide(){tooltip.hidden=true;cross.setAttribute('hidden','');selected=-1;show(bars.length-1);}
+
   function track(index,y){index=Math.max(0,Math.min(bars.length-1,index));show(index);cross.removeAttribute('hidden');cross.querySelector('[data-cross-x]').setAttribute('x1',g.x(index));cross.querySelector('[data-cross-x]').setAttribute('x2',g.x(index));cross.querySelector('[data-cross-y]').setAttribute('y1',y??g.y(bars[index].close));cross.querySelector('[data-cross-y]').setAttribute('y2',y??g.y(bars[index].close));}
-  svg.addEventListener('pointermove',e=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const pos=p.matrixTransform(matrix.inverse());let index=0;bars.forEach((b,i)=>{if(Math.abs(g.x(i)-pos.x)<Math.abs(g.x(index)-pos.x))index=i;});track(index,Math.max(20,Math.min(320,pos.y)));});
-  svg.addEventListener('pointerleave',()=>{cross.setAttribute('hidden','');show(bars.length-1);});
-  svg.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();track(e.key==='Home'?0:e.key==='End'?bars.length-1:selected+(e.key==='ArrowLeft'?-1:1));}});
+  function inspect(e){
+   const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;
+   const pos=p.matrixTransform(matrix.inverse());let index=0;bars.forEach((b,i)=>{if(Math.abs(g.x(i)-pos.x)<Math.abs(g.x(index)-pos.x))index=i;});
+   track(index,Math.max(20,Math.min(320,pos.y)));popup(index,e.clientX,e.clientY);
+  }
+  svg.addEventListener('pointerenter',inspect);svg.addEventListener('pointermove',inspect);
+  svg.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')inspect(e);});
+  svg.addEventListener('pointerleave',hide);svg.addEventListener('blur',hide);
+  svg.addEventListener('keydown',e=>{
+   if(e.key==='Escape'){hide();return;}
+   if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+    e.preventDefault();track(e.key==='Home'?0:e.key==='End'?bars.length-1:selected+(e.key==='ArrowLeft'?-1:1));
+    const point=svg.createSVGPoint();point.x=g.x(selected);point.y=g.y(bars[selected].close);const position=point.matrixTransform(svg.getScreenCTM());popup(selected,position.x,position.y);
+   }
+  });
  }
  container.addEventListener('click',e=>{
   const mode=e.target.closest('[data-range]'),zoomButton=e.target.closest('[data-zoom]');
