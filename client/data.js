@@ -1,6 +1,6 @@
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
-import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView} from './spark-exchange.js';
+import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView,marketHistory} from './spark-exchange.js';
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
 const message=s=>{throw new Error(s);};
 function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(Array.isArray(v))return v.map(plain);if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,plain(x)]));return v;}
@@ -24,7 +24,8 @@ export function createClientApi({db,getUser}){
   if(route==='/api/limit-order'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');await initializeSpark(db,user.uid,b.companyId);
    const result=await placeSpark(db,user.uid,b);
-   try{for(let i=0;i<8;i++)if(!await matchSpark(db,user.uid,b.companyId))break;}catch{return {...result,matchPending:true};}
+   const history=await marketHistory(db,b.companyId,1);
+   try{for(let i=0;i<8;i++)if(!await matchSpark(db,user.uid,b.companyId,{recordPublic:history.available}))break;}catch{return {...result,matchPending:true};}
    return {...result,order:await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`)};
   }
   if(route==='/api/cancel-order'&&method==='POST'){

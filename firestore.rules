@@ -312,7 +312,22 @@ service cloud.firestore {
       let a=book.lastAction;
       return sparkId(d.companyId) && book.version == before.version+1 && a.kind == 'fill' && a.fillId == id &&
         ((uid == a.buy.uid && d.side == 'buy') || (a.sell.id != 'issuer' && uid == a.sell.uid && d.side == 'sell')) &&
-        d == {'companyId':d.companyId,'price':fillPrice(a),'quantity':fillQuantity(a),'side':d.side,'marketVersion':book.version,'createdAt':request.time};
+        d == {'companyId':d.companyId,'price':fillPrice(a),'quantity':fillQuantity(a),'side':d.side,'marketVersion':book.version,'createdAt':request.time} &&
+        getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data ==
+          {'companyId':d.companyId,'price':d.price,'quantity':d.quantity,'marketVersion':d.marketVersion,'createdAt':request.time};
+    }
+    function publicTrade(cid,id,d) {
+      let before=sparkBefore(cid);
+      let book=sparkAfter(cid);
+      let a=book.lastAction;
+      return sparkId(cid) && book.version == before.version+1 && a.kind == 'fill' && a.fillId == id &&
+        d == {'companyId':cid,'price':fillPrice(a),'quantity':fillQuantity(a),'marketVersion':book.version,'createdAt':request.time};
+    }
+    match /sparkBooks/{cid}/trades/{id} {
+      allow get: if sparkId(cid) && participant();
+      allow list: if sparkId(cid) && participant() && request.query.limit != null && request.query.limit <= 100;
+      allow create: if participant() && publicTrade(cid,id,request.resource.data);
+      allow update,delete: if false;
     }
     // Official orders and remaining collections default deny.
     match /{document=**} { allow read, write: if false; }
