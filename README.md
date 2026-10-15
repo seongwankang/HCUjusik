@@ -1,5 +1,7 @@
 # 청운증권HTS — 현재 실행 방식
 
+지정가 매매는 [별도 매칭 서버 안내](docs/limit-exchange.md)를 사용합니다. 가격/수량 주문, 가격·시간 우선, 초기 발행 선착순, 부분 체결·예약·취소를 구현했습니다. Render 서버와 서비스 계정 연결 전에는 원격 주문을 접수하지 않습니다. 이전 기준가격 즉시 매매는 종료했습니다.
+
 GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare 계정은 필요하지 않습니다.
 
 - 배포: [GitHub Pages 안내](docs/github-pages.md)
@@ -8,7 +10,7 @@ GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare �
 - 빌드: `pnpm build` → `dist/`
 - 검증: `pnpm test`, Firestore 에뮬레이터 규칙 테스트
 
-서비스 계정 키는 사용하지 않습니다. 거래 체결은 비활성화 상태입니다.
+Pages에는 비밀키를 넣지 않습니다. 지정가 거래 서버는 별도 호스팅 비밀로 서비스 계정을 사용하며, 연결 전까지 주문은 비활성화됩니다.
 
 ---
 아래는 기존 Workers 단계의 기록입니다. 현재 배포는 위 Pages 안내를 사용하세요.

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: hcujusik-exchange
+    runtime: node
+    plan: free
+    buildCommand: npm install --global pnpm@11.25.0 && pnpm install --frozen-lockfile
+    startCommand: node server/start.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: FIREBASE_PROJECT_ID
+        value: hcujusik
+      - key: ALLOWED_ORIGIN
+        value: https://seongwankang.github.io
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false

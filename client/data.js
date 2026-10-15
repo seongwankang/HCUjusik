@@ -1,6 +1,5 @@
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
-import {testPortfolio,testOrder} from './trading.js';
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
 const message=s=>{throw new Error(s);};
 function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(Array.isArray(v))return v.map(plain);if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,plain(x)]));return v;}
@@ -21,8 +20,7 @@ export function createClientApi({db,getUser}){
   }
   if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
   if(route==='/api/me'&&method==='GET')return {authenticated:true,user:{id:user.uid,displayName:profile.displayName,role:profile.role}};
-  if(route==='/api/test-portfolio'&&method==='GET')return testPortfolio(db,user.uid);
-  if(route==='/api/test-orders'&&method==='POST')return testOrder(db,user.uid,JSON.parse(options.body||'{}'));
+  if(['/api/test-portfolio','/api/test-orders'].includes(route))message('기준가격 즉시 매매는 종료됐습니다. 지정가 주문장을 사용하세요.');
   if(route==='/api/orders')message('공식 주문은 아직 비활성화 상태입니다. 테스트 주문을 사용하세요.');
   const kinds={companies:['ticker',100],news:['publishedAt desc',30],events:['startsAt desc',100]};
   if(method==='GET'&&route.startsWith('/api/admin/')){
