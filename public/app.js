@@ -57,6 +57,26 @@ function showCompany(id) {
   $('#detail-title').textContent=c.name;
   $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><div class="detail-list"><div><span>기업 코드</span><strong>${esc(c.ticker)}</strong></div><div><span>상장 상태</span><strong>${c.status==='listed'?'상장':'준비 중'}</strong></div><div><span>시연용 기준가격</span><strong>${won(c.referencePrice)}</strong></div><div><span>발행 주식</span><strong>${Number(c.issuedShares).toLocaleString('ko-KR')}주</strong></div></div><div class="info-note">실제 기업 실적과 거래 가격은 행사 규칙을 확정한 후 적용됩니다.</div>`;
   $('#company-dialog').showModal();
+  setupTrade(c);
+}
+let pendingOrder=null;
+async function setupTrade(c){
+ const box=$('#test-trade');pendingOrder=null;
+ if(!['test-a','test-b'].includes(c.id)||c.status!=='listed'){box.textContent='현재는 두 테스트 기업만 거래할 수 있습니다.';return;}
+ box.innerHTML=`<h3>테스트 매매</h3><p class="info-note">별도 테스트 자금 100만 원 · 기준가격 즉시 체결 · 수수료 없음 · 공식 자산에 영향 없음</p><p id="test-balance">계좌 조회 중…</p><form id="test-order-form"><label>주문 구분 <select id="test-side"><option value="buy">매수</option><option value="sell">매도</option></select></label><label>수량(주) <input id="test-quantity" type="number" min="1" max="1000000" step="1" value="1" required></label><p id="test-total"></p><button type="submit" id="test-submit" disabled>테스트 주문 실행</button><p id="test-message" role="status"></p></form>`;
+ const total=()=>{$('#test-total').textContent=`예상 주문금액 ${won(Number($('#test-quantity').value)*c.referencePrice)}`;pendingOrder=null;};
+ $('#test-quantity').addEventListener('input',total);$('#test-side').addEventListener('change',total);total();
+ async function balance(){const a=await getJSON('/api/test-portfolio');if(!box.querySelector('#test-balance'))return;$('#test-balance').textContent=`테스트 현금 ${won(a.cash)} · 이 종목 보유 ${a.positions[c.id]||0}주`;$('#test-submit').disabled=false;}
+ $('#test-order-form').addEventListener('submit',async e=>{
+  e.preventDefault();const button=$('#test-submit');button.disabled=true;
+  const quantity=Number($('#test-quantity').value),side=$('#test-side').value;
+  if(!Number.isSafeInteger(quantity)||quantity<1){$('#test-message').textContent='수량을 정수로 입력하세요.';button.disabled=false;return;}
+  if(!pendingOrder)pendingOrder={companyId:c.id,side,quantity,price:c.referencePrice,orderId:crypto.randomUUID()};
+  try{const result=await getJSON('/api/test-orders',{method:'POST',body:JSON.stringify(pendingOrder)});pendingOrder=null;$('#test-message').textContent=result.duplicate?'이미 처리된 주문입니다. 중복 체결하지 않았습니다.':'테스트 주문이 체결되었습니다.';await balance();if(state.page==='portfolio')loadPortfolio();}
+  catch(error){$('#test-message').textContent=error.code==='permission-denied'?'테스트 거래 규칙이 아직 게시되지 않았거나 거래 권한이 없습니다.':error.message;}
+  finally{button.disabled=false;}
+ });
+ try{await balance();}catch{$('#test-balance').textContent='테스트 계좌를 열지 못했습니다. 로그인 및 최신 Firestore 규칙 게시 여부를 확인하세요.';}
 }
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
@@ -70,7 +90,9 @@ async function loadPortfolio() {
     const holdings=(data.holdings||[]);
     const positions=holdings.reduce((sum,h)=>sum+h.quantity*h.referencePrice,0);
     target.innerHTML=`<div class="asset-summary"><div><span>보유 현금</span><strong>${won(data.cash)}</strong></div><div><span>주식 평가액(참고)</span><strong>${won(positions)}</strong></div><div><span>총 평가 자산(참고)</span><strong>${won(data.cash+positions)}</strong></div></div><div class="list-title">보유 주식</div>${holdings.length?holdings.map(h=>`<div class="asset-row"><span>${esc(h.name)} (${esc(h.ticker)})</span><strong>${h.quantity}주</strong></div>`).join(''):'<div class="placeholder">보유 주식이 없습니다.</div>'}<div class="info-note">주식 평가액은 임시 기준가격을 사용한 참고값입니다. 행사 공식 순위 점수가 아닙니다.</div>`;
-  }catch(e){target.textContent=e.message;}
+    const a=await getJSON('/api/test-portfolio');
+    target.insertAdjacentHTML('beforeend',`<h3>테스트 매매 계좌 (공식 자산과 별도)</h3><p>테스트 현금 ${won(a.cash)}</p>${Object.entries(a.positions).map(([id,q])=>`<div class="asset-row"><span>${esc(state.companies.find(c=>c.id===id)?.name||id)}</span><strong>${q}주</strong></div>`).join('')}<h4>최근 테스트 체결 (20건)</h4>${a.orders.map(o=>`<div class="asset-row"><span>${esc(o.companyId)} · ${o.side==='buy'?'매수':'매도'} ${o.quantity}주</span><strong>${won(o.total)}</strong></div>`).join('')||'<p>체결 내역이 없습니다.</p>'}`);
+  }catch(e){target.insertAdjacentHTML('beforeend',`<p>${esc(e.message)}</p>`);}
 }
 async function loadManagement() {
   const target=$('#management-content');

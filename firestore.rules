@@ -68,7 +68,54 @@ service cloud.firestore {
       allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','startsAt','endsAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && str(request.resource.data.companyId,128) && request.resource.data.startsAt is timestamp && request.resource.data.endsAt is timestamp && request.resource.data.endsAt > request.resource.data.startsAt;
       allow delete: if false;
     }
-    // Orders, fills, admin collections and every subcollection default deny.
+    // Isolated test accounts; original portfolios remain immutable.
+    // tradeTests/{uid}: cash int, positions {test-a?:int,test-b?:int}, version int, lastOrderId string.
+    function testAccount(d) {
+      return d.keys().hasOnly(['cash','positions','version','lastOrderId']) &&
+        d.cash is int && d.cash >= 0 && d.cash <= 1000000000000 &&
+        d.positions is map && d.positions.keys().hasOnly(['test-a','test-b']) &&
+        d.positions.get('test-a',0) is int && d.positions.get('test-a',0) >= 0 && d.positions.get('test-a',0) <= 1000000 &&
+        d.positions.get('test-b',0) is int && d.positions.get('test-b',0) >= 0 && d.positions.get('test-b',0) <= 1000000 &&
+        d.version is int && d.version >= 0 && d.version <= 1000000000 &&
+        d.lastOrderId is string && d.lastOrderId.size() <= 80;
+    }
+    function testChange(uid) {
+      let d=request.resource.data;
+      let o=getAfter(/databases/$(database)/documents/tradeTests/$(uid)/orders/$(d.lastOrderId)).data;
+      let c=get(/databases/$(database)/documents/companies/$(o.companyId)).data;
+      let before=resource.data.positions.get(o.companyId,0);
+      let after=d.positions.get(o.companyId,0);
+      return testAccount(d) && d.lastOrderId.matches('^[A-Za-z0-9_-]{1,80}$') &&
+        !exists(/databases/$(database)/documents/tradeTests/$(uid)/orders/$(d.lastOrderId)) &&
+        d.version == resource.data.version+1 && o.version == d.version &&
+        o.keys().hasOnly(['companyId','side','quantity','price','total','version','createdAt']) &&
+        o.companyId in ['test-a','test-b'] && c.status == 'listed' &&
+        o.quantity is int && o.quantity > 0 && o.quantity <= 1000000 &&
+        o.price is int && o.price > 0 && o.price <= 100000000 && o.price == c.referencePrice &&
+        o.total is int && o.total == o.price*o.quantity && o.total <= 1000000000000 &&
+        o.createdAt == request.time &&
+        d.positions.diff(resource.data.positions).affectedKeys().hasOnly([o.companyId]) &&
+        ((o.side == 'buy' && d.cash == resource.data.cash-o.total && after == before+o.quantity) ||
+         (o.side == 'sell' && before >= o.quantity && d.cash == resource.data.cash+o.total && after == before-o.quantity));
+    }
+    match /tradeTests/{uid} {
+      allow get: if owner(uid) && participant();
+      allow create: if owner(uid) && participant() && testAccount(request.resource.data) &&
+        request.resource.data.cash == 1000000 && request.resource.data.positions == {} &&
+        request.resource.data.version == 0 && request.resource.data.lastOrderId == '';
+      allow update: if owner(uid) && participant() && testChange(uid);
+      allow list,delete: if false;
+      match /orders/{orderId} {
+        allow get: if owner(uid) && participant();
+        allow list: if owner(uid) && participant() && request.query.limit != null && request.query.limit <= 20;
+        allow create: if owner(uid) && participant() && orderId.matches('^[A-Za-z0-9_-]{1,80}$') &&
+          getAfter(/databases/$(database)/documents/tradeTests/$(uid)).data.lastOrderId == orderId &&
+          getAfter(/databases/$(database)/documents/tradeTests/$(uid)).data.version == get(/databases/$(database)/documents/tradeTests/$(uid)).data.version+1 &&
+          request.resource.data.version == getAfter(/databases/$(database)/documents/tradeTests/$(uid)).data.version;
+        allow update,delete: if false;
+      }
+    }
+    // Official orders and remaining collections default deny.
     match /{document=**} { allow read, write: if false; }
   }
 }
