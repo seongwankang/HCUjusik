@@ -1,5 +1,7 @@
 # 지정가 테스트 시장
 
+> 이전 별도 서버 설계 기록입니다. 사용자는 Render를 사용하지 않기로 했으며 현재 사이트는 [Spark 직접 지정가 테스트](spark-limit-exchange.md)를 사용합니다. 아래 계정/키 연결을 진행할 필요가 없습니다.
+
 현재 거래 화면은 `server/`의 신뢰 서버로 지정가 주문을 보냅니다. GitHub Pages는 화면과 Firebase 로그인·기존 조회를 계속 제공합니다. 이전 기준가격 즉시 매매는 화면/API에서 종료했습니다. 기존 `portfolios`, `tradeTests` 데이터는 이전하거나 삭제하지 않습니다. 지정가 테스트는 별도의 `exchangeState/limit-v1`을 사용합니다.
 
 ## 거래 규칙

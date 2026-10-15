@@ -115,6 +115,205 @@ service cloud.firestore {
         allow update,delete: if false;
       }
     }
+    // Spark-only two-symbol limit exchange. Books contain pseudonymous order
+    // entries, not names/email/balances. Private accounts/orders/fills stay owner-only.
+    // At most 4 resting orders per symbol allows full price/time validation.
+    function sparkId(id) { return id in ['test-a','test-b']; }
+    function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
+    function number(v,n) { return v is int && v >= 0 && v <= n; }
+    function sparkAccount(d) {
+      return d.keys().hasOnly(['cash','reservedCash','positions','reservedPositions','version','lastMarket']) &&
+        number(d.cash,1000000000000) && number(d.reservedCash,d.cash) && number(d.version,1000000000) &&
+        d.positions is map && d.positions.keys().hasOnly(['test-a','test-b']) &&
+        number(d.positions['test-a'],1000000) && number(d.positions['test-b'],1000000) &&
+        d.reservedPositions is map && d.reservedPositions.keys().hasOnly(['test-a','test-b']) &&
+        number(d.reservedPositions['test-a'],d.positions['test-a']) && number(d.reservedPositions['test-b'],d.positions['test-b']) &&
+        (sparkId(d.lastMarket) || d.lastMarket == '');
+    }
+    function sparkBefore(cid) { return get(/databases/$(database)/documents/sparkBooks/$(cid)).data; }
+    function sparkAfter(cid) { return getAfter(/databases/$(database)/documents/sparkBooks/$(cid)).data; }
+    function accountAdvanced(uid,cid) {
+      let d=getAfter(/databases/$(database)/documents/sparkAccounts/$(uid)).data;
+      return d.version == get(/databases/$(database)/documents/sparkAccounts/$(uid)).data.version+1 && d.lastMarket == cid;
+    }
+    function orderAdvanced(e,cid,v) {
+      let d=getAfter(/databases/$(database)/documents/sparkAccounts/$(e.uid)/orders/$(e.id)).data;
+      return d.marketVersion == v && d.companyId == cid;
+    }
+    function noBetter(orders,side,score,i) {
+      return orders.size() <= i || orders[i].side != side ||
+        (side == 'buy' ? -orders[i].price : orders[i].price)*1000000001+orders[i].sequence >= score;
+    }
+    function best(orders,c) {
+      let score=(c.side == 'buy' ? -c.price : c.price)*1000000001+c.sequence;
+      return noBetter(orders,c.side,score,0) && noBetter(orders,c.side,score,1) && noBetter(orders,c.side,score,2) && noBetter(orders,c.side,score,3);
+    }
+    function notSelf(orders,e,i) {
+      return orders.size() <= i || orders[i].uid != e.uid || orders[i].side == e.side ||
+        (e.side == 'buy' ? e.price < orders[i].price : e.price > orders[i].price);
+    }
+    function noEarlierInitial(orders,b,price,i) {
+      return orders.size() <= i || orders[i].side != 'buy' || orders[i].price < price || orders[i].sequence >= b.sequence;
+    }
+    function firstInitial(orders,b,price) {
+      return noEarlierInitial(orders,b,price,0) && noEarlierInitial(orders,b,price,1) &&
+        noEarlierInitial(orders,b,price,2) && noEarlierInitial(orders,b,price,3);
+    }
+    function noSelfCross(orders,e) {
+      return notSelf(orders,e,0) && notSelf(orders,e,1) && notSelf(orders,e,2) && notSelf(orders,e,3);
+    }
+    function entryValid(e,v) {
+      return e.keys().hasOnly(['uid','id','side','price','quantity','remaining','sequence']) &&
+        e.uid == request.auth.uid && orderId(e.id) && e.side in ['buy','sell'] &&
+        number(e.price,1000000) && e.price > 0 && number(e.quantity,1000000) && e.quantity > 0 &&
+        e.price*e.quantity <= 1000000000 && e.remaining == e.quantity && e.sequence == v;
+    }
+    function unchangedTreasury(d,o) {
+      return d.treasuryShares == o.treasuryShares && d.issuerCash == o.issuerCash && d.lastPrice == o.lastPrice;
+    }
+    function placeBook(cid,d,o) {
+      let e=d.lastAction.entry;
+      return d.lastAction.keys().hasOnly(['kind','actor','entry']) && entryValid(e,d.version) &&
+        o.orders.size() < 4 && d.orders == o.orders.concat([e]) && noSelfCross(o.orders,e) &&
+        unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
+    }
+    function cancelBook(cid,d,o) {
+      let e=d.lastAction.entry;
+      return d.lastAction.keys().hasOnly(['kind','actor','entry']) && o.orders.hasAny([e]) &&
+        (e.uid == request.auth.uid || admin()) && d.orders == o.orders.removeAll([e]) &&
+        unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
+    }
+    function fillQuantity(a) { return a.buy.remaining < a.sell.remaining ? a.buy.remaining : a.sell.remaining; }
+    function fillPrice(a) { return a.buy.sequence < a.sell.sequence ? a.buy.price : a.sell.price; }
+    function remainder(e,q) {
+      return e.remaining == q ? [] : [{'uid':e.uid,'id':e.id,'side':e.side,'price':e.price,'quantity':e.quantity,'remaining':e.remaining-q,'sequence':e.sequence}];
+    }
+    function issuerEntry(o) {
+      return {'uid':'','id':'issuer','side':'sell','price':o.initialPrice,'quantity':o.issuedShares,'remaining':o.treasuryShares,'sequence':0};
+    }
+    function fillBook(cid,d,o) {
+      let a=d.lastAction;
+      let b=a.buy;
+      let s=a.sell;
+      let issuer=s.id == 'issuer';
+      let q=fillQuantity(a);
+      let price=fillPrice(a);
+      let left=o.orders.removeAll([b,s]).concat(remainder(b,q)).concat(issuer ? [] : remainder(s,q));
+      return a.keys().hasOnly(['kind','actor','buy','sell','fillId']) && orderId(a.fillId) &&
+        b.side == 'buy' && s.side == 'sell' && b.uid != s.uid && b.price >= s.price &&
+        o.orders.hasAny([b]) && (issuer ? firstInitial(o.orders,b,o.initialPrice) : best(o.orders,b)) && best(o.orders,s) &&
+        (issuer ? (o.treasuryShares > 0 && s == issuerEntry(o)) :
+          (o.orders.hasAny([s]) && (o.treasuryShares == 0 || s.price < o.initialPrice))) &&
+        d.orders == left && d.treasuryShares == o.treasuryShares-(issuer ? q : 0) &&
+        d.issuerCash == o.issuerCash+(issuer ? price*q : 0) && d.lastPrice == price &&
+        get(/databases/$(database)/documents/users/$(b.uid)).data.active == true &&
+        accountAdvanced(b.uid,cid) && orderAdvanced(b,cid,d.version) &&
+        (issuer || (get(/databases/$(database)/documents/users/$(s.uid)).data.active == true && accountAdvanced(s.uid,cid) && orderAdvanced(s,cid,d.version)));
+    }
+    match /sparkBooks/{cid} {
+      allow get: if sparkId(cid) && participant();
+      allow create: if sparkId(cid) && participant() && request.resource.data == {
+        'initialPrice':get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice,
+        'issuedShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
+        'treasuryShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
+        'issuerCash':0,'lastPrice':0,'orders':[],'version':0,'lastAction':{'kind':'init','actor':request.auth.uid},'updatedAt':request.time} &&
+        get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+        number(request.resource.data.initialPrice,1000000) && request.resource.data.initialPrice > 0 &&
+        number(request.resource.data.issuedShares,1000000) && request.resource.data.issuedShares > 0;
+      allow update: if sparkId(cid) && participant() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders','version','lastAction','updatedAt','treasuryShares','issuerCash','lastPrice']) &&
+        request.resource.data.version == resource.data.version+1 && request.resource.data.version <= 1000000000 &&
+        request.resource.data.updatedAt == request.time && request.resource.data.lastAction.actor == request.auth.uid &&
+        ((request.resource.data.lastAction.kind == 'place' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && placeBook(cid,request.resource.data,resource.data)) ||
+         (request.resource.data.lastAction.kind == 'cancel' && cancelBook(cid,request.resource.data,resource.data)) ||
+         (request.resource.data.lastAction.kind == 'fill' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && fillBook(cid,request.resource.data,resource.data)));
+      allow list,delete: if false;
+    }
+    function reserveChange(uid,cid,d,o,a) {
+      let e=a.entry;
+      let delta=a.kind == 'place' ? e.quantity : -e.remaining;
+      return uid == e.uid && d.cash == o.cash && d.positions == o.positions &&
+        d.reservedCash == o.reservedCash+(e.side == 'buy' ? e.price*delta : 0) &&
+        d.reservedPositions.diff(o.reservedPositions).affectedKeys().hasOnly([cid]) &&
+        d.reservedPositions[cid] == o.reservedPositions[cid]+(e.side == 'sell' ? delta : 0);
+    }
+    function settledAccount(uid,cid,d,o,book) {
+      let a=book.lastAction;
+      let buyer=uid == a.buy.uid;
+      let q=fillQuantity(a);
+      let price=fillPrice(a);
+      let fill=getAfter(/databases/$(database)/documents/sparkAccounts/$(uid)/fills/$(a.fillId)).data;
+      return (buyer || (a.sell.id != 'issuer' && uid == a.sell.uid)) &&
+        d.cash == o.cash+(buyer ? -price*q : price*q) &&
+        d.reservedCash == o.reservedCash-(buyer ? a.buy.price*q : 0) &&
+        d.positions.diff(o.positions).affectedKeys().hasOnly([cid]) && d.positions[cid] == o.positions[cid]+(buyer ? q : -q) &&
+        d.reservedPositions.diff(o.reservedPositions).affectedKeys().hasOnly([cid]) && d.reservedPositions[cid] == o.reservedPositions[cid]-(buyer ? 0 : q) &&
+        fill.marketVersion == book.version && fill.companyId == cid;
+    }
+    function accountChange(uid) {
+      let d=request.resource.data;
+      let o=resource.data;
+      let cid=d.lastMarket;
+      let before=sparkBefore(cid);
+      let book=sparkAfter(cid);
+      return sparkId(cid) && sparkAccount(d) && d.version == o.version+1 && book.version == before.version+1 &&
+        ((book.lastAction.kind in ['place','cancel'] && reserveChange(uid,cid,d,o,book.lastAction)) ||
+          (book.lastAction.kind == 'fill' && settledAccount(uid,cid,d,o,book)));
+    }
+    function ownEntry(d) {
+      return {'uid':d.uid,'id':d.orderId,'side':d.side,'price':d.price,'quantity':d.quantity,'remaining':d.remaining,'sequence':d.sequence};
+    }
+    function privateOrderCreate(uid,id) {
+      let d=request.resource.data;
+      let before=sparkBefore(d.companyId);
+      let book=sparkAfter(d.companyId);
+      return owner(uid) && sparkId(d.companyId) && orderId(id) && book.version == before.version+1 &&
+        book.lastAction.kind == 'place' && book.lastAction.entry == ownEntry(d) &&
+        d.keys().hasOnly(['companyId','orderId','uid','side','price','quantity','sequence','remaining','filled','cancelled','status','createdAt','marketVersion']) &&
+        d.uid == uid && d.orderId == id && d.remaining == d.quantity && d.filled == 0 && d.cancelled == 0 &&
+        d.status == 'open' && d.createdAt == request.time && d.marketVersion == book.version;
+    }
+    function privateOrderUpdate(uid,id) {
+      let d=request.resource.data;
+      let o=resource.data;
+      let before=sparkBefore(o.companyId);
+      let book=sparkAfter(o.companyId);
+      let a=book.lastAction;
+      let e=ownEntry(o);
+      let q=a.kind == 'fill' ? fillQuantity(a) : 0;
+      return d.diff(o).affectedKeys().hasOnly(['remaining','filled','cancelled','status','marketVersion']) &&
+        book.version == before.version+1 && d.marketVersion == book.version &&
+        ((a.kind == 'cancel' && e == a.entry && d.remaining == 0 && d.filled == o.filled && d.cancelled == o.remaining && d.status == 'cancelled') ||
+         (a.kind == 'fill' && (e == a.buy || e == a.sell) && d.remaining == o.remaining-q && d.filled == o.filled+q && d.cancelled == o.cancelled && d.status == (d.remaining == 0 ? 'filled' : 'open')));
+    }
+    match /sparkAccounts/{uid} {
+      allow get: if owner(uid) && participant();
+      allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{'test-a':0,'test-b':0},'reservedPositions':{'test-a':0,'test-b':0},'version':0,'lastMarket':''};
+      allow update: if participant() && accountChange(uid);
+      allow list,delete: if false;
+      match /orders/{id} {
+        allow get: if owner(uid) && participant();
+        allow list: if owner(uid) && participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if participant() && privateOrderCreate(uid,id);
+        allow update: if participant() && privateOrderUpdate(uid,id);
+        allow delete: if false;
+      }
+      match /fills/{id} {
+        allow get: if owner(uid) && participant();
+        allow list: if owner(uid) && participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if participant() && sparkFill(uid,id);
+        allow update,delete: if false;
+      }
+    }
+    function sparkFill(uid,id) {
+      let d=request.resource.data;
+      let before=sparkBefore(d.companyId);
+      let book=sparkAfter(d.companyId);
+      let a=book.lastAction;
+      return sparkId(d.companyId) && book.version == before.version+1 && a.kind == 'fill' && a.fillId == id &&
+        ((uid == a.buy.uid && d.side == 'buy') || (a.sell.id != 'issuer' && uid == a.sell.uid && d.side == 'sell')) &&
+        d == {'companyId':d.companyId,'price':fillPrice(a),'quantity':fillQuantity(a),'side':d.side,'marketVersion':book.version,'createdAt':request.time};
+    }
     // Official orders and remaining collections default deny.
     match /{document=**} { allow read, write: if false; }
   }

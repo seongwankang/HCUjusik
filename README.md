@@ -1,6 +1,6 @@
 # 청운증권HTS — 현재 실행 방식
 
-지정가 매매는 [별도 매칭 서버 안내](docs/limit-exchange.md)를 사용합니다. 가격/수량 주문, 가격·시간 우선, 초기 발행 선착순, 부분 체결·예약·취소를 구현했습니다. Render 서버와 서비스 계정 연결 전에는 원격 주문을 접수하지 않습니다. 이전 기준가격 즉시 매매는 종료했습니다.
+현재 지정가 테스트는 [GitHub Pages + Firestore Spark](docs/spark-limit-exchange.md)만 사용합니다. 별도 서버/Render/서비스 계정 키가 필요하지 않습니다. 가격/수량 주문, 초기 발행 선착순, 가격·시간 우선, 부분 체결·예약·취소를 지원하며 **종목당 미체결 4건**으로 제한합니다. 최신 Firestore 규칙 게시 후 사용할 수 있습니다.
 
 GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare 계정은 필요하지 않습니다.
 
@@ -10,7 +10,7 @@ GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare �
 - 빌드: `pnpm build` → `dist/`
 - 검증: `pnpm test`, Firestore 에뮬레이터 규칙 테스트
 
-Pages에는 비밀키를 넣지 않습니다. 지정가 거래 서버는 별도 호스팅 비밀로 서비스 계정을 사용하며, 연결 전까지 주문은 비활성화됩니다.
+Pages에는 비밀키를 넣지 않습니다. 이전 Node 서버와 기준가격 즉시 매매 코드는 참고용으로 보존하며 현재 화면에서 호출하지 않습니다.
 
 ---
 아래는 기존 Workers 단계의 기록입니다. 현재 배포는 위 Pages 안내를 사용하세요.
