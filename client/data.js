@@ -1,3 +1,4 @@
+import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView} from './events.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
@@ -48,7 +49,7 @@ export function createClientApi({db,getUser}){
     t.update(ref,{production:b.production,pendingProduction:b.pendingProduction});});return {ok:true};
   }
   if(route==='/api/economy'&&method==='GET')return operationsView(db,url.searchParams.get('companyId'));
-  if(route==='/api/economy-config'&&method==='GET')return {config:await get('economyConfig/main')};
+  if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
   if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
    const b=JSON.parse(options.body||'{}');
    if(route==='/api/economy-config'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const c=validateConfig(b);await runTransaction(db,async t=>t.set(doc(db,'economyConfig','main'),c));return {ok:true};}

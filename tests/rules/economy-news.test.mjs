@@ -6,6 +6,7 @@ import {doc,getDoc,setDoc,updateDoc,getDocs,collection,query,limit,serverTimesta
 import {createClientApi} from '../../client/data.js';
 import {initializeSpark,placeSpark,matchSpark,cancelSpark} from '../../client/spark-exchange.js';
 import {DEFAULT_CONFIG,initializeOperations,invest,beginDay,payHolder,finishDay,settleDay,operationsView,koreaDay} from '../../client/economy.js';
+const TEST_CONFIG={...DEFAULT_CONFIG,factoryCost:100000,factoryRevenue:5000,equipmentCost:50000,equipmentRevenue:2000};
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw new Error('Loopback emulator required');
 let env,admin,president,student,other,api,studentApi;
 const claims={email:'test@hcu.hs.kr',email_verified:true},cid='club-economy-new';
@@ -32,7 +33,7 @@ test('IPO proceeds finance only assigned presidents, purchases mature tomorrow, 
  await initializeSpark(student,'student',cid);await initializeSpark(president,'president',cid);
  await placeSpark(student,'student',order('economy-ipo-first'));await matchSpark(student,'student',cid);
  await placeSpark(president,'president',order('economy-ipo-second'));await matchSpark(president,'president',cid);
- await initializeOperations(president,cid);await setDoc(doc(admin,'economyConfig/main'),DEFAULT_CONFIG);
+ await initializeOperations(president,cid);await setDoc(doc(admin,'economyConfig/main'),TEST_CONFIG);
  let v=await operationsView(president,cid);assert.equal(v.available,400000);
  await invest(president,cid,'factory');v=await operationsView(president,cid);assert.equal(v.available,300000);assert.equal(v.ops.receivedIssuerCash,400000);assert.equal(v.ops.revenue,0);assert.equal(v.ops.pendingRevenue,5000);assert.equal(v.ops.pendingDay,koreaDay()+1);
  await assertFails(invest(other,cid,'equipment'));await assertFails(invest(student,cid,'equipment'));
@@ -66,7 +67,7 @@ test('API keeps financial configuration and settlement admin-only; old investmen
  await assert.rejects(studentApi('/api/economy-settle',{method:'POST',body:JSON.stringify({companyId:cid})}),/담당 사장/);
  const pApi=createClientApi({db:president,getUser:async()=>({uid:'president',getIdTokenResult:async()=>({claims})})});
  await assert.rejects(pApi('/api/economy-rate',{method:'POST',body:JSON.stringify({companyId:cid,dividendBps:10000})}),/관리자/);
- await api('/api/economy-config',{method:'POST',body:JSON.stringify({...DEFAULT_CONFIG,factoryRevenue:1})});
+ await api('/api/economy-config',{method:'POST',body:JSON.stringify({...TEST_CONFIG,factoryRevenue:1})});
  const old=(await operationsView(president,cid)).ops;assert.equal(old.revenue,7000);
  await invest(president,cid,'factory');const next=(await operationsView(president,cid)).ops;assert.equal(next.revenue,7000);assert.equal(next.pendingRevenue,1);assert.equal(next.cash,old.cash-100000);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{receivedIssuerCash:0,cash:999999}));

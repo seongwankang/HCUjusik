@@ -1,5 +1,5 @@
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
-import {validateEffect,destruction,requireProduction,adjustedRevenue} from './event-model.js';
+import {validateEffect,destruction,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 const fail=s=>{throw new Error(s);};
 export async function effectRecords(db,cid){
@@ -49,7 +49,7 @@ export async function eventCompanyView(db,cid){
  if(!valid(cid))fail('기업을 선택하세요.');
  const [events,effects]=await Promise.all([getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))),effectRecords(db,cid)]);
  const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await getDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
- const os=await getDoc(doc(db,'companyOperations',cid));const projection=os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
+ const os=await getDoc(doc(db,'companyOperations',cid));const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
  return {choices,effects:effects.map(r=>({...r,title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection};
 }
 export async function applyRandomEvent(db,eid){
