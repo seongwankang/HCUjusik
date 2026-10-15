@@ -410,6 +410,48 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/companyOperations/$(cid)/days/$(key)/payouts/$(uid)) && validDividend(cid,key,uid,receipt);
     }
 
+    function readableNews(nid) { return participant() && exists(/databases/$(database)/documents/news/$(nid)); }
+    function voteBefore(nid,cid) {
+      return exists(/databases/$(database)/documents/news/$(nid)/comments/$(cid)/votes/$(request.auth.uid)) ? get(/databases/$(database)/documents/news/$(nid)/comments/$(cid)/votes/$(request.auth.uid)).data.value : 0;
+    }
+    function reactionChange(nid,cid) {
+      let d=request.resource.data;
+      let o=resource.data;
+      let before=voteBefore(nid,cid);
+      let after=getAfter(/databases/$(database)/documents/news/$(nid)/comments/$(cid)/votes/$(request.auth.uid)).data;
+      return !o.deleted && d.diff(o).affectedKeys().hasOnly(['likes','dislikes']) && after.value in [-1,0,1] && after.updatedAt == request.time &&
+        d.likes is int && d.dislikes is int && d.likes >= 0 && d.dislikes >= 0 &&
+        d.likes == o.likes+(after.value == 1 ? 1 : 0)-(before == 1 ? 1 : 0) &&
+        d.dislikes == o.dislikes+(after.value == -1 ? 1 : 0)-(before == -1 ? 1 : 0);
+    }
+    match /news/{nid}/comments/{cid} {
+      allow get: if readableNews(nid);
+      allow list: if readableNews(nid) && request.query.limit != null && request.query.limit <= 30;
+      allow create: if readableNews(nid) && orderId(cid) && request.resource.data.keys().hasOnly(['uid','authorName','content','createdAt','likes','dislikes','deleted']) &&
+        request.resource.data.uid == request.auth.uid && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName &&
+        str(request.resource.data.content,1000) && request.resource.data.content.matches('(?s).*\\S.*') && request.resource.data.createdAt == request.time && request.resource.data.likes == 0 && request.resource.data.dislikes == 0 && request.resource.data.deleted == false &&
+        getAfter(/databases/$(database)/documents/news/$(nid)/commentLimits/$(request.auth.uid)).data == {'lastCommentId':cid,'createdAt':request.time};
+      allow update: if readableNews(nid) &&
+        ((admin() && !resource.data.deleted && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['content','authorName','deleted','deletedAt']) && request.resource.data.content == '' && request.resource.data.authorName == '' && request.resource.data.deleted == true && request.resource.data.deletedAt == request.time) || reactionChange(nid,cid));
+      allow delete: if false;
+      match /votes/{uid} {
+        allow get: if readableNews(nid) && owner(uid);
+        allow create,update: if readableNews(nid) && owner(uid) && request.resource.data.keys().hasOnly(['value','updatedAt']) && request.resource.data.value in [-1,0,1] && request.resource.data.updatedAt == request.time &&
+          !get(/databases/$(database)/documents/news/$(nid)/comments/$(cid)).data.deleted &&
+          getAfter(/databases/$(database)/documents/news/$(nid)/comments/$(cid)).data.likes == get(/databases/$(database)/documents/news/$(nid)/comments/$(cid)).data.likes+(request.resource.data.value == 1 ? 1 : 0)-(voteBefore(nid,cid) == 1 ? 1 : 0) &&
+          getAfter(/databases/$(database)/documents/news/$(nid)/comments/$(cid)).data.dislikes == get(/databases/$(database)/documents/news/$(nid)/comments/$(cid)).data.dislikes+(request.resource.data.value == -1 ? 1 : 0)-(voteBefore(nid,cid) == -1 ? 1 : 0);
+        allow list,delete: if false;
+      }
+    }
+    match /news/{nid}/commentLimits/{uid} {
+      allow get: if readableNews(nid) && owner(uid);
+      allow create,update: if readableNews(nid) && owner(uid) && request.resource.data.keys().hasOnly(['lastCommentId','createdAt']) && orderId(request.resource.data.lastCommentId) && request.resource.data.createdAt == request.time &&
+        (!exists(/databases/$(database)/documents/news/$(nid)/commentLimits/$(uid)) || request.time-resource.data.createdAt >= duration.value(3,'s')) &&
+        getAfter(/databases/$(database)/documents/news/$(nid)/comments/$(request.resource.data.lastCommentId)).data.uid == uid &&
+        getAfter(/databases/$(database)/documents/news/$(nid)/comments/$(request.resource.data.lastCommentId)).data.createdAt == request.time;
+      allow list,delete: if false;
+    }
+
     // Official orders and remaining collections default deny.
     match /{document=**} { allow read, write: if false; }
   }

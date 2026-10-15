@@ -1,3 +1,4 @@
+import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
@@ -22,6 +23,13 @@ export function createClientApi({db,getUser}){
    return {ok:true,registered:true};
   }
   if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+  if(route==='/api/news-detail'&&method==='GET'){const id=url.searchParams.get('id');if(!newsId(id))message('뉴스 주소를 확인하세요.');const news=await get((url.searchParams.get('kind')==='event'?'events/':'news/')+id);if(!news)message('뉴스가 없거나 삭제되었습니다.');return {news};}
+  if(route==='/api/news-comments'&&method==='GET'){const cursor=url.searchParams.get('cursor');return readComments(db,user.uid,url.searchParams.get('id'),cursor?JSON.parse(cursor):null);}
+  if(method==='POST'&&['/api/news-comment','/api/news-vote','/api/news-comment-delete'].includes(route)){
+   const b=JSON.parse(options.body||'{}');if(route==='/api/news-comment')await postComment(db,user.uid,b.newsId,b.id,b.content);
+   if(route==='/api/news-vote')return {ok:true,...await voteComment(db,user.uid,b.newsId,b.id,b.value)};
+   if(route==='/api/news-comment-delete'){if(profile.role!=='admin')message('관리자만 댓글을 삭제할 수 있습니다.');await removeComment(db,b.newsId,b.id);}return {ok:true};
+  }
   if(route==='/api/economy'&&method==='GET')return operationsView(db,url.searchParams.get('companyId'));
   if(route==='/api/economy-config'&&method==='GET')return {config:await get('economyConfig/main')};
   if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){

@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {parseRoute,articleRoute} from '../public/routes.js';
+test('news and event details have reloadable URLs and reject document path injection',()=>{assert.deepEqual(parseRoute(articleRoute('news-123')),{page:'article',articleId:'news-123',articleKind:'news'});assert.equal(parseRoute(articleRoute('event-1','event')).articleKind,'event');for(const id of ['../users','a/b','<script>',''])assert.throws(()=>articleRoute(id));assert.equal(parseRoute('#/news/../users').page,'dashboard');});
