@@ -1,0 +1,26 @@
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const time=v=>new Date(v).toLocaleString('ko-KR');
+export async function showArticle(host,api,user,id,kind,isCurrent){
+ host.onclick=null;
+ host.innerHTML='<p class="placeholder">뉴스를 불러오는 중…</p>';
+ const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
+ if(!user){host.innerHTML='<p>학교 계정으로 로그인하면 뉴스 본문과 댓글을 볼 수 있습니다.</p><button class="account-btn" data-open-login>로그인하기</button>';return;}
+ let rows=[],cursor=null,busy=false,pending=null;
+ try{const {news:n}=await api('/api/news-detail?id='+encodeURIComponent(id)+(kind==='event'?'&kind=event':''));if(!isCurrent())return;
+ document.title=n.title+' | 청운증권HTS';
+ host.innerHTML=`<article class="article-paper"><div class="article-meta">${n.companyName?'기업 뉴스 · '+esc(n.companyName):kind==='event'?'기업 이벤트':'운영 공지'}${n.publishedAt?`<time>${esc(time(n.publishedAt))}</time>`:''}</div><h1>${esc(n.title)}</h1><div class="article-copy">${esc(n.content)}</div>${kind==='event'?`<p class="info-note">기간: ${esc(time(n.startsAt))} ~ ${esc(time(n.endsAt))}</p>`:''}</article>${kind==='event'?'':`<section class="article-comments"><div class="panel-title"><h2>댓글</h2><button class="ghost" id="comments-refresh">새로 조회</button></div><p class="muted">학교 참가자끼리 의견을 나누세요. 댓글은 최대 1,000자이며 3초 간격으로 작성할 수 있습니다.</p><form id="comment-form"><label for="comment-content" class="sr-only">댓글 내용</label><textarea id="comment-content" name="content" maxlength="1000" required placeholder="뉴스에 대한 의견을 남겨 주세요."></textarea><div class="comment-form-bottom"><span>${esc(user.displayName)}</span><button class="account-btn">댓글 등록</button></div></form><p role="status" id="comment-message"></p><div id="comment-list"></div><button class="ghost" id="comments-more" hidden>이전 댓글 더 보기</button></section>`}`;
+ if(kind==='event')return;
+ const message=s=>host.querySelector('#comment-message').textContent=s;
+ function render(){host.querySelector('#comment-list').innerHTML=rows.map(c=>`<article class="reader-comment ${c.deleted?'deleted':''}" data-comment="${esc(c.id)}">${c.deleted?'<p>관리자에 의해 삭제된 댓글입니다.</p>':`<header><strong>${esc(c.authorName)}</strong><time>${esc(time(c.createdAt))}</time></header><p class="comment-copy">${esc(c.content)}</p><div class="comment-actions"><button data-vote="1" data-id="${esc(c.id)}" aria-pressed="${c.myVote===1}">좋아요 <b>${c.likes}</b></button><button data-vote="-1" data-id="${esc(c.id)}" aria-pressed="${c.myVote===-1}">싫어요 <b>${c.dislikes}</b></button>${user.role==='admin'?`<button class="comment-delete" data-delete-comment="${esc(c.id)}">관리자 삭제</button>`:''}</div>`}</article>`).join('')||'<p class="placeholder">첫 댓글을 남겨 보세요.</p>';host.querySelector('#comments-more').hidden=!cursor;}
+ async function load(more=false){const result=await api('/api/news-comments?id='+encodeURIComponent(id)+(more&&cursor?'&cursor='+encodeURIComponent(JSON.stringify(cursor)):''));if(!isCurrent())return;rows=more?[...rows,...result.comments.filter(c=>!rows.some(x=>x.id===c.id))]:result.comments;cursor=result.next;render();}
+ function lock(value){busy=value;host.querySelectorAll('#comment-form button,#comments-refresh,#comments-more,[data-vote],[data-delete-comment]').forEach(b=>b.disabled=value);host.querySelector('#comment-content').disabled=value;host.querySelector('#comment-content').readOnly=!!pending;host.querySelector('#comment-form button').textContent=pending?'같은 댓글 등록 확인':'댓글 등록';}
+ host.querySelector('#comment-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const content=e.target.elements.content.value;if(!content.trim()){message('댓글 내용을 입력하세요.');return;}if(!pending)pending={newsId:id,id:crypto.randomUUID(),content};lock(true);message('댓글을 등록하는 중…');try{await post('/api/news-comment',pending);if(!isCurrent())return;pending=null;e.target.reset();await load();message('댓글을 등록했습니다.');}catch(e){if(isCurrent()){message(e.code==='permission-denied'?'작성 권한 또는 3초 작성 간격을 확인하세요.':e.message);if(e.code==='permission-denied'||e.message.includes('3초'))pending=null;}}finally{if(isCurrent())lock(false);}};
+ host.onclick=async e=>{if(busy)return;const vote=e.target.closest('[data-vote]'),remove=e.target.closest('[data-delete-comment]'),more=e.target.closest('#comments-more'),refresh=e.target.closest('#comments-refresh');if(!vote&&!remove&&!more&&!refresh)return;
+ if(remove&&!confirm('이 댓글의 내용을 삭제할까요? 삭제한 본문은 복구할 수 없습니다.'))return;
+ lock(true);message('');try{if(vote){const c=rows.find(c=>c.id===vote.dataset.id),value=c.myVote===Number(vote.dataset.vote)?0:Number(vote.dataset.vote);const result=await post('/api/news-vote',{newsId:id,id:c.id,value});Object.assign(c,{likes:result.likes,dislikes:result.dislikes,myVote:result.myVote});if(isCurrent())render();}
+ else if(remove){await post('/api/news-comment-delete',{newsId:id,id:remove.dataset.deleteComment});if(!isCurrent())return;const c=rows.find(c=>c.id===remove.dataset.deleteComment);Object.assign(c,{deleted:true,content:'',authorName:''});render();message('댓글을 삭제했습니다.');}
+ else await load(!!more);
+ }catch(e){if(isCurrent())message(e.message);}finally{if(isCurrent())lock(false);}};
+ try{await load();}catch(e){if(isCurrent())message('댓글을 불러오지 못했습니다. '+e.message);}
+ }catch(e){if(isCurrent())host.innerHTML=`<p class="placeholder">${esc(e.message)}</p>`;}
+}

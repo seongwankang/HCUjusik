@@ -1,5 +1,6 @@
+import {showArticle} from './news.js';
 import {showManagement} from './management.js';
-import {parseRoute,companyRoute} from './routes.js';
+import {parseRoute,companyRoute,articleRoute} from './routes.js';
 import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
 import {setupAdmin} from './admin.js';
@@ -18,16 +19,16 @@ async function getJSON(url,options={}) {
 }
 
 function navigate(page,writeRoute=true) {
-  if (!['dashboard','market','news','portfolio','management','admin','company'].includes(page)) return;
+  if (!['dashboard','market','news','portfolio','management','admin','company','article'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')return;
   if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
   closeTrading();
   state.page = page;
   if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
-  $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page)));
+  $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page==='article'?'news':page)));
   document.querySelectorAll('.workspace-tabs button').forEach(el=>el.classList.toggle('selected',el.dataset.goto===(page==='company'?'market':page)));
-  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래'}[page];
+  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래',article:'뉴스 상세'}[page];
   document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
   if(page==='management') loadManagement();
@@ -64,9 +65,8 @@ function renderCompanies() {
   $('#market-count').textContent = rows.length;
   $('#market-rows').innerHTML = rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td class="muted">${esc(c.ticker)}</td><td>${quoteText(c)}${c.quoteKind==='initial'?'<small>첫 거래 전</small>':''}</td><td><span class="state-tag ${c.status==='listed'?'listed':''}">${c.status==='listed'?'상장':'준비 중'}</span></td><td><button class="row-button" data-company="${esc(c.id)}">보기 →</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">검색 결과가 없습니다.</td></tr>';
 }
-function newsCard(n,compact=false) {
-  return compact ? `<div class="news-item"><small>공지사항</small><h4>${esc(n.title)}</h4><p>${esc(n.content)}</p></div>`:
-  `<article class="news-card"><small>${n.companyName?'기업 뉴스 · '+esc(n.companyName):'운영 공지'}</small>${n.publishedAt?'<time>'+esc(new Date(n.publishedAt).toLocaleString('ko-KR'))+'</time>':''}<h3>${esc(n.title)}</h3><p>${esc(n.content)}</p></article>`;
+function newsCard(n,compact=false,kind='news') {
+ return '<a class="'+(compact?'news-item news-headline-mini':'news-headline')+'" href="'+articleRoute(n.id,kind)+'">'+(compact?'':'<span class="headline-category">'+(kind==='event'?'기업 이벤트':n.companyName?'기업 뉴스 · '+esc(n.companyName):'운영 공지')+'</span>')+'<strong>'+esc(n.title)+'</strong>'+(compact?'':'<span class="headline-date">'+(n.publishedAt?esc(new Date(n.publishedAt).toLocaleDateString('ko-KR')):'')+' ↗</span>')+'</a>';
 }
 let newsRead=0;
 async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid){renderNews();return;}try{const [n,e]=await Promise.all([getJSON('/api/news'),getJSON('/api/events')]);if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;state.events=e.events;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
@@ -74,7 +74,7 @@ window.addEventListener('admin-saved',e=>{if(e.detail?.kind==='companies')initia
 function renderNews() {
   if(!state.user){$('#featured-news').textContent='로그인하면 시장 뉴스를 확인할 수 있습니다.';$('#all-news').innerHTML=loginPrompt('학교 계정으로 로그인하면 뉴스와 공지를 확인할 수 있습니다.');return;}
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
-  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard({title:`기업 이벤트 · ${e.title}`,content:`${e.content}\n기간: ${new Date(e.startsAt).toLocaleString('ko-KR')} ~ ${new Date(e.endsAt).toLocaleString('ko-KR')} (게시용)`,companyName:e.companyId})).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
+  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard(e,false,'event')).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
 }
 function showCompany(id,writeRoute=true) {
   navigate('company',false);state.companyId=id;
@@ -90,7 +90,9 @@ function showCompany(id,writeRoute=true) {
   $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;
   showTrading(c,getJSON);
 }
-function applyRoute(){const r=parseRoute(location.hash);if(r.page==='company')showCompany(r.companyId,false);else navigate(r.page,false);}
+let articleRead=0;
+function openArticle(id,kind='news'){navigate('article',false);const read=++articleRead,uid=state.user?.id;showArticle($('#article-content'),getJSON,state.user,id,kind,()=>read===articleRead&&state.page==='article'&&parseRoute(location.hash).articleId===id&&state.user?.id===uid);}
+function applyRoute(){const r=parseRoute(location.hash);if(r.page==='company')showCompany(r.companyId,false);else if(r.page==='article')openArticle(r.articleId,r.articleKind);else navigate(r.page,false);}
 window.addEventListener('hashchange',applyRoute);
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
@@ -164,7 +166,7 @@ $('#account-button').addEventListener('click',async()=>{
   try {await logout();}catch(e){alert(e.message);return;}
   ++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();
-  if(state.page==='management')loadManagement();
+  if(state.page==='management')loadManagement();if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind);}
   if(state.page==='company')showCompany(state.companyId,false);
 });
 $('#close-login').addEventListener('click',()=>$('#login-dialog').close());
