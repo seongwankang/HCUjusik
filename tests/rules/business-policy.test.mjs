@@ -11,8 +11,8 @@ let env,admin,president,student;const cid='standard-ipo';
 before(async()=>{
  env=await initializeTestEnvironment({projectId:'demo-business-policy-v2',firestore:{rules:readFileSync('firestore.rules','utf8')}});await env.clearFirestore();
  await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();for(const [id,role] of [['admin','admin'],['president','president'],['student','student']])await setDoc(doc(db,'users',id),{displayName:id,role,active:true});
- await setDoc(doc(db,'assignments/president'),{companyIds:[cid,'rd-cap']});
- for(const [id,funding] of [[cid,10000000],['rd-cap',10000000]]){await setDoc(doc(db,'companies',id),{name:id,status:'listed',referencePrice:10000,issuedShares:1000});await setDoc(doc(db,'sparkBooks',id),{issuerCash:funding,issuedShares:1000,treasuryShares:0});}
+ await setDoc(doc(db,'assignments/president'),{companyIds:[cid,'rd-cap','base-hire']});
+ for(const [id,funding] of [[cid,10000000],['rd-cap',10000000],['base-hire',10000000]]){await setDoc(doc(db,'companies',id),{name:id,status:'listed',referencePrice:10000,issuedShares:1000});await setDoc(doc(db,'sparkBooks',id),{issuerCash:funding,issuedShares:1000,treasuryShares:0});}
  await setDoc(doc(db,'sparkAccounts/student'),{cash:1000000,reservedCash:0,positions:{[cid]:1000},reservedPositions:{},version:1,lastMarket:cid});
  // An existing six-field catalog is preserved, but cannot silently select the old R&D model.
  await setDoc(doc(db,'economyConfig/main'),{factoryCost:1,factoryRevenue:1,equipmentCost:1,equipmentRevenue:1,researchCost:1,researchRevenue:99999});});
@@ -20,28 +20,38 @@ before(async()=>{
 });
 after(async()=>env?.cleanup());
 const apiFor=(db,uid)=>createClientApi({db,getUser:async()=>({uid,getIdTokenResult:async()=>({claims:{email:'test@hcu.hs.kr',email_verified:true}})})});
-test('standard IPO finances exact starter plan atomically per purchase; hire requires facilities and ownership',async()=>{
+
+test('ten base employees need no facilities; exact eleventh purchase is denied by rules',async()=>{
+ await initializeOperations(president,'base-hire');
+ for(let i=0;i<10;i++)await invest(president,'base-hire','employee');
+ const o=(await operationsView(president,'base-hire')).ops;
+ assert.equal(o.factory+o.equipment,0);assert.equal(o.employees,10);assert.equal(o.cash,9000000);
+ assert.equal(dayPlan(o,{issuerCash:10000000,issuedShares:1000,treasuryShares:0},koreaDay()+1).revenue,200000);
+ await assert.rejects(invest(president,'base-hire','employee'),/수용/);
+ await assertFails(updateDoc(doc(president,'companyOperations/base-hire'),{employees:11,cash:o.cash-100000,pendingStaffRevenue:220000,pendingDay:koreaDay()+1}));
+});
+test('standard IPO finances exact starter plan atomically per purchase; hiring uses base capacity and requires ownership',async()=>{
  const path='/api/economy?companyId='+cid;assert.equal((await apiFor(student,'student')(path)).initialized,false);assert.equal((await getDoc(doc(admin,'companyOperations',cid))).exists(),false);
  const [first,concurrent]=await Promise.all([apiFor(president,'president')(path),apiFor(president,'president')(path)]);assert.equal(first.initialized,true);assert.equal(concurrent.initialized,true);assert.equal(first.available,10000000);assert.deepEqual(first.config,DEFAULT_CONFIG);
- await assert.rejects(invest(president,cid,'employee'),/수용/);await assertFails(invest(student,cid,'factory'));
+ await assertFails(invest(student,cid,'factory'));
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:9700000,receivedIssuerCash:10000000,employees:1,staffRevenue:0,pendingStaffRevenue:18000,activeResearchBps:0,pendingResearchBps:0,pendingDay:koreaDay()+1,production:{factory:0,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}}));
  for(const [asset,count] of [['factory',2],['equipment',2],['employee',5],['research',1]])for(let i=0;i<count;i++)await invest(president,cid,asset);
- const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,1000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,90000);assert.equal(o.pendingRevenue,370000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
- assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,483000);
+ const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,2000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,100000);assert.equal(o.pendingRevenue,740000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
+ assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,882000);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:100,staffRevenue:999999,activeResearchBps:3000}));
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:6,pendingStaffRevenue:108000,cash:700000,employee:'unexpected-field'}));
 });
 test('matured staff and R&D pay dividends once from net income, preserving unmultipled base',async()=>{
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
  const result=await settleDay(admin,cid);assert.equal(result.recipients,1);
- const v=await operationsView(admin,cid),o=v.ops;assert.equal(o.revenue,370000);assert.equal(o.staffRevenue,90000);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingStaffRevenue,0);assert.equal(o.pendingResearchBps,0);assert.equal(v.days[0].revenue,483000);assert.equal(v.days[0].perShare,241);assert.equal(v.available,1242000);
- assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,1241000);await assert.rejects(settleDay(admin,cid),/이미 완료/);
- assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,483000);
+ const v=await operationsView(admin,cid),o=v.ops;assert.equal(o.revenue,740000);assert.equal(o.staffRevenue,100000);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingStaffRevenue,0);assert.equal(o.pendingResearchBps,0);assert.equal(v.days[0].revenue,882000);assert.equal(v.days[0].perShare,441);assert.equal(v.available,2441000);
+ assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,1441000);await assert.rejects(settleDay(admin,cid),/이미 완료/);
+ assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,882000);
 });
 test('policy changes preserve purchased staff yield and R&D points; new purchases store new policy',async()=>{
  await setDoc(doc(admin,'economyConfig/main'),{...DEFAULT_CONFIG,employeeRevenue:1,researchBoostBps:100,researchCost:100000});
  await invest(president,cid,'employee');await invest(president,cid,'research');const v=await operationsView(president,cid),o=v.ops;
- assert.equal(o.staffRevenue,90000);assert.equal(o.pendingStaffRevenue,1);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingResearchBps,100);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,487601);
+ assert.equal(o.staffRevenue,100000);assert.equal(o.pendingStaffRevenue,1);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingResearchBps,100);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,890401);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:o.cash+1,pendingResearchBps:3000}));
 });
 test('research choice destruction updates both current and pending bonus without refund or double application',async()=>{
@@ -52,7 +62,7 @@ test('research choice destruction updates both current and pending bonus without
 });
 test('six-center limit and workforce capacity are enforced by rules, including raw forged requests',async()=>{
  await setDoc(doc(admin,'economyConfig/main'),DEFAULT_CONFIG);await initializeOperations(president,'rd-cap');
- await invest(president,'rd-cap','factory');for(let i=0;i<5;i++)await invest(president,'rd-cap','employee');
+ await invest(president,'rd-cap','factory');for(let i=0;i<35;i++)await invest(president,'rd-cap','employee');
  await assert.rejects(invest(president,'rd-cap','employee'),/수용/);
  // A bounded synthetic reserve isolates the six-center limit from the budget limit.
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations/rd-cap'),{cash:10000000}));
