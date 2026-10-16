@@ -119,7 +119,7 @@ async function loadManagement() {
 }
 function updateAccountButton() {
   adminUI.session(state.user);
-  $('button[data-page="management"]').forEach(b=>b.hidden=!['admin','president'].includes(state.user?.role));
+  $$('button[data-page="management"]').forEach(b=>b.hidden=!['admin','president'].includes(state.user?.role));
   if(state.page==='admin' && state.user?.role!=='admin')navigate('dashboard');
   const btn=$('#account-button');
   btn.textContent=state.user?`${state.user.displayName} · 로그아웃`:'로그인';
