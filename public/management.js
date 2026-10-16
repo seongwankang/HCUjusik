@@ -5,37 +5,87 @@ import {showCompanyEvents} from './events.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const won=n=>Number(n||0).toLocaleString('ko-KR')+'원';
 const assets={factory:'공장',equipment:'생산 설비',research:'R&D센터'};
-const choices={...assets,employee:'직원 채용'};
-const defaults=DEFAULT_CONFIG;
+const choices={...assets,employee:'직원'};
+const dayNow=()=>Math.floor((Date.now()+32400000)/86400000);
 export async function showManagement(host,api,user,isCurrent=()=>true){
- let alive=true,selected='',companies=[],view=null;
+ let alive=true,selected='',companies=[],view=null,tab='investments';
  const current=()=>alive&&isCurrent()&&document.querySelector('#page-management')?.classList.contains('active');
  const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
- host.classList.remove('empty-state');host.innerHTML='<p>회사 회계를 불러오는 중…</p>';
- try{companies=(await api(user.role==='admin'?'/api/companies':'/api/my-company')).companies;if(!current())return;
- if(!companies.length){host.innerHTML='<p>담당 기업이 없습니다. 관리자가 기업을 등록하고 사장을 지정하면 사용할 수 있습니다.</p>';return;}selected=companies[0].id;
- host.innerHTML=`<div class="management-toolbar"><label>운영 기업 <select id="business-company">${companies.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><button id="business-refresh" class="ghost">새로 조회</button></div><p role="status" id="business-message"></p><div id="business-body"></div>`;
- const message=s=>host.querySelector('#business-message').textContent=s;
- async function load(){const id=selected;try{const data=await api('/api/economy?companyId='+encodeURIComponent(id));if(!current()||selected!==id)return;view=data;render();await showCompanyEvents(host.querySelector('#company-events'),api,id,load,()=>current()&&selected===id);}catch(e){if(current())message(e.message);}}
- function render(){const {ops:o,book,config,available,days}=view,day=Math.floor((Date.now()+32400000)/86400000),needs=needsProduction(o),today=needs?{revenue:null}:adjustedRevenue(o,day),tomorrow=needs?{revenue:null}:adjustedRevenue(o,day+1),example=startupExample(config),blocked=o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<=day;host.querySelector('#business-body').innerHTML=`
- <div class="business-cards"><article><small>투자 가능 회사 자금</small><strong>${won(available)}</strong></article><article><small>최초 주식 판매 누적 수입</small><strong>${won(book?.issuerCash)}</strong></article><article><small>오늘 기본 영업수익 · 이벤트 제외</small><strong>${needs?'매출 분류 필요':won(today.revenue)}</strong></article><article><small>다음 영업일 예상 수익 · 이벤트 제외</small><strong>${needs?'매출 분류 필요':won(tomorrow.revenue)}</strong></article></div>
- <p class="info-note">최초 발행 주식 판매금만 회사로 들어옵니다. 학생 간 매매대금은 회사 수입이 아닙니다. 설비·직원·R&D 효과는 구매 다음 날부터 반영됩니다. 표시한 수익은 운영비·급여를 차감한 게임 내 순영업수익입니다.</p>
- ${o.locked?'<p class="business-lock">배당 지급 중 · 이 기업의 거래와 설비 투자가 잠겨 있습니다. 관리자가 정산 이어하기를 눌러 완료해 주세요.</p>':''}
- <section id="company-events"></section>
- ${needs?`<div class="info-note"><h3>기존 설비 매출 분류 필요</h3><p>이전 계좌는 설비별 매출 없이 합계만 저장했습니다. 기존 합계를 보존하도록 관리자가 종류별 매출을 입력하면 설비 이벤트와 추가 투자가 열립니다.</p>${user.role==='admin'?`<form id="production-form" class="admin-form">${['production','pendingProduction'].map(key=>Object.entries(assets).map(([asset,label])=>`<label>${label} · ${key==='production'?'가동 매출':'가동 대기 매출'}<input type="number" name="${key}-${asset}" min="0" step="1" value="0" required></label>`).join('')).join('')}<p>가동 합계: ${won(o.revenue)} · 대기 합계: ${won(o.pendingRevenue)}</p><button class="account-btn">기존 합계 유지하며 분류 저장</button></form>`:''}</div>`:''}<h2>설비 투자 · 직원 고용</h2>
- <p class="info-note">공장 1개당 직원 5명, 생산 설비 1개당 2명을 배치할 수 있습니다. 현재 직원 <b>${o.employees||0}명 / 수용 ${staffCapacity(o)}명</b>${(o.employees||0)>staffCapacity(o)?' · 설비 피해로 초과 인원은 유휴 상태이며 수익에 기여하지 않습니다.':''}. R&D는 기본 영업수익에 비율로 적용하며 합계 최대 30%입니다.</p>
- <div class="facility-grid">${Object.entries(choices).map(([id,name])=>{const p=needs?{gain:0,payback:null,allowed:false}:previewPurchase(o,config,id,day),count=id==='employee'?o.employees||0:o[id],rd=id==='research';return `<article class="facility-card ${rd?'research-card':''}"><span class="facility-type">${id==='employee'?'PERSONNEL':rd?'MULTIPLIER':'PRODUCTION'}</span><h3>${name}</h3><p>${id==='employee'?'재직':'보유'} <b>${count}</b>${id==='employee'?'명':'개'}</p><dl><div><dt>${id==='employee'?'채용·교육비':'건설 비용'}</dt><dd>${won(config[id+'Cost'])}</dd></div><div><dt>${rd?'수익 증가율':'기본 일수익 기여'}</dt><dd>${rd?'+'+config.researchBoostBps/100+'%':won(config[id+'Revenue'])}</dd></div><div><dt>다음 영업일 예상 증가</dt><dd>+${won(Math.max(0,p.gain))}</dd></div><div><dt>단순 투자금 회수</dt><dd>${p.payback?p.payback+'일':'기본 수익 발생 후 계산'}</dd></div></dl><p class="muted">${id==='factory'?'직원 수용 인원 +5명':id==='equipment'?'직원 수용 인원 +2명':rd?'최대 6개 · 같은 기본 수익에 증가율을 합산':'급여 차감 후 기여액 · 수용 인원 필요'}</p><button class="account-btn" data-business="invest" data-asset="${id}" ${blocked||available<config[id+'Cost']||!p.allowed||!view.initialized?'disabled':''}>${id==='employee'?'1명 고용하기':rd?'R&D센터 건설':'1개 건설'}</button></article>`;}).join('')}</div>
- <p class="muted">회수 기간은 이벤트·배당·추가 투자 없이 수익 증가분이 유지된다는 단순 비교입니다. 회사에 남는 자금의 실제 회수 기간은 배당률에 따라 길어집니다. R&D 효과는 나중에 추가한 설비·직원에도 적용되며, 증가율은 복리로 누적되지 않습니다.</p>
- <details class="startup-guide"><summary>1,000만 원으로 시작하는 첫날 투자 예시</summary><p>공장 2개 + 생산 설비 2개 + 직원 5명 + R&D센터 1개</p><div class="business-cards"><article><small>투자금</small><strong>${won(example.cost)}</strong></article><article><small>남는 현금</small><strong>${won(example.remaining)}</strong></article><article><small>다음 날 예상 영업수익</small><strong>${won(example.revenue)}</strong></article><article><small>배당률 50% 예시 · 1주당</small><strong>${won(example.perShareAtHalf)}</strong></article></div><p>주당 10,000원 × 1,000주가 전부 팔렸을 때의 예시이며, 실제 판매된 자금 안에서 위 버튼으로 직접 투자합니다. 주식 발행만으로 현금이 자동 지급되지 않습니다. 현재 배당률은 별도 설정을 따릅니다. 관리자가 정책을 바꾸면 예시도 바뀝니다.</p></details>
-
- <h2>영업수익 · 배당</h2><p>영업수익 배당률 <b>${o.dividendBps/100}%</b> · 하루 1회, 한국 시간 기준. 정산 시점 주주에게 보유 수량대로 지급합니다. 미판매 주식은 제외하고 원 단위 나머지는 회사가 보유합니다.</p>
- ${user.role==='admin'?`<form id="dividend-form"><label>배당률 (%) <input name="rate" type="number" min="0" max="100" step="0.01" value="${o.dividendBps/100}" required></label><button class="account-btn" ${o.locked?'disabled':''}>배당률 저장</button></form><button class="account-btn settlement-btn" data-business="settle" ${!o.locked&&o.lastSettledDay>=Math.floor((Date.now()+32400000)/86400000)?'disabled':''}>${!o.locked&&o.lastSettledDay>=Math.floor((Date.now()+32400000)/86400000)?'오늘 정산 완료':o.locked?'정산 이어하기':'오늘 영업수익·배당 정산'}</button><p class="muted">정산 중에는 이 화면을 유지하세요. 중단되어도 다시 누르면 지급한 사람은 건너뛰고 이어집니다. 지난 날짜를 소급해 자동 정산하지 않습니다.</p>`:'<p class="muted">배당률 변경과 일일 정산은 관리자가 실행합니다.</p>'}
- <div class="portfolio-table-wrap"><table><thead><tr><th>정산일 (한국)</th><th>일영업수익</th><th>1주당 배당</th><th>주주 배당 총액</th><th>회사 유보</th></tr></thead><tbody>${days.map(d=>`<tr><td>${new Date(d.day*86400000).toISOString().slice(0,10)}${o.currentDay===d.id?' · 지급 중':''}</td><td>${won(d.revenue)}</td><td>${won(d.perShare)}</td><td>${won(d.dividend)}</td><td>${won(d.retained)}</td></tr>`).join('')||'<tr><td colspan="5">아직 정산 내역이 없습니다.</td></tr>'}</tbody></table></div>
- ${user.role==='admin'?`<details class="economy-settings"><summary>설비·채용 가격 및 수익 정책</summary><p>현재 적용 정책입니다. 새 가격·기여액은 다음 구매부터 적용합니다. R&D 증가율도 구매 당시 값을 보관합니다.</p><form id="economy-config-form" class="admin-form">${Object.keys(defaults).filter(k=>k!=='version').map(k=>`<label>${k==='researchBoostBps'?'R&D센터 수익 증가율 (%)':(choices[k.replace(/Cost|Revenue/,'')])+' '+(k.endsWith('Cost')?'투자 비용':'기본 일수익')}<input name="${k}" type="number" min="${k==='researchBoostBps'?0.01:1}" max="${k==='researchBoostBps'?10:100000000}" step="${k==='researchBoostBps'?0.01:1}" value="${k==='researchBoostBps'?(config?.[k]??defaults[k])/100:config?.[k]??defaults[k]}" required></label>`).join('')}<button class="account-btn">설비 정책 저장</button></form></details>`:''}`;}
- host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};host.querySelector('#business-refresh').onclick=load;
- host.onclick=async e=>{const button=e.target.closest('[data-business]');if(!button||button.disabled)return;const action=button.dataset.business,cid=selected;button.disabled=true;host.querySelector('#business-company').disabled=true;message(action==='settle'?'정산 및 배당 지급 중입니다. 완료 메시지가 나올 때까지 기다려 주세요.':'처리 중…');try{await post('/api/economy-'+({invest:'invest',settle:'settle'}[action]),{companyId:cid,asset:button.dataset.asset});await load();message(action==='settle'?'오늘 영업수익·배당 정산을 완료했습니다.':'반영했습니다.');}catch(e){await load();message(e.message);}finally{if(current())host.querySelector('#business-company').disabled=false;}};
- host.onsubmit=async e=>{if(!['dividend-form','economy-config-form','production-form'].includes(e.target.id))return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='production-form')await post('/api/economy-production',{companyId:selected,...Object.fromEntries(['production','pendingProduction'].map(key=>[key,Object.fromEntries(Object.keys(assets).map(asset=>[asset,Number(b[key+'-'+asset])]))]))});else if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,k==='researchBoostBps'?Math.round(Number(v)*100):Number(v)])));await load();message('설정을 저장했습니다.');}catch(err){message(err.message);button.disabled=false;}};
- await load();
+ host.classList.remove('empty-state');host.innerHTML='<p class="placeholder">경영 현황을 불러오는 중…</p>';
+ try{
+  companies=(await api(user.role==='admin'?'/api/companies':'/api/my-company')).companies;if(!current())return;
+  if(!companies.length){host.innerHTML='<div class="blank-state"><h2>담당 기업이 없습니다</h2><p>관리자가 기업과 사장을 연결하면 경영을 시작할 수 있습니다.</p></div>';return;}
+  selected=companies[0].id;
+  host.innerHTML=`<div class="management-toolbar"><label>운영 기업<select id="business-company">${companies.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><button id="business-refresh" class="ghost">새로고침</button></div><p role="status" id="business-message"></p><div id="business-body"></div>`;
+  const message=s=>host.querySelector('#business-message').textContent=s;
+  function setTab(next,focus=false){
+   tab=next;host.querySelectorAll('[role="tab"][data-management-tab]').forEach(b=>{const active=b.dataset.managementTab===tab;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;if(active&&focus)b.focus();});
+   host.querySelectorAll('[data-management-panel]').forEach(p=>p.hidden=p.dataset.managementPanel!==tab);
+  }
+  async function load(){
+   const id=selected;
+   try{
+    const data=await api('/api/economy?companyId='+encodeURIComponent(id));if(!current()||selected!==id)return;
+    view=data;render();
+    await showCompanyEvents(host.querySelector('#company-events'),api,id,load,()=>current()&&selected===id,summary=>{
+     if(!current()||selected!==id)return;
+     const badge=host.querySelector('#business-event-count');badge.textContent=summary.pendingCount||'';badge.hidden=!summary.pendingCount;
+     host.querySelector('#business-today-income').textContent=summary.projection.needsProduction?'분류 필요':won(summary.projection.revenue);
+    });
+   }catch(e){if(current()&&selected===id)message(e.message);}
+  }
+  function render(){
+   const {ops:o,book,config:c,available,days}=view,day=dayNow(),needs=needsProduction(o);
+   const today=needs?null:adjustedRevenue(o,day).revenue,tomorrow=needs?null:adjustedRevenue(o,day+1).revenue;
+   const employees=o.employees||0,capacity=staffCapacity(o),vacancies=Math.max(0,capacity-employees),idle=Math.max(0,employees-capacity);
+   const blocked=o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<=day;
+   const affordable=Math.max(0,Math.floor(available/c.employeeCost)),canHire=blocked||needs?0:Math.min(vacancies,affordable);
+   const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100,example=startupExample(c);
+   host.querySelector('#business-body').innerHTML=`
+    <section class="business-overview" aria-label="경영 요약">
+     <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>오늘 예상 영업수익</span><strong id="business-today-income">${today===null?'분류 필요':won(today)}</strong></article><article><span>다음 날 기본 영업수익</span><strong>${tomorrow===null?'분류 필요':won(tomorrow)}</strong></article></div>
+     <div class="business-section-heading"><h2>시설·인력 현황</h2><span>보유 수량</span></div>
+     <div class="inventory-overview">${Object.entries(choices).map(([id,name])=>`<article class="inventory-tile ${id==='employee'?'inventory-staff':''}"><span>${name}</span><strong>${id==='employee'?employees:o[id]}<small>${id==='employee'?'명':'개'}</small></strong><small>${id==='factory'?'수용 인원 '+o.factory*5+'명':id==='equipment'?'수용 인원 '+o.equipment*2+'명':id==='research'?'수익 보너스 +'+bonus+'%':'배치 '+Math.min(employees,capacity)+'명'+(idle?' · 유휴 '+idle+'명':'')}</small></article>`).join('')}</div>
+     <div class="staff-capacity"><div class="staff-capacity-main"><span>지금 고용 가능</span><strong>${canHire}<small>명</small></strong><span>${blocked?'이벤트 처리·정산 완료 후 고용 가능':needs?'매출 분류 후 고용 가능':'정원·현재 자금 기준'}</span></div><div class="staff-capacity-detail"><div><span>직원 정원</span><b>${employees} / ${capacity}명</b></div><meter min="0" max="${Math.max(capacity,1)}" value="${Math.min(employees,capacity)}" aria-label="직원 정원 사용량"></meter><div class="staff-capacity-meta"><span>정원 여유 <b>${vacancies}명</b></span><span>채용비 <b>${won(c.employeeCost)}/명</b></span></div>${idle?`<p class="inline-warning">시설 부족으로 ${idle}명 유휴 중</p>`:''}</div></div>
+    </section>
+    ${o.locked?'<p class="business-lock">배당 지급 중입니다. 거래·투자는 정산 완료 후 재개됩니다.</p>':''}
+    ${o.pendingEvent?'<p class="business-lock">선택한 이벤트의 결과 적용을 완료해 주세요. <button class="text-link" data-management-tab="events">이벤트 확인</button></p>':''}
+    <div class="management-tabs" role="tablist" aria-label="기업 경영 메뉴">${[['investments','시설·채용'],['events','이벤트'],['settlement','회계·배당']].map(([id,label])=>`<button id="business-tab-${id}" type="button" role="tab" data-management-tab="${id}" aria-controls="business-panel-${id}">${label}${id==='events'?'<span id="business-event-count" class="tab-count" hidden></span>':''}</button>`).join('')}</div>
+    <section id="business-panel-investments" role="tabpanel" aria-labelledby="business-tab-investments" data-management-panel="investments">
+     ${needs?`<div class="business-lock"><h3>기존 설비 매출 분류가 필요합니다</h3>${user.role==='admin'?`<form id="production-form" class="admin-form">${['production','pendingProduction'].map(key=>Object.entries(assets).map(([asset,label])=>`<label>${label} · ${key==='production'?'가동':'대기'} 수익<input type="number" name="${key}-${asset}" min="0" step="1" value="0" required></label>`).join('')).join('')}<p>기존 합계 · 가동 ${won(o.revenue)} / 대기 ${won(o.pendingRevenue)}</p><button class="account-btn">분류 저장</button></form>`:'<p>관리자가 기존 수익을 분류하면 추가 투자할 수 있습니다.</p>'}</div>`:''}
+     <div class="business-section-heading"><h2>추가 투자</h2><span>다음 날부터 수익 반영</span></div>
+     <div class="facility-grid">${Object.entries(choices).map(([id,name])=>{
+      const p=needs?{gain:0,payback:null,allowed:false}:previewPurchase(o,c,id,day),count=id==='employee'?employees:o[id],rd=id==='research';
+      const disabled=blocked||available<c[id+'Cost']||!p.allowed||needs;
+      const reason=blocked?'처리 완료 후 투자 가능':needs?'매출 분류 필요':!p.allowed?(id==='employee'?'직원 정원 도달':'R&D 상한 도달'):available<c[id+'Cost']?'투자 자금 부족':'';
+      return `<article class="facility-card ${rd?'research-card':''}"><header><h3>${id==='employee'?'직원 채용':name}</h3><span class="holding-chip">${id==='employee'?'재직':'보유'} ${count}${id==='employee'?'명':'개'}</span></header><strong class="investment-cost">${won(c[id+'Cost'])}<small>/${id==='employee'?'명':'개'}</small></strong><dl><div><dt>${rd?'기본 수익 보너스':'기본 일수익'}</dt><dd>${rd?'+'+c.researchBoostBps/100+'%':'+'+won(c[id+'Revenue'])}</dd></div><div><dt>투자 후 일수익 증가</dt><dd>${needs?'분류 후 계산':'+'+won(Math.max(0,p.gain))}</dd></div></dl><p class="facility-caption">${id==='factory'?'직원 정원 +5명':id==='equipment'?'직원 정원 +2명':rd?'최대 6개 · 보너스 합계 최대 30%':'정원 여유 '+vacancies+'명 · 지금 '+canHire+'명 고용 가능'}</p><button class="account-btn" data-business="invest" data-asset="${id}" ${disabled?'disabled':''}>${id==='employee'?'1명 고용하기':name+' 1개 건설'}</button><small class="action-hint">${reason}</small></article>`;
+     }).join('')}</div>
+     <details class="business-guide"><summary>투자 수익 비교·운영 안내</summary><p>수익은 운영비·급여 차감 후 기준이며 구매 다음 날부터 반영됩니다. R&D는 설비·직원 수익에 비율로 적용됩니다.</p><div class="table-wrap"><table><thead><tr><th>투자</th><th>예상 일수익 증가</th><th>단순 회수 기간</th></tr></thead><tbody>${Object.keys(choices).map(id=>{const p=needs?null:previewPurchase(o,c,id,day);return `<tr><td>${choices[id]}</td><td>${p?won(Math.max(0,p.gain)):'—'}</td><td>${p?.payback?p.payback+'일':'—'}</td></tr>`;}).join('')}</tbody></table></div><p>회수 기간은 배당·이벤트가 없다는 단순 비교입니다. 회사 자금에는 최초 발행 주식의 실제 판매금만 들어옵니다.</p><h3>1,000만 원 투자 예시</h3><p>공장 2개 · 설비 2개 · 직원 5명 · R&D 1개<br>투자 ${won(example.cost)} / 남는 현금 ${won(example.remaining)} / 다음 날 기본 수익 ${won(example.revenue)}</p></details>
+    </section>
+    <section id="business-panel-events" role="tabpanel" aria-labelledby="business-tab-events" data-management-panel="events" hidden><div id="company-events"></div></section>
+    <section id="business-panel-settlement" role="tabpanel" aria-labelledby="business-tab-settlement" data-management-panel="settlement" hidden>
+     <div class="settlement-overview"><div><span>배당률</span><strong>${o.dividendBps/100}%</strong></div><div><span>최초 주식 판매 누적</span><strong>${won(book?.issuerCash)}</strong></div></div>
+     ${user.role==='admin'?`<div class="settlement-actions"><form id="dividend-form"><label>배당률 (%)<input name="rate" type="number" min="0" max="100" step="0.01" value="${o.dividendBps/100}" required></label><button class="ghost" ${o.locked?'disabled':''}>저장</button></form><button class="account-btn" data-business="settle" ${!o.locked&&o.lastSettledDay>=day?'disabled':''}>${!o.locked&&o.lastSettledDay>=day?'오늘 정산 완료':o.locked?'정산 이어하기':'오늘 수익·배당 정산'}</button></div><p class="compact-note">정산 완료까지 화면을 유지하세요. 중단 시 이어하기로 복구할 수 있습니다.</p>`:'<p class="compact-note">배당률 변경과 일일 정산은 관리자가 실행합니다.</p>'}
+     <div class="business-section-heading"><h2>정산 내역</h2><span>최근 30건</span></div><div class="portfolio-table-wrap"><table><thead><tr><th>정산일</th><th>영업수익</th><th>1주당 배당</th><th>배당 합계</th><th>회사 유보</th></tr></thead><tbody>${days.map(d=>`<tr><td>${new Date(d.day*86400000).toISOString().slice(0,10)}${o.currentDay===d.id?' · 지급 중':''}</td><td>${won(d.revenue)}</td><td>${won(d.perShare)}</td><td>${won(d.dividend)}</td><td>${won(d.retained)}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">정산 내역이 없습니다.</td></tr>'}</tbody></table></div>
+     <details class="business-guide"><summary>배당 기준</summary><p>한국 시간 하루 1회, 정산 시점의 보유 주식 수에 비례해 지급합니다. 미판매 주식은 제외하고 원 단위 나머지는 회사가 보유합니다. 지난 날짜를 소급해 자동 정산하지 않습니다.</p></details>
+     ${user.role==='admin'?`<details class="economy-settings"><summary>설비·채용 가격 및 수익 정책</summary><p>변경한 정책은 다음 구매부터 적용됩니다.</p><form id="economy-config-form" class="admin-form">${Object.keys(DEFAULT_CONFIG).filter(k=>k!=='version').map(k=>`<label>${k==='researchBoostBps'?'R&D 수익 증가율 (%)':choices[k.replace(/Cost|Revenue/,'')]+' '+(k.endsWith('Cost')?'투자 비용':'기본 일수익')}<input name="${k}" type="number" min="${k==='researchBoostBps'?0.01:1}" max="${k==='researchBoostBps'?10:100000000}" step="${k==='researchBoostBps'?0.01:1}" value="${k==='researchBoostBps'?c[k]/100:c[k]}" required></label>`).join('')}<button class="account-btn">정책 저장</button></form></details>`:''}
+    </section>`;
+   setTab(tab);
+  }
+  host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};
+  host.querySelector('#business-refresh').onclick=load;
+  host.onclick=async e=>{
+   const nav=e.target.closest('[data-management-tab]');if(nav){setTab(nav.dataset.managementTab);return;}
+   const button=e.target.closest('[data-business]');if(!button||button.disabled)return;
+   const action=button.dataset.business,cid=selected;button.disabled=true;host.querySelector('#business-company').disabled=true;message(action==='settle'?'배당 정산 중…':'처리 중…');
+   try{await post('/api/economy-'+({invest:'invest',settle:'settle'}[action]),{companyId:cid,asset:button.dataset.asset});await load();if(current()&&selected===cid)message(action==='settle'?'정산을 완료했습니다.':'반영했습니다.');}catch(err){await load();if(current())message(err.message);}finally{if(current())host.querySelector('#business-company').disabled=false;}
+  };
+  host.onkeydown=e=>{const nav=e.target.closest('[role="tab"][data-management-tab]');if(!nav||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=['investments','events','settlement'],index=tabs.indexOf(tab);setTab(e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(index+(e.key==='ArrowRight'?1:2))%3],true);};
+  host.onsubmit=async e=>{
+   if(!['dividend-form','economy-config-form','production-form'].includes(e.target.id))return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
+   try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='production-form')await post('/api/economy-production',{companyId:selected,...Object.fromEntries(['production','pendingProduction'].map(key=>[key,Object.fromEntries(Object.keys(assets).map(asset=>[asset,Number(b[key+'-'+asset])]))]))});else if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,k==='researchBoostBps'?Math.round(Number(v)*100):Number(v)])));await load();if(current())message('설정을 저장했습니다.');}catch(err){if(current())message(err.message);button.disabled=false;}
+  };
+  await load();
  }catch(e){if(current())host.textContent=e.message;}
  return ()=>{alive=false;};
 }
