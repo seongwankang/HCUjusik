@@ -46,18 +46,18 @@ test('locked daily settlement snapshots holdings, credits each holder once and r
  // Emulator setup represents facilities purchased yesterday; no production clock/data changes.
  await env.withSecurityRulesDisabled(async context=>updateDoc(doc(context.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
  const beforeStudent=(await getDoc(doc(student,'sparkAccounts/student'))).data(),beforePresident=(await getDoc(doc(president,'sparkAccounts/president'))).data();
- const key=await beginDay(admin,cid);const day=(await getDoc(doc(admin,'companyOperations',cid,'days',key))).data();assert.equal(day.revenue,7000);assert.equal(day.sold,40);assert.equal(day.perShare,87);assert.equal(day.retained,3520);
+ const key=await beginDay(admin,cid);const day=(await getDoc(doc(admin,'companyOperations',cid,'days',key))).data();assert.equal(day.revenue,14000);assert.equal(day.sold,40);assert.equal(day.perShare,175);assert.equal(day.retained,7000);
  await assertFails(placeSpark(student,'student',order('during-settlement')));await assert.rejects(invest(president,cid,'equipment'),/정산 중/);
  await assert.rejects(finishDay(admin,cid,key),/수量|수량/);await assertFails(payHolder(student,cid,key,'student'));
  assert.equal(await payHolder(admin,cid,key,'student'),true);assert.equal(await payHolder(admin,cid,key,'student'),false);
- assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,beforeStudent.cash+1740);
+ assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,beforeStudent.cash+3500);
  await settleDay(admin,cid);
- assert.equal((await getDoc(doc(president,'sparkAccounts/president'))).data().cash,beforePresident.cash+1740);
- const v=await operationsView(admin,cid);assert.equal(v.ops.locked,false);assert.equal(v.ops.lastSettledDay,koreaDay());assert.equal(v.ops.paidShares,40);assert.equal(v.ops.paidAmount,3480);assert.equal(v.available,253520);
+ assert.equal((await getDoc(doc(president,'sparkAccounts/president'))).data().cash,beforePresident.cash+3500);
+ const v=await operationsView(admin,cid);assert.equal(v.ops.locked,false);assert.equal(v.ops.lastSettledDay,koreaDay());assert.equal(v.ops.paidShares,40);assert.equal(v.ops.paidAmount,7000);assert.equal(v.available,257000);
  await assert.rejects(settleDay(admin,cid),/이미 완료/);
  await assertFails(updateDoc(doc(student,'sparkAccounts/student'),{cash:999999}));
  await assertFails(updateDoc(doc(admin,'companyOperations',cid,'days',key),{perShare:999}));
- const payments=(await studentApi('/api/dividends')).dividends;assert.equal(payments.length,1);assert.equal(payments[0].amount,1740);assert.equal(payments[0].shares,20);
+ const payments=(await studentApi('/api/dividends')).dividends;assert.equal(payments.length,1);assert.equal(payments[0].amount,3500);assert.equal(payments[0].shares,20);
  await assertFails(getDoc(doc(president,'sparkAccounts/student/dividends',cid+'_'+key)));
  await assertFails(setDoc(doc(student,'sparkAccounts/student/dividends/forged'),{companyId:cid,dayId:key,day:koreaDay(),shares:20,amount:99999,createdAt:serverTimestamp()}));
  await placeSpark(student,'student',order('after-settlement',{price:9000,quantity:1}));await cancelSpark(student,'student',{companyId:cid,orderId:'after-settlement'});
@@ -77,6 +77,6 @@ test('dividend processing crosses 100-account pages without skipping or duplicat
  await env.withSecurityRulesDisabled(async context=>{const db=context.firestore();await setDoc(doc(db,'companies',id),{name:'Paged',status:'listed',referencePrice:1,issuedShares:200});await setDoc(doc(db,'sparkBooks',id),{issuerCash:105,issuedShares:200,treasuryShares:95});
  for(let i=0;i<105;i++)await setDoc(doc(db,'sparkAccounts','holder-'+String(i).padStart(3,'0')),{cash:999999,reservedCash:0,positions:{[id]:1},reservedPositions:{},version:1,lastMarket:id});});
  await initializeOperations(admin,id);await updateDoc(doc(admin,'companyOperations',id),{revenue:1000,dividendBps:10000});
- const result=await settleDay(admin,id);assert.equal(result.recipients,105);const v=await operationsView(admin,id);assert.equal(v.ops.paidShares,105);assert.equal(v.ops.paidAmount,945);assert.equal(v.available,160);assert.equal(v.ops.locked,false);
- assert.equal((await getDoc(doc(admin,'sparkAccounts/holder-104'))).data().cash,1000008);
+ const result=await settleDay(admin,id);assert.equal(result.recipients,105);const v=await operationsView(admin,id);assert.equal(v.ops.paidShares,105);assert.equal(v.ops.paidAmount,1995);assert.equal(v.available,110);assert.equal(v.ops.locked,false);
+ assert.equal((await getDoc(doc(admin,'sparkAccounts/holder-104'))).data().cash,1000018);
 });

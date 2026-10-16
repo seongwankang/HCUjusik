@@ -1,0 +1,35 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
+import {doc,setDoc,getDoc,getDocs,collection,query,limit,Timestamp,updateDoc} from 'firebase/firestore';
+import {createClientApi} from '../../client/data.js';
+import {initialOperations} from '../../client/economy.js';
+if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
+let env,db,api;
+before(async()=>{
+ env=await initializeTestEnvironment({projectId:'demo-investor',firestore:{rules:readFileSync('firestore.rules','utf8')}});await env.clearFirestore();
+ await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();
+ await setDoc(doc(d,'users/viewer'),{displayName:'Investor',role:'student',active:true});
+ for(const id of ['one','two'])await setDoc(doc(d,'companies',id),{name:id,ticker:id,status:'listed',issuedShares:10,referencePrice:10000});
+ await setDoc(doc(d,'companyOperations/one'),{...initialOperations(),factory:1,revenue:1000,dividendBps:5000,production:{factory:1000,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}});
+ await setDoc(doc(d,'sparkBooks/one'),{issuedShares:10,treasuryShares:0,issuerCash:100000});
+ await setDoc(doc(d,'sparkAccounts/viewer'),{cash:1000,positions:{one:2},reservedPositions:{one:2}});
+ await setDoc(doc(d,'sparkAccounts/other'),{cash:999999,positions:{one:8}});
+ const at=Timestamp.fromMillis(Date.now()-1000),effect={kind:'revenue',asset:'factory',percent:-20,count:0,hours:48};
+ await setDoc(doc(d,'events/applied'),{title:'공개된 생산 차질',startsAt:at,type:'choice',targets:['one'],options:['A','B','C']});
+ await setDoc(doc(d,'companyEffects/one/items/applied'),{option:1,effect,effectiveAt:at,appliedAt:at});
+ await setDoc(doc(d,'eventOutcomes/applied/options/0'),{effect:{...effect,percent:500}});
+ await setDoc(doc(d,'companyChoices/one/items/applied'),{option:1,chosenAt:at});
+ });
+ const claims={email:'investor@hcu.hs.kr',email_verified:true};db=env.authenticatedContext('viewer',claims).firestore();api=createClientApi({db,getUser:async()=>({uid:'viewer',getIdTokenResult:async()=>({claims})})});
+});
+after(async()=>env?.cleanup());
+test('student investor reads applied effects and own estimated dividends; query UID cannot select another account',async()=>{
+ const d=await api('/api/company-investor?companyId=one&uid=other');assert.equal(d.factory,1);assert.equal(d.dividendBps,5000);assert.equal(d.myShares,2);assert.equal(d.tomorrowRevenue,1600);assert.equal(d.perShare,80);assert.equal(d.myDividend,160);assert.equal(d.activeEvents[0].title,'공개된 생산 차질');
+ await assertFails(getDoc(doc(db,'sparkAccounts/other')));await assertFails(getDoc(doc(db,'companyChoices/one/items/applied')));await assertFails(getDoc(doc(db,'eventOutcomes/applied/options/0')));
+ await assertFails(updateDoc(doc(db,'companyOperations/one'),{dividendBps:10000}));await assertFails(setDoc(doc(db,'companyEffects/one/items/forged'),{effect:{kind:'none'}}));
+ await assertFails(getDocs(collection(db,'companyEffects/one/items')));
+ assert.equal((await getDocs(query(collection(db,'companyEffects/one/items'),limit(100)))).size,1);
+ const missing=await api('/api/company-investor?companyId=two');assert.equal(missing.initialized,false);assert.equal((await getDoc(doc(db,'companyOperations/two'))).exists(),false);
+});

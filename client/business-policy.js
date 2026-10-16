@@ -2,6 +2,8 @@
 // Keep the fallback policy identical to economyPolicy() in firestore.rules.
 export const DEFAULT_CONFIG={version:3,factoryCost:2000000,factoryRevenue:240000,equipmentCost:1000000,equipmentRevenue:130000,researchCost:1500000,researchBoostBps:500,employeeCost:100000,employeeRevenue:20000};
 export const BASE_CAPACITY=10,FACTORY_CAPACITY=25,EQUIPMENT_CAPACITY=10;
+// Apply once to the computed operating income, never to stored production pools.
+export const INCOME_MULTIPLIER=2;
 export const RESEARCH_LIMIT=6,BOOST_LIMIT=3000;
 export const staffCapacity=o=>Math.min(1000,BASE_CAPACITY+o.factory*FACTORY_CAPACITY+o.equipment*EQUIPMENT_CAPACITY);
 export const researchBps=o=>o.activeResearchBps??Math.min(o.research,RESEARCH_LIMIT)*500;

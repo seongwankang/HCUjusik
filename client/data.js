@@ -1,5 +1,6 @@
 import {effectiveConfig} from './business-policy.js';
-import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView} from './events.js';
+import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
+import {investorSnapshot} from './investor.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -31,6 +32,12 @@ export function createClientApi({db,getUser}){
    const b=JSON.parse(options.body||'{}');if(route==='/api/news-comment')await postComment(db,user.uid,b.newsId,b.id,b.content);
    if(route==='/api/news-vote')return {ok:true,...await voteComment(db,user.uid,b.newsId,b.id,b.value)};
    if(route==='/api/news-comment-delete'){if(profile.role!=='admin')message('관리자만 댓글을 삭제할 수 있습니다.');await removeComment(db,b.newsId,b.id);}return {ok:true};
+  }
+  if(route==='/api/company-investor'&&method==='GET'){
+   const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
+   const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc')]);
+   if(!company)message('기업을 찾을 수 없습니다.');
+   return investorSnapshot({companyId:cid,ops,book,account,effects,events});
   }
   if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
   if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-choose','/api/event-apply'].includes(route)){
