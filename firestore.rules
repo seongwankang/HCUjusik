@@ -116,8 +116,9 @@ service cloud.firestore {
           (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
     }
     match /companyEffects/{cid}/items/{eid} {
-      allow get: if manager(cid);
-      allow list: if manager(cid) && request.query.limit != null && request.query.limit <= 100;
+      // Applied outcomes are investor information; unrevealed outcomes stay private.
+      allow get: if participant();
+      allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
       allow create: if eventReceipt(cid,eid,request.resource.data);
       allow update,delete: if false;
     }

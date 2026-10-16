@@ -1,4 +1,4 @@
-import {effectiveConfig,researchBps,staffCapacity,RESEARCH_LIMIT} from './business-policy.js';
+import {effectiveConfig,researchBps,staffCapacity,RESEARCH_LIMIT,INCOME_MULTIPLIER} from './business-policy.js';
 import {adjustedRevenue,productionPool} from './event-model.js';
 export function previewPurchase(o,input,asset,day){
  const c=effectiveConfig(input),next={...o,production:productionPool(o),pendingProduction:productionPool(o,true),activeResearchBps:researchBps(o)};
@@ -13,6 +13,6 @@ export function previewPurchase(o,input,asset,day){
 export function startupExample(input){
  const c=effectiveConfig(input),cost=2*c.factoryCost+2*c.equipmentCost+5*c.employeeCost+c.researchCost;
  const additive=2*c.factoryRevenue+2*c.equipmentRevenue+5*c.employeeRevenue;
- const revenue=additive+Math.floor(additive*Math.min(3000,c.researchBoostBps)/10000);
+ const revenue=(additive+Math.floor(additive*Math.min(3000,c.researchBoostBps)/10000))*INCOME_MULTIPLIER;
  return {cost,remaining:10000000-cost,additive,revenue,perShareAtHalf:Math.floor(revenue/2/1000)};
 }

@@ -1,4 +1,4 @@
-import {researchBps,staffCapacity,BOOST_LIMIT} from './business-policy.js';
+import {researchBps,staffCapacity,BOOST_LIMIT,INCOME_MULTIPLIER} from './business-policy.js';
 export const ASSET_NAMES={factory:'공장',equipment:'생산 설비',research:'R&D센터'};
 const keys=Object.keys(ASSET_NAMES);
 const fail=s=>{throw new Error(s);};
@@ -57,7 +57,7 @@ export function adjustedRevenue(o,day,records=[],now=Date.now()){
   const amount=e.kind==='revenue'?raw:raw+Math.floor(raw*boost/10000);
   extra+=Math.trunc(amount*e.percent/100);
  }
- const revenue=Math.max(0,enhanced+extra);if(!Number.isSafeInteger(revenue)||revenue>1e12)fail('이벤트 적용 수익 한도를 초과합니다.');
+ const revenue=Math.max(0,enhanced+extra)*INCOME_MULTIPLIER;if(!Number.isSafeInteger(revenue)||revenue>1e12)fail('이벤트 적용 수익 한도를 초과합니다.');
  return {base,revenue,additive,staff,supported,capacity:staffCapacity(o),researchBonus,boostBps:boost};
 }
 export function effectText(e){return e.kind==='destroy'?`${ASSET_NAMES[e.asset]} ${e.count}개 파괴 (영구)` : e.kind==='none'?'변화 없음':`${e.kind==='revenue'?'일매출':ASSET_NAMES[e.asset]+' 효율'} ${e.percent>0?'+':''}${e.percent}% · ${e.hours}시간`;}
