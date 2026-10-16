@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {before, after, test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
-import {doc, getDoc, getDocs, collection, query, limit, orderBy, setDoc, updateDoc, deleteDoc, writeBatch} from 'firebase/firestore';
+import {doc, getDoc, getDocs, collection, query, limit, orderBy, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp} from 'firebase/firestore';
+import {publishEvent} from '../../client/events.js';
 import {createFirestore} from '../../src/firestore.js';
 
 // Explicit emulator only; never default to production.
@@ -109,8 +110,8 @@ test('admin rules allow content and atomic registration, deny escalation and ass
  await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'users/new-student'),{displayName:'New',role:'student',active:true});});
  await assertSucceeds(updateDoc(doc(db,'users/new-student'),{role:'president'}));
  await assertSucceeds(setDoc(doc(db,'assignments/new-student'),{companyIds:['test']}));
- await assertSucceeds(setDoc(doc(db,'news/admin-news'),{title:'News',content:'Content',companyId:'test',companyName:'Test',publishedAt:new Date()}));
- await assertSucceeds(setDoc(doc(db,'events/event1'),{title:'Event',content:'Content',companyId:'test',startsAt:new Date('2026-10-01T00:00:00Z'),endsAt:new Date('2026-10-02T00:00:00Z')}));
+ await assertSucceeds(setDoc(doc(db,'news/admin-news'),{title:'News',content:'Content',companyId:'test',companyName:'Updated',publishedAt:serverTimestamp()}));
+ await assertSucceeds(publishEvent(db,{id:'event1',type:'random',title:'Event',content:'Content',companyId:'test',deadline:new Date(Date.now()+86400000).toISOString(),effect:{kind:'none'}}));
  await assertFails(setDoc(doc(environment.authenticatedContext('a',{email:'student@hcu.hs.kr',email_verified:true}).firestore(),'events/student-event'),{title:'Event',content:'Content',companyId:'test',startsAt:'2026-10-01',endsAt:'2026-10-02'}));
  await assertFails(updateDoc(doc(environment.authenticatedContext('a',{email:'student@hcu.hs.kr',email_verified:true}).firestore(),'users/a'),{role:'admin'}));
 });
