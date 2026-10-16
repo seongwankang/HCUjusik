@@ -48,7 +48,12 @@ export function createClientApi({db,getUser}){
     for(const [key,total] of [['production',o.revenue],['pendingProduction',o.pendingRevenue]]){const p=b[key];if(!p||Object.keys(p).length!==3||['factory','equipment','research'].some(k=>!Number.isSafeInteger(p[k])||p[k]<0||(!o[k]&&p[k]>0))||p.factory+p.equipment+p.research!==total)message('종류별 매출 합계가 기존 매출과 일치해야 합니다.');}
     t.update(ref,{production:b.production,pendingProduction:b.pendingProduction});});return {ok:true};
   }
-  if(route==='/api/economy'&&method==='GET')return operationsView(db,url.searchParams.get('companyId'));
+  if(route==='/api/economy'&&method==='GET'){
+   const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
+   const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
+   if(profile.role==='admin'||assigned)await initializeOperations(db,cid);
+   return operationsView(db,cid);
+  }
   if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
   if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
    const b=JSON.parse(options.body||'{}');
