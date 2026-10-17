@@ -137,7 +137,8 @@ test('unverified and non-school users cannot register or read market; existing a
 test('direct Firebase client uses transactions and preserves authorization',async()=>{
  const {createClientApi}=await import('../../client/data.js');
  const make=(uid,role='student')=>createClientApi({db:environment.authenticatedContext(uid,{email:role==='admin'?'admin@gmail.com':'student@hcu.hs.kr',email_verified:role!=='admin'}).firestore(),getUser:async()=>({uid,getIdTokenResult:async()=>({claims:{email:role==='admin'?'admin@gmail.com':'student@hcu.hs.kr',email_verified:role!=='admin'}})})});
- const student=make('pages-student');await student('/api/register',{method:'POST',body:JSON.stringify({displayName:'Pages student'})});
+ const student=make('pages-student');await assert.rejects(student('/api/me'),{code:'registration-required'});
+ await student('/api/register',{method:'POST',body:JSON.stringify({displayName:'Pages student'})});
  assert.equal((await student('/api/portfolio')).cash,1000000);
  await student('/api/register',{method:'POST',body:JSON.stringify({displayName:'Other name'})});
  await assert.rejects(student('/api/admin/news'),/관리자/);
@@ -147,5 +148,6 @@ test('direct Firebase client uses transactions and preserves authorization',asyn
  assert.ok((await student('/api/news')).news.some(n=>n.id==='pages-news'&&typeof n.publishedAt==='string'));
  await admin('/api/admin/users',{method:'POST',body:JSON.stringify({id:'pages-student',displayName:'Forged',role:'president',active:false,companyIds:['test']})});
  await assert.rejects(student('/api/portfolio'),/비활성/);
+ await assert.rejects(student('/api/me'),error=>error.code!=='registration-required'&&error.message.includes('비활성'));
  const saved=await getDoc(doc(environment.authenticatedContext('operator',{email:'admin@gmail.com',email_verified:false}).firestore(),'users/pages-student'));assert.equal(saved.data().displayName,'Pages student');
 });

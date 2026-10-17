@@ -4,7 +4,7 @@ import {createClientApi} from './data.js';
 import {initializeApp} from 'firebase/app';
 import {
   getAuth, setPersistence, browserSessionPersistence,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut, updateProfile
 } from 'firebase/auth';
 
 let auth;
@@ -37,17 +37,19 @@ export async function login(email, password) {
   await signInWithEmailAndPassword(auth, email, password);
   generation++;
 }
-export async function signup(email, password) {
+export async function signup(email, password, displayName='') {
   if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(email.trim()))throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');
   await ensure();
   await createUserWithEmailAndPassword(auth, email, password);
   generation++;
+  // Keep the pending student's name with their Auth account across tabs/devices.
+  if(displayName.trim())await updateProfile(auth.currentUser,{displayName:displayName.trim().slice(0,80)});
 }
 export async function verificationStatus(refresh=false) {
   await ensure();
   if(!auth.currentUser)return null;
   if(refresh){await reload(auth.currentUser);await auth.currentUser.getIdToken(true);}
-  return {email:auth.currentUser.email,verified:auth.currentUser.emailVerified};
+  return {email:auth.currentUser.email,verified:auth.currentUser.emailVerified,displayName:auth.currentUser.displayName||''};
 }
 export async function sendVerification() {
   await ensure();

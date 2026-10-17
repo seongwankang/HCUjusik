@@ -17,7 +17,8 @@ test('restoration finishes before private reads; reload retains login and logout
      export const browserSessionPersistence={type:'SESSION'};
      export function getAuth(){f.currentUser=null;return {app:{},get currentUser(){return f.currentUser},authStateReady:()=>new Promise(resolve=>{f.restore=()=>{f.currentUser=f.saved;resolve()}})}}
      export async function setPersistence(auth,p){if(p.type!=='SESSION')throw Error('Wrong persistence')}
-     export async function signInWithEmailAndPassword(){f.currentUser=f.saved={uid:'synthetic-student',getIdToken:async()=>'fixture-token'}}
+     export async function signInWithEmailAndPassword(auth,email){f.currentUser=f.saved={uid:'synthetic-student',email,emailVerified:false,displayName:'',getIdToken:async()=>'fixture-token'}}
+     export async function updateProfile(user,profile){Object.assign(user,profile)}
      export async function signOut(){f.currentUser=f.saved=null}
      export const createUserWithEmailAndPassword=signInWithEmailAndPassword;
      export async function sendEmailVerification(){} export async function reload(){}
@@ -37,5 +38,8 @@ test('restoration finishes before private reads; reload retains login and logout
   await restore();assert.equal((await pending).uid,'synthetic-student');
   await auth.logout();assert.equal(fixture.saved,null);
   auth=await page();pending=auth.dataRequest('/api/me');await restore();assert.equal(await pending,null);
+  await auth.signup('student@hcu.hs.kr','synthetic','홍학생');
+  auth=await page();pending=auth.verificationStatus(true);await restore();
+  assert.deepEqual(await pending,{email:'student@hcu.hs.kr',verified:false,displayName:'홍학생'});
  }finally{globalThis.fetch=originalFetch;globalThis.document=originalDocument;delete globalThis.__sessionFixture;}
 });

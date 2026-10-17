@@ -27,7 +27,8 @@ export function createClientApi({db,getUser}){
    await runTransaction(db,async t=>{const u=doc(db,'users',user.uid),p=doc(db,'portfolios',user.uid);const old=await t.get(u);if(old.exists())return;t.set(u,{displayName:b.displayName.trim(),role:'student',active:true});t.set(p,{cash:1000000,holdings:[],version:0});});
    return {ok:true,registered:true};
   }
-  if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+  if(!profile){const error=new Error('학생 가입을 마무리해 주세요.');error.code='registration-required';throw error;}
+  if(profile.active!==true)message('비활성화된 참가 계정입니다. 관리자에게 문의하세요.');
   if(route==='/api/rankings-publish'&&method==='POST'){if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');await publishCashRankings(db);return {ok:true};}
   if(route==='/api/rankings'&&method==='GET'){
    const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies')]);
