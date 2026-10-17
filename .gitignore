@@ -18,3 +18,5 @@ firestore-debug.log
 docs/local-verification.txt
 
 dist/
+
+gha-creds-*.json

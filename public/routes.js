@@ -1,4 +1,4 @@
-const pages=['dashboard','market','news','portfolio','management','admin'];
+const pages=['dashboard','market','news','portfolio','management','admin','rankings'];
 export function parseRoute(hash){
  const article=/^#\/(news|event)\/([A-Za-z0-9_-]{1,128})$/.exec(hash);if(article)return {page:'article',articleId:article[2],articleKind:article[1]};
  const match=/^#\/company\/([A-Za-z0-9_-]{1,128})$/.exec(hash);

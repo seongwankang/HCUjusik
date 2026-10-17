@@ -1,0 +1,31 @@
+name: Daily settlement and rankings
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: daily-economy
+  cancel-in-progress: false
+jobs:
+  settle:
+    if: vars.ECONOMY_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.ECONOMY_WIF_PROVIDER }}
+          service_account: ${{ vars.ECONOMY_SERVICE_ACCOUNT }}
+      - run: node scripts/build-jobs.mjs
+      - run: node .generated-scheduled-job.mjs
+        env:
+          FIREBASE_PROJECT_ID: hcujusik

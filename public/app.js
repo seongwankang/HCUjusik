@@ -1,3 +1,4 @@
+import {showRankings} from './rankings.js';
 import {showArticle} from './news.js';
 import {showManagement} from './management.js';
 import {parseRoute,companyRoute,articleRoute} from './routes.js';
@@ -19,7 +20,7 @@ async function getJSON(url,options={}) {
 }
 
 function navigate(page,writeRoute=true) {
-  if (!['dashboard','market','news','portfolio','management','admin','company','article'].includes(page)) return;
+  if (!['dashboard','market','news','portfolio','management','admin','company','article','rankings'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')return;
   if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
   closeTrading();
@@ -28,9 +29,10 @@ function navigate(page,writeRoute=true) {
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
   $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page==='article'?'news':page)));
   document.querySelectorAll('.workspace-tabs button').forEach(el=>el.classList.toggle('selected',el.dataset.goto===(page==='company'?'market':page)));
-  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래',article:'뉴스 상세'}[page];
+  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래',article:'뉴스 상세',rankings:'순위표'}[page];
   document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
+  if(page==='rankings')loadRankings();
   if(page==='management') loadManagement();
   if(page==='news')refreshNews();
   window.scrollTo({top:0,behavior:'instant'});
@@ -97,6 +99,8 @@ window.addEventListener('hashchange',applyRoute);
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
 }
+let rankingsRead=0;
+async function loadRankings(){const host=$('#rankings-content'),uid=state.user?.id,read=++rankingsRead;if(!uid){host.innerHTML=loginPrompt('로그인하면 개인·종목 순위를 확인할 수 있습니다.');return;}await showRankings(host,getJSON,state.user,()=>read===rankingsRead&&state.page==='rankings'&&state.user?.id===uid);}
 let portfolioRead=0;
 async function loadPortfolio() {
  const target=$('#portfolio-content'),uid=state.user?.id,read=++portfolioRead;
@@ -166,7 +170,7 @@ $('#account-button').addEventListener('click',async()=>{
   closeTrading();
   try {await logout();}catch(e){alert(e.message);return;}
   ++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
-  if(state.page==='portfolio')loadPortfolio();
+  if(state.page==='portfolio')loadPortfolio();if(state.page==='rankings')loadRankings();
   if(state.page==='management')loadManagement();if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind);}
   if(state.page==='company')showCompany(state.companyId,false);
 });

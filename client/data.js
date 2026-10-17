@@ -1,6 +1,7 @@
 import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
 import {investorSnapshot} from './investor.js';
+import {allRows,priceRankings,publishCashRankings} from './rankings.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -26,6 +27,12 @@ export function createClientApi({db,getUser}){
    return {ok:true,registered:true};
   }
   if(profile?.active!==true)message('행사 참가 계정이 등록되지 않았거나 비활성화되었습니다.');
+  if(route==='/api/rankings-publish'&&method==='POST'){if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');await publishCashRankings(db);return {ok:true};}
+  if(route==='/api/rankings'&&method==='GET'){
+   const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies')]);
+   const books=await Promise.all(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>get('sparkBooks/'+c.id)));
+   return {cash,myCash:account?.cash??1000000,prices:priceRankings(companies,books.filter(Boolean))};
+  }
   if(route==='/api/news-detail'&&method==='GET'){const id=url.searchParams.get('id');if(!newsId(id))message('뉴스 주소를 확인하세요.');const news=await get((url.searchParams.get('kind')==='event'?'events/':'news/')+id);if(!news)message('뉴스가 없거나 삭제되었습니다.');return {news};}
   if(route==='/api/news-comments'&&method==='GET'){const cursor=url.searchParams.get('cursor');return readComments(db,user.uid,url.searchParams.get('id'),cursor?JSON.parse(cursor):null);}
   if(method==='POST'&&['/api/news-comment','/api/news-vote','/api/news-comment-delete'].includes(route)){
