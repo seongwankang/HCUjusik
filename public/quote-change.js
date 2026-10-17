@@ -1,0 +1,2 @@
+import {dayChange} from '../client/market-session.js';
+export function renderDayChange(company,current=company.currentPrice){const el=document.querySelector('#company-change');if(!el)return;const change=dayChange(current,company.previousClose);el.dataset.direction=change?.direction||'flat';if(!change){el.textContent='전일 대비 —';return;}const sign=change.amount>0?'+':'';el.textContent=(company.closeKind==='initial'?'초기 기준가 대비 ':'전일 대비 ')+sign+change.amount.toLocaleString('ko-KR')+'원 ('+sign+change.percent.toFixed(2)+'%)';}

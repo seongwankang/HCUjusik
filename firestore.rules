@@ -270,6 +270,10 @@ service cloud.firestore {
         accountAdvanced(b.uid,cid) && orderAdvanced(b,cid,d.version) &&
         (issuer || (get(/databases/$(database)/documents/users/$(s.uid)).data.active == true && accountAdvanced(s.uid,cid) && orderAdvanced(s,cid,d.version)));
     }
+    function marketOpen() {
+      let minute=(int(request.time.toMillis() / 60000)+540)%1440;
+      return minute >= 540 && minute < 1260;
+    }
     match /sparkBooks/{cid} {
       allow get: if sparkId(cid) && participant();
       allow create: if sparkId(cid) && participant() && request.resource.data == {
@@ -284,9 +288,9 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders','version','lastAction','updatedAt','treasuryShares','issuerCash','lastPrice']) &&
         request.resource.data.version == resource.data.version+1 && request.resource.data.version <= 1000000000 &&
         request.resource.data.updatedAt == request.time && request.resource.data.lastAction.actor == request.auth.uid &&
-        ((request.resource.data.lastAction.kind == 'place' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && placeBook(cid,request.resource.data,resource.data)) ||
+        ((request.resource.data.lastAction.kind == 'place' && marketOpen() && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && placeBook(cid,request.resource.data,resource.data)) ||
          (request.resource.data.lastAction.kind == 'cancel' && cancelBook(cid,request.resource.data,resource.data)) ||
-         (request.resource.data.lastAction.kind == 'fill' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && fillBook(cid,request.resource.data,resource.data)));
+         (request.resource.data.lastAction.kind == 'fill' && marketOpen() && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && fillBook(cid,request.resource.data,resource.data)));
       allow list,delete: if false;
     }
     function reserveChange(uid,cid,d,o,a) {
