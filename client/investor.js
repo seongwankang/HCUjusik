@@ -3,7 +3,7 @@ import {staffCapacity,researchBps} from './business-policy.js';
 import {initialOperations,koreaDay} from './economy.js';
 
 export function investorSnapshot({companyId,ops,book,account,effects=[],events=[]},now=Date.now()){
- const o=ops||initialOperations(),day=koreaDay(now),tomorrowAt=(day+1)*86400000-32400000;
+ const o=ops||initialOperations(),day=koreaDay(now),tomorrowAt=(day+1)*86400000;
  const unclassified=needsProduction(o),tomorrow=unclassified?null:adjustedRevenue(o,day+1,effects,tomorrowAt);
  const sold=book?book.issuedShares-book.treasuryShares:0,rate=o.dividendBps;
  const perShare=tomorrow&&sold>0?Number(BigInt(tomorrow.revenue)*BigInt(rate)/10000n/BigInt(sold)):0;
