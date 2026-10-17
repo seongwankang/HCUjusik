@@ -20,6 +20,6 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
  const leadership=(await db.doc('companyLeadership/main').get()).data();
  const board=(await db.doc('leaderboards/cash').get()).data(),last=board?.updatedAt?.toMillis?.()||0;
  // Avoid rereading every participant on each settlement retry (Spark quota).
- result.rankingsUpdated=!!(result.settled||result.resumed||!leadership||!last||now-last>=3600000);
+ result.rankingsUpdated=!!(result.settled||result.resumed||!leadership||board?.entries?.some(r=>!Number.isSafeInteger(r.totalValue))||!last||now-last>=3600000);
  if(result.rankingsUpdated){await publish(db);await publishLeadership(db);}return result;
 }
