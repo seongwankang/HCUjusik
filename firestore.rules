@@ -491,13 +491,17 @@ service cloud.firestore {
         number(request.resource.data.employeeCost,100000000) && request.resource.data.employeeCost > 0 && number(request.resource.data.employeeRevenue,100000000) && request.resource.data.employeeRevenue > 0;
       allow list,delete: if false;
     }
+    function dividendRate(cid,d,o) {
+      return manager(cid) && !o.locked && d.diff(o).affectedKeys().hasOnly(['dividendBps']) && number(d.dividendBps,10000);
+    }
     match /companyOperations/{cid} {
       allow get: if participant();
       allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
         {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':0,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
-      // buy configured assets with actual issuer funds, never mint cash.
+      // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if admin() ? operationData(request.resource.data) :
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dividendBps']) ? dividendRate(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingEvent']) ? choiceOperation(cid,request.resource.data,resource.data) :
         investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
