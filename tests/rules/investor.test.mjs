@@ -2,9 +2,9 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,getDocs,collection,query,limit,Timestamp,updateDoc} from 'firebase/firestore';
+import {doc,setDoc,getDoc,getDocs,collection,query,limit,Timestamp,updateDoc,writeBatch,serverTimestamp,deleteDoc} from 'firebase/firestore';
 import {createClientApi} from '../../client/data.js';
-import {initialOperations} from '../../client/economy.js';
+import {initialOperations,invest,koreaDay} from '../../client/economy.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let env,db,api;
 before(async()=>{
@@ -32,4 +32,29 @@ test('student investor reads applied effects and own estimated dividends; query 
  await assertFails(getDocs(collection(db,'companyEffects/one/items')));
  assert.equal((await getDocs(query(collection(db,'companyEffects/one/items'),limit(100)))).size,1);
  const missing=await api('/api/company-investor?companyId=two');assert.equal(missing.initialized,false);assert.equal((await getDoc(doc(db,'companyOperations/two'))).exists(),false);
+});
+
+test('student sees actual event results and president investments; records cannot be forged, edited or removed',async()=>{
+ const cid='ledger',at=Timestamp.fromMillis(Date.now()-10000);
+ await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();
+  await setDoc(doc(d,'users/boss'),{displayName:'사장',role:'president',active:true});await setDoc(doc(d,'assignments/boss'),{companyIds:[cid]});
+  await setDoc(doc(d,'companies',cid),{name:'기록 기업',status:'listed',referencePrice:10000,issuedShares:1000});
+  await setDoc(doc(d,'companyOperations',cid),initialOperations());await setDoc(doc(d,'sparkBooks',cid),{issuerCash:10000000,issuedShares:1000,treasuryShares:1000});
+  await setDoc(doc(d,'events/support-ledger'),{title:'실제 지원금',type:'random',startsAt:at});
+  await setDoc(doc(d,'companyEffects',cid,'items','support-ledger'),{effect:{kind:'cash',amount:1000000},result:{amount:1000000},appliedAt:at,effectiveAt:at});
+  await setDoc(doc(d,'events/unapplied-ledger'),{title:'미공개 결과',type:'choice',startsAt:at});await setDoc(doc(d,'eventOutcomes/unapplied-ledger/options/0'),{effect:{kind:'cash',amount:999999}});
+ });
+ const boss=env.authenticatedContext('boss',{email:'boss@hcu.hs.kr',email_verified:true}).firestore();
+ await invest(boss,cid,'factory');await invest(boss,cid,'employee');
+ const records=await getDocs(query(collection(db,'companyOperations',cid,'investments'),limit(30)));assert.equal(records.size,2);
+ const result=await api('/api/company-investor?companyId='+cid);assert.equal(result.recentHistory.length,3);assert.ok(result.recentHistory.some(r=>r.title==='공장 1개 건설'&&r.description.includes('2,000,000원')));assert.ok(result.recentHistory.some(r=>r.title==='직원 1명 채용'&&r.description.includes('100,000원')));assert.ok(result.recentHistory.some(r=>r.title==='실제 지원금'));assert.equal(JSON.stringify(result.recentHistory).includes('미공개 결과'),false);
+ await assertFails(getDocs(collection(db,'companyOperations',cid,'investments')));
+ const existing=doc(boss,'companyOperations',cid,'investments',records.docs[0].id);await assertFails(updateDoc(existing,{cost:1}));await assertFails(deleteDoc(existing));await assertFails(setDoc(doc(db,'companyOperations',cid,'investments','student-fake'),{asset:'factory',quantity:1,cost:1,createdAt:serverTimestamp(),activeFromDay:koreaDay()+1}));
+ const o=(await getDoc(doc(boss,'companyOperations',cid))).data();
+ const patch={lastInvestment:'forged-record',factory:o.factory+1,cash:o.cash-1,pendingRevenue:o.pendingRevenue+400000,pendingProduction:{...o.pendingProduction,factory:o.pendingProduction.factory+400000}};
+ const batch=writeBatch(boss);batch.set(doc(boss,'companyOperations',cid,'investments','forged-record'),{asset:'factory',quantity:1,cost:1,createdAt:serverTimestamp(),activeFromDay:koreaDay()+1});batch.update(doc(boss,'companyOperations',cid),patch);await assertFails(batch.commit());
+ await assertFails(updateDoc(doc(boss,'companyOperations',cid),{...patch,lastInvestment:'missing-record',cash:o.cash-2000000}));
+ assert.equal((await getDocs(query(collection(db,'companyOperations',cid,'investments'),limit(30)))).size,2);assert.equal((await getDoc(doc(boss,'companyOperations',cid))).data().cash,7900000);
+ await env.withSecurityRulesDisabled(async c=>{const term={eventId:'all-discount',percent:-20,startsAt:Date.now()-1000,endsAt:Date.now()+86400000};await updateDoc(doc(c.firestore(),'companyOperations',cid),{costEvents:{factory:term,equipment:term,research:term,employee:term}});});
+ await invest(boss,cid,'research');const discounted=await api('/api/company-investor?companyId='+cid);assert.ok(discounted.recentHistory.some(r=>r.title==='R&D센터 1개 건설'&&r.description.includes('400,000원')));
 });

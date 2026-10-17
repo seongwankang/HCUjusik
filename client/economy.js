@@ -25,14 +25,16 @@ export async function operationsView(db,cid){
 export async function initializeOperations(db,cid){if(!validId(cid))fail('기업을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid);if(!(await t.get(ref)).exists())t.set(ref,initialOperations());});}
 export async function invest(db,cid,asset){
  if(!validId(cid)||!Object.hasOwn(ASSETS,asset))fail('기업과 설비를 확인하세요.');
+ const investmentId=crypto.randomUUID();
  return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs,cs,company]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid)),t.get(doc(db,'economyConfig','main')),t.get(doc(db,'companies',cid))]);
  if(!os.exists()||!bs.exists())fail('주식 판매와 회사 계좌 준비 후 투자하세요.');if(!company.exists()||company.data().status!=='listed')fail('상장 기업만 투자할 수 있습니다.');
  const o=os.data();requireProduction(o);const book=bs.data(),config=effectiveConfig(cs.data());
  if(o.locked)fail('배당 정산 중에는 투자할 수 없습니다.');const day=koreaDay();if(hasPending(o)&&o.pendingDay<=day)fail('이전 설비 매출을 반영하려면 오늘 정산을 먼저 실행하세요.');
- const cash=availableFunds(o,book)-investmentCost(o,config,asset);if(o.pendingEvent)fail('선택한 이벤트 결과를 먼저 적용하세요.');if(asset==='research'&&(o.research>=RESEARCH_LIMIT||researchBps(o)+(o.pendingResearchBps||0)>=3000))fail('R&D센터는 최대 6개입니다.');if(asset==='employee'&&(o.employees||0)>=staffCapacity(o))fail('직원 수용 인원이 부족합니다. 공장·생산 설비를 추가해 정원을 늘리세요.');if(asset!=='employee'&&o[asset]>=1000)fail('설비 보유 한도에 도달했습니다.');if(cash<0)fail('회사 자금이 부족합니다.');
+ const cost=investmentCost(o,config,asset),cash=availableFunds(o,book)-cost;if(o.pendingEvent)fail('선택한 이벤트 결과를 먼저 적용하세요.');if(asset==='research'&&(o.research>=RESEARCH_LIMIT||researchBps(o)+(o.pendingResearchBps||0)>=3000))fail('R&D센터는 최대 6개입니다.');if(asset==='employee'&&(o.employees||0)>=staffCapacity(o))fail('직원 수용 인원이 부족합니다. 공장·생산 설비를 추가해 정원을 늘리세요.');if(asset!=='employee'&&o[asset]>=1000)fail('설비 보유 한도에 도달했습니다.');if(cash<0)fail('회사 자금이 부족합니다.');
  const yieldAmount=['factory','equipment'].includes(asset)?config[asset+'Revenue']:0;
  const pending=productionPool(o,true);if(yieldAmount)pending[asset]+=yieldAmount;
- t.update(ref,{cash,receivedIssuerCash:book.issuerCash,...(asset!=='employee'?{[asset]:o[asset]+1}:{}),
+ t.set(doc(db,'companyOperations',cid,'investments',investmentId),{asset,quantity:1,cost,activeFromDay:day+1,createdAt:serverTimestamp()});
+ t.update(ref,{cash,lastInvestment:investmentId,receivedIssuerCash:book.issuerCash,...(asset!=='employee'?{[asset]:o[asset]+1}:{}),
   pendingRevenue:o.pendingRevenue+yieldAmount,pendingDay:day+1,production:productionPool(o),pendingProduction:pending,
   employees:(o.employees||0)+(asset==='employee'?1:0),staffRevenue:o.staffRevenue||0,
   pendingStaffRevenue:(o.pendingStaffRevenue||0)+(asset==='employee'?config.employeeRevenue:0),

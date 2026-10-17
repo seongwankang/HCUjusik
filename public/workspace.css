@@ -47,3 +47,25 @@ body #admin-editor > .admin-form{padding:0;border:0;border-radius:0}
 body .admin-form input,body .admin-form select,body .admin-form textarea{margin-top:0}
 body .business-overview{display:block}
 body .business-overview > .business-finances{margin-top:0}
+/* Applied management outcomes are readable without opening a news article. */
+body .investor-history{padding:20px;border-top:1px solid var(--edge)}
+body .investor-history-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+body .investor-history-heading h3{margin:0;font-size:15px;color:var(--ink)}
+body .investor-history-heading h3 span{font-size:12px;color:#64748b;margin-left:4px}
+body .investor-history-heading small{font-size:11px;color:#64748b}
+body .investor-history-list{list-style:none;padding:0;margin:0}
+body .investor-history-item{padding:16px 0;border-bottom:1px solid #edf1f6;overflow-wrap:anywhere}
+body .investor-history-item:last-child{border-bottom:0}
+body .investor-history-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px;font-size:11px}
+body .history-kind{color:#475569;font-weight:600}
+body .history-state{background:#f1f5f9;color:#64748b;border-radius:5px;padding:2px 6px}
+body .history-state[data-state="active"]{background:#eaf3ff;color:#2563eb}
+body .history-state[data-state="applied"]{background:#eaf7f0;color:#187451}
+body .investor-history-meta time{margin-left:auto;color:#94a3b8}
+body .investor-history-item>strong{display:block;font-size:14px;color:#172b4d}
+body .investor-history-item>p{margin:5px 0 0;font-size:13px;line-height:1.7;color:#475569}
+body .investor-history-more{padding-top:12px;border-top:1px solid var(--edge)}
+body .investor-history-empty{margin:16px 0 4px;font-size:13px;color:#64748b}
+@media(max-width:780px){body .investor-history{padding:16px}body .investor-history-meta time{margin-left:0}body .investor-history-item{padding:14px 0}}
+body .investor-history-note{font-size:11px;color:#94a3b8;margin:14px 0 0}
+body .history-state[data-state="pending"]{background:#fff6e7;color:#9a6818}
