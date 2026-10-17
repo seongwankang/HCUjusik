@@ -1,3 +1,4 @@
+import {renderDayChange} from './quote-change.js';
 import {showRankings} from './rankings.js';
 import {showArticle} from './news.js';
 import {showManagement} from './management.js';
@@ -40,7 +41,7 @@ function navigate(page,writeRoute=true) {
 
 const quoteText=c=>Number.isSafeInteger(c.currentPrice)?won(c.currentPrice):c.quoteKind==='error'?'조회 실패':'—';
 let quoteRun=0,stopQuotes=()=>{};
-async function startQuotes(){const run=++quoteRun;stopQuotes();stopQuotes=()=>{};if(!state.user)return;const off=await watchCompanyQuotes(state.companies,(id,quote)=>{if(run!==quoteRun)return;const c=state.companies.find(c=>c.id===id);if(!c)return;Object.assign(c,quote);renderCompanies();if(state.page==='company'&&state.companyId===id){$('#company-current-price').textContent=quoteText(c);$('#company-price-label').textContent=c.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';}});if(run!==quoteRun)off();else stopQuotes=off;}
+async function startQuotes(){const run=++quoteRun;stopQuotes();stopQuotes=()=>{};if(!state.user)return;const off=await watchCompanyQuotes(state.companies,(id,quote)=>{if(run!==quoteRun)return;const c=state.companies.find(c=>c.id===id);if(!c)return;Object.assign(c,quote);renderCompanies();if(state.page==='company'&&state.companyId===id){$('#company-current-price').textContent=quoteText(c);renderDayChange(c);$('#company-price-label').textContent=c.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';}});if(run!==quoteRun)off();else stopQuotes=off;}
 function companyMark(name) {return esc(name.slice(0,1));}
 function companyRow(c) {
   return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${quoteText(c)}</strong><small>${c.quoteKind==='initial'?'첫 거래 전 · 초기 판매가':'종목 거래 ↗'}</small></span></button>`;
@@ -88,6 +89,7 @@ function showCompany(id,writeRoute=true) {
   $('#company-president').textContent=c?'사장 · '+((c.presidentNames||[]).join(' · ')||'미배정'):'';
   $('#company-symbol').textContent=c?.ticker||'';$('#company-category').textContent=c?.category||'';
   $('#company-price-label').textContent=c?.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';$('#company-current-price').textContent=c?quoteText(c):'—';
+  renderDayChange(c||{});
   $('#company-listing').textContent=c?(c.status==='listed'?'거래 가능':'거래 준비 / 정지'):'';
   if(!c){$('#company-detail').textContent='';$('#test-trade').innerHTML=state.user?'<div class="placeholder">기업을 찾을 수 없습니다. 전체 종목에서 다시 선택하세요.</div>':loginPrompt('로그인하면 이 기업의 호가와 주문 화면을 사용할 수 있습니다.');return;}
   $('#company-detail').innerHTML=`<dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;

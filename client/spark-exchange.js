@@ -1,4 +1,5 @@
-import {doc,collection,getDoc,getDocs,query,orderBy,limit,runTransaction,increment,serverTimestamp} from 'firebase/firestore';
+import {marketSession,assertMarketOpen,koreaDayStart} from './market-session.js';
+import {doc,collection,getDoc,getDocs,query,where,Timestamp,orderBy,limit,runTransaction,increment,serverTimestamp} from 'firebase/firestore';
 const validCompany=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 const empty=()=>({cash:1000000,reservedCash:0,positions:{},reservedPositions:{},version:0,lastMarket:''});
 const sorted=(orders,side)=>orders.filter(o=>o.side===side).sort((a,b)=>(side==='buy'?b.price-a.price:a.price-b.price)||a.sequence-b.sequence);
@@ -37,9 +38,11 @@ export async function initializeSpark(db,uid,companyId){
  });
 }
 export async function placeSpark(db,uid,b){
+ assertMarketOpen();
  if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!validCompany(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
  const bookRef=doc(db,'sparkBooks',b.companyId),orderRef=doc(db,'sparkAccounts',uid,'orders',b.orderId);
  return transact(db,bookRef,async(t,bookDoc)=>{
+  assertMarketOpen();
   const [accountDoc,old]=await Promise.all([t.get(doc(db,'sparkAccounts',uid)),t.get(orderRef)]);
   if(old.exists()){
    if(['companyId','side','price','quantity'].some(k=>old.data()[k]!==b[k]))throw new Error('같은 주문 번호의 내용이 다릅니다.');
@@ -58,8 +61,10 @@ export async function placeSpark(db,uid,b){
  });
 }
 export async function matchSpark(db,uid,companyId,{recordPublic=true}={}){
+ if(!marketSession().open)return false;
  const bookRef=doc(db,'sparkBooks',companyId),fillId=crypto.randomUUID();
  return transact(db,bookRef,async(t,snapshot)=>{
+  if(!marketSession().open)return false;
   const book=snapshot.data();if(!book)return false;
   const match=crossing(book);if(!match)return false;
   const {buy,sell,quantity:q,price}=match,version=book.version+1,issuer=sell.id==='issuer';
@@ -95,6 +100,10 @@ export async function marketHistory(db,companyId,max=100){
  try{const snapshot=await getDocs(query(collection(db,'sparkBooks',companyId,'trades'),orderBy('marketVersion','desc'),limit(max)));return {available:true,trades:snapshot.docs.map(d=>d.data())};}
  catch(error){if(error.code==='permission-denied')return {available:false,trades:[]};throw error;}
 }
+export async function previousClose(db,companyId){
+ const result=await getDocs(query(collection(db,'sparkBooks',companyId,'trades'),where('createdAt','<',Timestamp.fromMillis(koreaDayStart())),orderBy('createdAt','desc'),limit(1)));
+ return result.empty?null:result.docs[0].data().price;
+}
 export async function sparkView(db,uid,companyId,role){
  await initializeSpark(db,uid,companyId);
  // Each confirmed pair is independently validated by Rules. No browser or
@@ -107,5 +116,6 @@ export async function sparkView(db,uid,companyId,role){
  const book=bookDoc.data(),orders=ordersDoc.docs.map(d=>d.data());
  for(const o of book.orders.filter(o=>o.uid===uid))if(!orders.some(x=>x.orderId===o.id))orders.push({companyId,orderId:o.id,...o,filled:o.quantity-o.remaining,cancelled:0,status:'open'});
  const levels=side=>{const m=new Map();for(const o of book.orders.filter(o=>o.side===side))m.set(o.price,(m.get(o.price)||0)+o.remaining);if(side==='sell'&&book.treasuryShares)m.set(book.initialPrice,(m.get(book.initialPrice)||0)+book.treasuryShares);return [...m].sort((a,b)=>side==='buy'?b[0]-a[0]:a[0]-b[0]).map(([price,quantity])=>({price,quantity}));};
- return {settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:accountDoc.data(),market:{lastPrice:book.lastPrice,treasuryShares:book.treasuryShares},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:fillsDoc.docs.map(d=>d.data()),mode:'spark-limit-v1',matchError,adminOrders:role==='admin'?book.orders:[]};
+ let close=null,closeKind='unavailable';try{close=await previousClose(db,companyId);closeKind=close?'previous':'initial';close??=book.initialPrice;}catch{}
+ return {marketOpen:marketSession().open,marketHours:marketSession().label,settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:accountDoc.data(),market:{lastPrice:book.lastPrice,treasuryShares:book.treasuryShares,previousClose:close,closeKind},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:fillsDoc.docs.map(d=>d.data()),mode:'spark-limit-v1',matchError,adminOrders:role==='admin'?book.orders:[]};
 }
