@@ -44,3 +44,19 @@ test('overdue choice cannot deadlock a previously interrupted settlement',async(
  const deadline=new Date(Date.now()-1000);await db.doc('events/'+eid).update({endsAt:deadline});await db.doc('eventQueue/'+eid).update({endsAt:deadline});await job.runScheduledEconomy(db);assert.equal((await db.doc('companyOperations/'+cid).get()).data().locked,false);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,true);
  await job.runScheduledEconomy(db);assert.equal((await db.doc('companyOperations/'+cid).get()).data().factory,0);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,false);
 });
+
+test('trusted deadline worker applies new cash, grant, discount and dividend-cap choices idempotently',async()=>{
+ const cid='new-effects';await seed(cid);
+ const endsAt=new Date(Date.now()-1000),startsAt=new Date(Date.now()-2000);
+ const effects=[{kind:'cash',asset:'factory',percent:0,count:0,hours:0,amount:500000},{kind:'grant',asset:'equipment',percent:0,count:1,hours:0},{kind:'cost',asset:'employee',percent:-20,count:0,hours:24},{kind:'dividendCap',asset:'factory',percent:20,count:0,hours:24}];
+ for(let i=0;i<effects.length;i++){
+  const id='expanded-'+i;
+  await db.doc('events/'+id).set({type:'choice',title:id,content:'상황',targets:[cid],options:['1','2','3'],startsAt,endsAt});
+  await db.doc('eventOutcomes/'+id+'/options/0').set({effect:effects[i]});
+  await db.doc('companyChoices/'+cid+'/items/'+id).set({option:0,chosenAt:startsAt});
+  await db.doc('eventQueue/'+id).set({endsAt});
+ }
+ const r=await job.runDueChoiceEvents(db);assert.equal(r.processed,4);assert.equal(r.failed,0);
+ const o=(await db.doc('companyOperations/'+cid).get()).data();assert.equal(o.cash,500000);assert.equal(o.equipment,1);assert.equal(o.revenue,201000);assert.equal(o.costEvents.employee.percent,-20);assert.equal(o.dividendLimit.percent,20);
+ const again=await job.runDueChoiceEvents(db);assert.equal(again.processed,0);assert.equal((await db.doc('companyOperations/'+cid).get()).data().cash,500000);
+});
