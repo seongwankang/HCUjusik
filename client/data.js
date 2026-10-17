@@ -1,3 +1,4 @@
+import {publishLeadership} from './leadership.js';
 import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
 import {investorSnapshot} from './investor.js';
@@ -122,9 +123,10 @@ export function createClientApi({db,getUser}){
      if(data.companyId){const company=await t.get(doc(db,'companies',data.companyId));if(!company.exists())message('대상 기업을 확인하세요.');if(kind==='news')data.companyName=company.data().name;}
      if(kind==='companies'&&body.initial===true){if(old.exists())message('이미 존재하는 기업입니다.');t.set(ref,data);}else{if(kind==='companies'&&!old.exists())message('기업이 없습니다.');t.set(ref,data,{merge:true});}
     }
-   });return {ok:true,id:item.id};
+   });if(kind==='users')await publishLeadership(db);return {ok:true,id:item.id};
   }
   const kind=route.split('/').at(-1);
+  if(method==='GET'&&kind==='companies'){const [companies,leadership]=await Promise.all([list('companies',100,'ticker'),get('companyLeadership/main')]);return {companies:companies.map(c=>({...c,presidentNames:leadership?.companies?.[c.id]||[]}))};}
   if(method==='GET'&&kinds[kind])return {[kind]:await list(kind,kinds[kind][1],kinds[kind][0])};
   if(route==='/api/trading-portfolio'&&method==='GET'){
    const account=await get(`sparkAccounts/${user.uid}`);

@@ -18,3 +18,12 @@ test('only admin publishes projected ranks; student reads snapshot and own cash 
  await assertFails(setDoc(doc(student,'leaderboards/cash'),{entries:[],participants:0,updatedAt:serverTimestamp()}));await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'leaderboards/cash')));
  await assertFails(setDoc(doc(admin,'leaderboards/cash'),{entries:Array.from({length:101},()=>({name:'x',cash:1,rank:1})),participants:101,updatedAt:serverTimestamp()}));
 });
+
+test('company leadership exposes names only and denies student writes and private source reads',async()=>{
+ await setDoc(doc(admin,'companyLeadership/main'),{companies:{one:['사장 이름']},updatedAt:serverTimestamp()});
+ assert.deepEqual((await getDoc(doc(student,'companyLeadership/main'))).data().companies,{one:['사장 이름']});
+ await assertFails(setDoc(doc(student,'companyLeadership/main'),{companies:{one:['위조']},updatedAt:serverTimestamp()}));
+ await assertFails(getDoc(doc(student,'users/other')));await assertFails(getDoc(doc(student,'assignments/other')));
+ await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'companyLeadership/main')));
+ await assertFails(setDoc(doc(admin,'companyLeadership/main'),{companies:{},uid:'private',updatedAt:serverTimestamp()}));
+});

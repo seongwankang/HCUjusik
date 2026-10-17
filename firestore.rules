@@ -49,6 +49,13 @@ service cloud.firestore {
       allow create, update: if admin() && request.resource.data.keys().hasOnly(['companyIds']) && ids(request.resource.data.companyIds);
       allow list, delete: if false;
     }
+    // companyLeadership/main: company ID -> active president display names, no UID/email.
+    function leadershipData(d) { return d.keys().hasOnly(['companies','updatedAt']) && d.companies is map && d.companies.size() <= 1000 && d.updatedAt == request.time; }
+    match /companyLeadership/{id} {
+      allow get: if id == 'main' && participant();
+      allow create, update: if id == 'main' && admin() && leadershipData(request.resource.data);
+      allow list, delete: if false;
+    }
     match /companies/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
