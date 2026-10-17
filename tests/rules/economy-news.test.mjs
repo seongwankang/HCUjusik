@@ -37,7 +37,7 @@ test('IPO proceeds finance only assigned presidents, purchases mature tomorrow, 
  let v=await operationsView(president,cid);assert.equal(v.available,400000);
  await invest(president,cid,'factory');v=await operationsView(president,cid);assert.equal(v.available,300000);assert.equal(v.ops.receivedIssuerCash,400000);assert.equal(v.ops.revenue,0);assert.equal(v.ops.pendingRevenue,5000);assert.equal(v.ops.pendingDay,koreaDay()+1);
  await assertFails(invest(other,cid,'equipment'));await assertFails(invest(student,cid,'equipment'));
- await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:99999999}));await assertFails(updateDoc(doc(president,'companyOperations',cid),{dividendBps:10000}));
+ await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:99999999}));await updateDoc(doc(president,'companyOperations',cid),{dividendBps:10000});
  await invest(president,cid,'equipment');v=await operationsView(president,cid);assert.equal(v.available,250000);assert.equal(v.ops.pendingRevenue,7000);
  await assertFails(getDocs(query(collection(student,'sparkAccounts'),limit(100))));
  await assertFails(getDoc(doc(student,'sparkAccounts/president')));
@@ -62,11 +62,12 @@ test('locked daily settlement snapshots holdings, credits each holder once and r
  await assertFails(setDoc(doc(student,'sparkAccounts/student/dividends/forged'),{companyId:cid,dayId:key,day:koreaDay(),shares:20,amount:99999,createdAt:serverTimestamp()}));
  await placeSpark(student,'student',order('after-settlement',{price:9000,quantity:1}));await cancelSpark(student,'student',{companyId:cid,orderId:'after-settlement'});
 });
-test('API keeps financial configuration and settlement admin-only; old investment yield survives catalog changes',async()=>{
+test('API allows assigned dividend rates but keeps catalog and settlement admin-only; old investment yield survives catalog changes',async()=>{
  await assert.rejects(studentApi('/api/economy-config',{method:'POST',body:JSON.stringify(DEFAULT_CONFIG)}),/관리자/);
  await assert.rejects(studentApi('/api/economy-settle',{method:'POST',body:JSON.stringify({companyId:cid})}),/담당 사장/);
  const pApi=createClientApi({db:president,getUser:async()=>({uid:'president',getIdTokenResult:async()=>({claims})})});
- await assert.rejects(pApi('/api/economy-rate',{method:'POST',body:JSON.stringify({companyId:cid,dividendBps:10000})}),/관리자/);
+ await pApi('/api/economy-rate',{method:'POST',body:JSON.stringify({companyId:cid,dividendBps:10000})});
+ await assert.rejects(pApi('/api/economy-settle',{method:'POST',body:JSON.stringify({companyId:cid})}),/관리자/);
  await api('/api/economy-config',{method:'POST',body:JSON.stringify({...TEST_CONFIG,factoryRevenue:1})});
  const old=(await operationsView(president,cid)).ops;assert.equal(old.revenue,7000);
  await invest(president,cid,'factory');const next=(await operationsView(president,cid)).ops;assert.equal(next.revenue,7000);assert.equal(next.pendingRevenue,1);assert.equal(next.cash,old.cash-100000);

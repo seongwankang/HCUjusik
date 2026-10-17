@@ -79,8 +79,7 @@ export function createClientApi({db,getUser}){
    if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 사용할 수 있습니다.');
    if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
    if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
-   if(profile.role!=='admin')message('일일 정산과 배당률 설정은 관리자만 할 수 있습니다.');
-   if(route==='/api/economy-settle')return settleDay(db,cid);
+   if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');return settleDay(db,cid);}
    if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<0||b.dividendBps>10000)message('배당률은 0~100%로 입력하세요.');
    await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists()||o.data().locked)message('회사 계좌 준비 또는 진행 중인 정산 완료가 필요합니다.');t.update(r,{dividendBps:b.dividendBps});});return {ok:true};
   }
