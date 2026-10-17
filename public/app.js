@@ -25,7 +25,7 @@ async function getJSON(url,options={}) {
 
 function navigate(page,writeRoute=true) {
   if (!['dashboard','market','news','portfolio','management','admin','company','article','rankings'].includes(page)) return;
-  if(page==='admin' && state.user?.role!=='admin')return;
+  if(page==='admin' && state.user?.role!=='admin')page='dashboard';
   if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
   closeTrading();
   state.page = page;document.body.dataset.page=page;
@@ -153,7 +153,6 @@ async function initialLoad() {
   if(results[1].status==='fulfilled')state.news=results[1].value.news;
   else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
   renderCompanies();
-  await startQuotes();
   if(!state.user || results[1].status==='fulfilled')renderNews();
   await startQuotes();
   applyRoute();
@@ -253,4 +252,4 @@ $('#login-form').addEventListener('submit',async(e)=>{
 });
 const adminUI=setupAdmin(getJSON);
 installUpdateNotice(typeof __APP_BUILD__==='string'?__APP_BUILD__:'dev');
-initialLoad();
+initialLoad().then(()=>window.dispatchEvent(new Event('app-ready'))).catch(()=>window.dispatchEvent(new Event('app-startup-error')));

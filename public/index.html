@@ -1,17 +1,48 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-starting>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>청운증권HTS | 모의투자 거래 시스템</title>
   <meta name="description" content="학교 동아리 21개가 기업이 되는 가상 주식시장 행사">
+  <!-- Critical startup styles precede external assets so the default page never flashes. -->
+  <style id="startup-style">
+    html[data-starting] body{margin:0;background:#f4f6fa;overflow:hidden}
+    html[data-starting] body>.layout{visibility:hidden}
+    #app-startup{position:fixed;inset:0;z-index:1000;display:grid;place-content:center;justify-items:center;gap:16px;background:#f4f6fa;color:#172b4d;font:14px/1.6 system-ui,sans-serif;text-align:center;padding:24px}
+    html:not([data-starting]) #app-startup{display:none}
+    #app-startup .startup-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:#2563eb;color:white;font-size:28px;font-weight:700}
+    #app-startup strong{font-size:19px}#startup-message{margin:0;color:#64748b}
+    #startup-retry{border:1px solid #dbe2ec;border-radius:8px;padding:10px 16px;background:white;color:#172b4d;font:inherit;cursor:pointer}
+    #startup-retry[hidden]{display:none!important}
+  </style>
+  <script id="startup-guard">
+    (()=>{
+      const root=document.documentElement;let failed=false,timer;
+      const showFailure=()=>{
+        if(!root.hasAttribute('data-starting'))return;
+        failed=true;clearTimeout(timer);
+        const paint=()=>{document.querySelector('#startup-message').textContent='화면을 불러오지 못했습니다. 다시 시도해 주세요.';document.querySelector('#startup-retry').hidden=false;};
+        if(document.querySelector('#startup-message'))paint();else document.addEventListener('DOMContentLoaded',paint,{once:true});
+      };
+      window.addEventListener('error',event=>{if(event.error||event.target?.tagName==='SCRIPT')showFailure();},true);
+      window.addEventListener('app-startup-error',showFailure);
+      window.addEventListener('app-ready',()=>{if(failed)return;clearTimeout(timer);root.removeAttribute('data-starting');});
+      document.addEventListener('DOMContentLoaded',()=>{
+        document.querySelector('#startup-retry').onclick=()=>location.reload();
+        if(!failed&&root.hasAttribute('data-starting'))timer=setTimeout(()=>{if(root.hasAttribute('data-starting')){document.querySelector('#startup-message').textContent='연결이 지연되고 있어요. 잠시 기다리거나 다시 시도해 주세요.';document.querySelector('#startup-retry').hidden=false;}},15000);
+      },{once:true});
+    })();
+  </script>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./hts.css">
   <link rel="stylesheet" href="./workspace.css">
   <script src="./app.js" type="module"></script>
 </head>
 <body>
+  <div id="app-startup" role="status" aria-live="polite"><span class="startup-mark" aria-hidden="true">C</span><strong>청운증권HTS</strong><p id="startup-message">화면을 준비하고 있어요.</p><button id="startup-retry" type="button" hidden>다시 불러오기</button></div>
+  <noscript><style>#app-startup{display:none}</style><p style="padding:32px;font-family:system-ui">사이트를 이용하려면 브라우저에서 자바스크립트를 허용해 주세요.</p></noscript>
   <div class="layout">
     <header class="sidebar" aria-label="주 메뉴">
       <div class="brand"><span class="brand-mark">C<span>↗</span></span><div><strong>청운증권<span class="brand-hts">HTS</span></strong><small>CHEONGUN SECURITIES</small></div></div>
