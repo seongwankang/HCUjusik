@@ -59,3 +59,7 @@ body[data-page="rankings"] .instrument-rail{display:none}body[data-page="ranking
 .company-heading #company-president{margin-top:10px;font-size:13px;font-weight:600;color:var(--ink,#30283b)}
 
 #company-change{font-size:13px;font-weight:600}#company-change[data-direction="up"]{color:#d34141}#company-change[data-direction="down"]{color:#286bc1}#company-change[data-direction="flat"]{color:#777}
+
+/* Current price, daily change and trading status occupy separate grid cells. */
+.company-quote #company-change{grid-column:1;grid-row:3;background:transparent;padding:2px 0 0;border-radius:0;font-size:13px;line-height:1.5;white-space:nowrap}
+.company-quote #company-listing{grid-column:2;grid-row:1 / 4;align-self:center;justify-self:start}
