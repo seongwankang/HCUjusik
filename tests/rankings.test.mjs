@@ -19,3 +19,12 @@ test('daily settlement becomes due at exactly 09:00 Korean time',()=>{
  assert.equal(settlementDue(Date.parse('2026-10-17T14:59:59Z')),true);
  assert.equal(settlementDue(Date.parse('2026-10-17T15:00:00Z')),false);
 });
+
+test('asset rankings use cash plus current holdings without double counting reservations',()=>{
+ const users=[{id:'a',displayName:'가',role:'student',active:true},{id:'b',displayName:'나',role:'student',active:true}];
+ const accounts=[{id:'a',cash:500000,reservedCash:100000,positions:{one:100},reservedPositions:{one:80}},{id:'b',cash:1500000}];
+ const companies=[{id:'one',referencePrice:10000}];
+ const r=cashRankings(users,accounts,companies,[{id:'one',lastPrice:20000}]);assert.equal(r.entries[0].name,'가');assert.equal(r.entries[0].stockValue,2000000);assert.equal(r.entries[0].totalValue,2500000);assert.equal(r.entries[0].cash,500000);assert.equal('positions' in r.entries[0],false);
+ const initial=cashRankings(users,accounts,companies,[]);assert.equal(initial.entries[0].totalValue,1500000);assert.deepEqual(initial.entries.map(x=>x.rank),[1,1]);
+ assert.throws(()=>cashRankings(users,accounts,[],[]),/가격/);
+});
