@@ -1,5 +1,7 @@
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
-import {validateEffect,destruction,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
+import {validateEffect,eventMutation,NEW_EFFECTS,currentEffect,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
+import {effectiveConfig} from './business-policy.js';
+import {initializeOperations} from './economy.js';
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 const fail=s=>{throw new Error(s);};
 export async function effectRecords(db,cid){
@@ -29,7 +31,7 @@ export async function chooseEvent(db,cid,eid,option){
  await runTransaction(db,async t=>{const ref=doc(db,'companyChoices',cid,'items',eid),[old,os,event]=await Promise.all([t.get(ref),t.get(doc(db,'companyOperations',cid)),t.get(doc(db,'events',eid))]);if(old.exists()){if(old.data().option!==option)fail('이미 선택했습니다. 선택은 변경할 수 없습니다.');return;}if(!event.exists()||event.data().type!=='choice'||event.data().endsAt.toMillis()<=Date.now())fail('선택 기간이 마감되었습니다.');if(!os.exists())fail('회사 계좌를 먼저 준비하세요.');if(os.data().locked)fail('배당 정산 완료 후 선택하세요.');t.set(ref,{option,chosenAt:serverTimestamp()});});
  return {selected:true};
 }
-export async function applyEvent(db,cid,eid,option=0){
+export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
  if(!valid(cid)||!valid(eid))fail('이벤트 주소를 확인하세요.');
  return runTransaction(db,async t=>{
   const receipt=doc(db,'companyEffects',cid,'items',eid),ops=doc(db,'companyOperations',cid);
@@ -38,10 +40,15 @@ export async function applyEvent(db,cid,eid,option=0){
   const n=event.data();if(n.type==='choice'&&n.endsAt.toMillis()>Date.now())fail('선택 마감 후 결과가 공개되고 적용됩니다.');if(!n.targets.includes(cid))fail('대상 기업이 아닙니다.');
   const selected=n.type==='choice'?await t.get(doc(db,'companyChoices',cid,'items',eid)):null;
   const outcome=await t.get(doc(db,'eventOutcomes',eid,'options',String(option)));const effect=outcome.data()?.effect;if(!effect)fail('이벤트 결과가 없습니다.');
-  if(os.exists()&&['destroy','efficiency'].includes(effect.kind))requireProduction(os.data());
+  if(NEW_EFFECTS.includes(effect.kind)&&!operator)return {queued:true};
+  const [config,book]=NEW_EFFECTS.includes(effect.kind)?await Promise.all([t.get(doc(db,'economyConfig','main')),t.get(doc(db,'sparkBooks',cid))]):[null,null];
+  if(!os.exists()&&NEW_EFFECTS.includes(effect.kind))fail('회사 경영 계좌 준비 후 이벤트를 다시 적용하세요.');
+  if(os.exists()&&['destroy','efficiency','grant'].includes(effect.kind))requireProduction(os.data());
   if(os.exists()&&os.data().locked)fail('배당 정산 완료 후 결과 적용을 다시 눌러 주세요. 선택은 저장되어 있습니다.');
-  if(os.exists())t.update(ops,{...(effect.kind==='destroy'?destruction(os.data(),effect):{}),lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
-  t.set(receipt,{option,effect,appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
+  const patch=os.exists()?eventMutation(os.data(),effect,{config:config?effectiveConfig(config.data()):null,book:book?.data(),eventId:eid,effectiveAt:(n.type==='choice'?n.endsAt:n.startsAt).toMillis()}):{};
+  const result=effect.kind==='cash'?{amount:patch.cash-(os.data().cash+(book?.data()?.issuerCash||0)-os.data().receivedIssuerCash)}:effect.kind==='workforce'?{count:patch.employees-(os.data().employees||0)}:effect.kind==='grant'?{count:patch[effect.asset]-os.data()[effect.asset]}:null;
+  if(os.exists())t.update(ops,{...patch,lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
+  t.set(receipt,{option,effect,...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
  });
 }
 export async function eventCompanyView(db,cid){
@@ -49,11 +56,11 @@ export async function eventCompanyView(db,cid){
  const [events,effects]=await Promise.all([getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))),effectRecords(db,cid)]);
  const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await getDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
  const os=await getDoc(doc(db,'companyOperations',cid));const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
- return {choices,effects:effects.map(r=>({...r,title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection};
+ return {choices,effects:effects.map(r=>({...r,active:currentEffect(os.data()||{},r),title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection};
 }
 export async function applyRandomEvent(db,eid){
  const s=await getDoc(doc(db,'events',eid));if(!s.exists()||s.data().type!=='random')fail('랜덤 이벤트를 선택하세요.');
- const failed=[];let applied=0;for(const cid of s.data().targets){try{await applyEvent(db,cid,eid);applied++;}catch(e){failed.push({companyId:cid,message:e.message});}}
+ const failed=[];let applied=0;for(const cid of s.data().targets){try{await initializeOperations(db,cid);await applyEvent(db,cid,eid);applied++;}catch(e){failed.push({companyId:cid,message:e.message});}}
  return {applied,failed};
 }
 

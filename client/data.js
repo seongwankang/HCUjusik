@@ -55,7 +55,7 @@ export function createClientApi({db,getUser}){
     if(profile.role!=='admin')message('관리자만 이벤트를 발행할 수 있습니다.');
     return route==='/api/event-publish'?publishEvent(db,b):route==='/api/event-close'?closeChoiceEvent(db,b.id):applyRandomEvent(db,b.id);
    }
-   return route==='/api/event-choose'?chooseEvent(db,b.companyId,b.id,b.option):applyEvent(db,b.companyId,b.id,b.option);
+   return route==='/api/event-choose'?chooseEvent(db,b.companyId,b.id,b.option):applyEvent(db,b.companyId,b.id,b.option,{operator:profile.role==='admin'});
   }
   if(route==='/api/economy-production'&&method==='POST'){
    if(profile.role!=='admin')message('관리자만 기존 매출을 분류할 수 있습니다.');const b=JSON.parse(options.body||'{}');

@@ -92,11 +92,13 @@ service cloud.firestore {
     function outcome(eid,option) { return get(/databases/$(database)/documents/eventOutcomes/$(eid)/options/$(string(option))).data.effect; }
     function choice(cid,eid) { return get(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)).data; }
     function effectData(e) {
-      return e.keys().hasOnly(['kind','asset','percent','count','hours']) && e.kind in ['revenue','efficiency','destroy','none'] &&
-        e.asset in ['factory','equipment','research'] && e.percent is int && e.percent >= -100 && e.percent <= 500 &&
-        number(e.count,1000) && number(e.hours,2160) &&
-        (e.kind in ['revenue','efficiency'] ? e.hours > 0 && e.count == 0 : e.hours == 0 && e.percent == 0) &&
-        (e.kind == 'destroy' ? e.count > 0 : e.count == 0);
+      return e.keys().hasAll(['kind','asset','percent','count','hours']) && e.keys().hasOnly(['kind','asset','percent','count','hours','amount']) &&
+        e.kind in ['revenue','efficiency','destroy','none','cash','cost','workforce','grant','dividendCap'] &&
+        (e.kind == 'cost' ? e.asset in ['factory','equipment','research','employee','all'] : e.asset in ['factory','equipment','research']) &&
+        e.percent is int && (e.kind == 'cost' ? e.percent >= -90 && e.percent <= 300 : e.kind == 'dividendCap' ? e.percent >= 0 && e.percent <= 100 : e.kind in ['revenue','efficiency'] ? e.percent >= -100 && e.percent <= 500 : e.percent == 0) &&
+        number(e.hours,2160) && (e.kind in ['revenue','efficiency','cost','dividendCap'] ? e.hours > 0 : e.hours == 0) &&
+        e.count is int && (e.kind == 'workforce' ? e.count >= -1000 && e.count <= 1000 && e.count != 0 : e.kind in ['destroy','grant'] ? e.count > 0 && e.count <= 1000 : e.count == 0) &&
+        (e.kind == 'cash' ? e.amount is int && e.amount >= -100000000 && e.amount <= 100000000 && e.amount != 0 : !('amount' in e));
     }
     match /eventOutcomes/{eid}/options/{option} {
       allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' && request.time >= eventData(eid).endsAt &&
@@ -125,10 +127,10 @@ service cloud.firestore {
     }
     function eventReceipt(cid,eid,d) {
       let e=eventData(eid);
-      return manager(cid) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
-        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt']) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
+      return manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
+        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt','result']) && (!('result' in d) || (admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
         (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
-          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
+          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
     }
     match /companyEffects/{cid}/items/{eid} {
       // Applied outcomes are investor information; unrevealed outcomes stay private.
@@ -426,9 +428,26 @@ service cloud.firestore {
     function tradingUnlocked(cid) {
       return !exists(/databases/$(database)/documents/companyOperations/$(cid)) || operations(cid).locked == false;
     }
+    // Only trusted event operators can set these terms; managers only consume them.
+    function termData(t,minimum,maximum) {
+      return t is map && t.keys().hasAll(['eventId','percent','startsAt','endsAt']) && t.keys().hasOnly(['eventId','percent','startsAt','endsAt']) &&
+        t.eventId is string && t.eventId.matches('^[A-Za-z0-9_-]{1,128}$') && t.percent is int && t.percent >= minimum && t.percent <= maximum &&
+        number(t.startsAt,100000000000000) && number(t.endsAt,100000000000000) && t.endsAt > t.startsAt && t.endsAt <= t.startsAt+7776000000;
+    }
+    function costEventData(m) {
+      return m is map && m.keys().hasOnly(['factory','equipment','research','employee']) &&
+        (!('factory' in m) || termData(m.factory,-90,300)) && (!('equipment' in m) || termData(m.equipment,-90,300)) &&
+        (!('research' in m) || termData(m.research,-90,300)) && (!('employee' in m) || termData(m.employee,-90,300));
+    }
+    function eventCost(o,c,asset) {
+      let t=o.get('costEvents',{}).get(asset,{});
+      let now=request.time.toMillis();
+      let percent=t.get('startsAt',0) <= now && now < t.get('endsAt',0) ? t.percent : 0;
+      return int((c[asset+'Cost']*(100+percent)+99) / 100);
+    }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
-        number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit']) &&
+        costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
@@ -484,7 +503,7 @@ service cloud.firestore {
         d.production == pool(o,false) && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,pool(o,true),asset,yieldAmount) : d.pendingProduction == pool(o,true)) &&
         (asset == 'employee' ? o.get('employees',0) < staffCapacity(o) : d[asset] == o[asset]+1) &&
         (asset != 'research' || (o.research < 6 && researchBps(o)+o.get('pendingResearchBps',0) < 3000)) &&
-        d.cash == o.cash+funding-o.receivedIssuerCash-c[asset+'Cost'] && d.receivedIssuerCash == funding &&
+        d.cash == o.cash+funding-o.receivedIssuerCash-eventCost(o,c,asset) && d.receivedIssuerCash == funding &&
         d.pendingRevenue == o.pendingRevenue+yieldAmount && d.pendingDay == dayNumber()+1 &&
         d.employees == o.get('employees',0)+(asset == 'employee' ? 1 : 0) && d.staffRevenue == o.get('staffRevenue',0) &&
         d.pendingStaffRevenue == o.get('pendingStaffRevenue',0)+(asset == 'employee' ? c.employeeRevenue : 0) &&
@@ -592,6 +611,7 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
+
 
 
 
