@@ -6,8 +6,8 @@ import {initialOperations,dayPlan} from '../client/economy.js';
 import {adjustedRevenue,destruction} from '../client/event-model.js';
 const day=20000,zero={factory:0,equipment:0,research:0};
 const company=()=>({...initialOperations(),factory:2,equipment:2,employees:5,research:1,revenue:370000,staffRevenue:90000,activeResearchBps:500,production:{factory:240000,equipment:130000,research:0},pendingProduction:{...zero}});
-test('1,000-share startup plan costs eight million and earns 1,764,000 next day; stored policy must be v3',()=>{
- assert.deepEqual(startupExample(DEFAULT_CONFIG),{cost:8000000,remaining:2000000,additive:840000,revenue:1764000,perShareAtHalf:882});
+test('1,000-share startup plan mixed ten-million startup earns 3,990,000 next day; stored policy must be v4',()=>{
+ assert.deepEqual(startupExample(DEFAULT_CONFIG),{cost:10000000,remaining:0,additive:1900000,revenue:3990000,perShareAtHalf:1995});
  assert.deepEqual(effectiveConfig({factoryCost:1,researchRevenue:999999}),DEFAULT_CONFIG);
  assert.throws(()=>validateConfig({...DEFAULT_CONFIG,researchBoostBps:1001}));
  assert.throws(()=>validateConfig({...DEFAULT_CONFIG,employeeCost:-1}));
@@ -48,5 +48,18 @@ test('base staffing works without facilities, expands generously, and retains th
  assert.equal(staffCapacity({factory:1000,equipment:1000}),1000);
  assert.equal(previewPurchase({...initialOperations(),employees:10},DEFAULT_CONFIG,'employee',day).allowed,false);
  assert.equal(adjustedRevenue({...initialOperations(),employees:10,staffRevenue:200000},day).revenue,400000);
- assert.deepEqual(effectiveConfig({...DEFAULT_CONFIG,version:2,employeeCost:300000}),DEFAULT_CONFIG);
+ assert.deepEqual(effectiveConfig({...DEFAULT_CONFIG,version:3,employeeCost:300000}),DEFAULT_CONFIG);
+});
+
+test('all affordable ten-million startup mixes stay at or below four million without events',()=>{
+ const c=DEFAULT_CONFIG;let maximum=0;
+ for(let factory=0;factory<=5;factory++)for(let equipment=0;equipment<=10;equipment++)for(let research=0;research<=6;research++){
+  const fixed=factory*c.factoryCost+equipment*c.equipmentCost+research*c.researchCost;
+  if(fixed>10000000)continue;
+  const employees=Math.min(staffCapacity({factory,equipment}),Math.floor((10000000-fixed)/c.employeeCost));
+  const production={factory:factory*c.factoryRevenue,equipment:equipment*c.equipmentRevenue,research:0};
+  const o={...initialOperations(),factory,equipment,research,employees,production,pendingProduction:{...zero},revenue:production.factory+production.equipment,staffRevenue:employees*c.employeeRevenue,activeResearchBps:research*c.researchBoostBps};
+  maximum=Math.max(maximum,dayPlan(o,{issuerCash:10000000,issuedShares:1000,treasuryShares:0},day).revenue);
+ }
+ assert.equal(maximum,4000000);
 });

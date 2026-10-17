@@ -470,8 +470,8 @@ service cloud.firestore {
     function researchBps(o) { return o.get('activeResearchBps',(o.research < 6 ? o.research : 6)*500); }
     function staffCapacity(o) { let n=10+o.factory*25+o.equipment*10; return n < 1000 ? n : 1000; }
     function economyPolicy() {
-      return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 3 ? get(/databases/$(database)/documents/economyConfig/main).data :
-        {'version':3,'factoryCost':2000000,'factoryRevenue':240000,'equipmentCost':1000000,'equipmentRevenue':130000,'researchCost':1500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
+      return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 4 ? get(/databases/$(database)/documents/economyConfig/main).data :
+        {'version':4,'factoryCost':2000000,'factoryRevenue':400000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
     }
     function investment(cid,d,o,asset) {
       let c=economyPolicy();
@@ -492,7 +492,7 @@ service cloud.firestore {
     }
     match /economyConfig/{id} {
       allow get: if id == 'main' && participant();
-      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['version','factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchBoostBps','employeeCost','employeeRevenue']) && request.resource.data.version == 3 &&
+      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['version','factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchBoostBps','employeeCost','employeeRevenue']) && request.resource.data.version == 4 &&
         number(request.resource.data.factoryCost,100000000) && request.resource.data.factoryCost > 0 && number(request.resource.data.factoryRevenue,100000000) && request.resource.data.factoryRevenue > 0 &&
         number(request.resource.data.equipmentCost,100000000) && request.resource.data.equipmentCost > 0 && number(request.resource.data.equipmentRevenue,100000000) && request.resource.data.equipmentRevenue > 0 &&
         number(request.resource.data.researchCost,100000000) && request.resource.data.researchCost > 0 && number(request.resource.data.researchBoostBps,1000) && request.resource.data.researchBoostBps > 0 &&
