@@ -72,7 +72,7 @@ function newsCard(n,compact=false,kind='news') {
 }
 let newsRead=0;
 async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid){renderNews();return;}try{const [n,e]=await Promise.all([getJSON('/api/news'),getJSON('/api/events')]);if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;state.events=e.events;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
-window.addEventListener('admin-saved',e=>{if(e.detail?.kind==='companies')initialLoad();else refreshNews();});
+window.addEventListener('admin-saved',e=>{if(['companies','users'].includes(e.detail?.kind))initialLoad();else refreshNews();});
 function renderNews() {
   if(!state.user){$('#featured-news').textContent='로그인하면 시장 뉴스를 확인할 수 있습니다.';$('#all-news').innerHTML=loginPrompt('학교 계정으로 로그인하면 뉴스와 공지를 확인할 수 있습니다.');return;}
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
