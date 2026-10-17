@@ -44,9 +44,9 @@ export function createClientApi({db,getUser}){
   }
   if(route==='/api/company-investor'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
-   const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc')]);
+   const [company,ops,book,account,effects,events,investments]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc'),list('companyOperations/'+cid+'/investments',20,'createdAt desc')]);
    if(!company)message('기업을 찾을 수 없습니다.');
-   return investorSnapshot({companyId:cid,ops,book,account,effects,events});
+   return investorSnapshot({companyId:cid,ops,book,account,effects,events,investments});
   }
   if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
   if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-close','/api/event-choose','/api/event-apply'].includes(route)){

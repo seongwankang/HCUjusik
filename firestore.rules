@@ -446,8 +446,8 @@ service cloud.firestore {
       return int((c[asset+'Cost']*(100+percent)+99) / 100);
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit']) &&
-        costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment']) &&
+        (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
@@ -495,19 +495,34 @@ service cloud.firestore {
     function investment(cid,d,o,asset) {
       let c=economyPolicy();
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      let record=getAfter(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(d.lastInvestment)).data;
+      let cost=eventCost(o,c,asset);
+      let day=dayNumber();
+      let beforeProduction=o.get('production',{'factory':0,'equipment':0,'research':0});
+      let beforePending=o.get('pendingProduction',{'factory':0,'equipment':0,'research':0});
       let yieldAmount=asset in ['factory','equipment'] ? c[asset+'Revenue'] : 0;
-      return number(d.pendingResearchBps,1000000) && number(d.cash,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingStaffRevenue,1000000000000) && (asset == 'employee' ? number(d.employees,1000) : number(d[asset],1000)) && !o.locked && o.get('pendingEvent','') == '' && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+      return sparkId(d.lastInvestment) && record.asset == asset && record.cost == cost && record.createdAt == request.time && number(d.pendingResearchBps,1000000) && number(d.cash,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingStaffRevenue,1000000000000) && (asset == 'employee' ? number(d.employees,1000) : number(d[asset],1000)) && !o.locked && o.get('pendingEvent','') == '' && manager(cid) && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
         (o.revenue == 0 && o.pendingRevenue == 0 || o.keys().hasAll(['production','pendingProduction'])) &&
-        (o.pendingRevenue+o.get('pendingStaffRevenue',0)+o.get('pendingResearchBps',0) == 0 || o.pendingDay > dayNumber()) &&
-        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',(asset == 'employee' ? 'employees' : asset),'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps']) &&
-        d.production == pool(o,false) && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,pool(o,true),asset,yieldAmount) : d.pendingProduction == pool(o,true)) &&
+        (o.pendingRevenue+o.get('pendingStaffRevenue',0)+o.get('pendingResearchBps',0) == 0 || o.pendingDay > day) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',(asset == 'employee' ? 'employees' : asset),'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','lastInvestment']) &&
+        d.production == beforeProduction && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,beforePending,asset,yieldAmount) : d.pendingProduction == beforePending) &&
         (asset == 'employee' ? o.get('employees',0) < staffCapacity(o) : d[asset] == o[asset]+1) &&
         (asset != 'research' || (o.research < 6 && researchBps(o)+o.get('pendingResearchBps',0) < 3000)) &&
-        d.cash == o.cash+funding-o.receivedIssuerCash-eventCost(o,c,asset) && d.receivedIssuerCash == funding &&
-        d.pendingRevenue == o.pendingRevenue+yieldAmount && d.pendingDay == dayNumber()+1 &&
+        d.cash == o.cash+funding-o.receivedIssuerCash-cost && d.receivedIssuerCash == funding &&
+        d.pendingRevenue == o.pendingRevenue+yieldAmount && d.pendingDay == day+1 &&
         d.employees == o.get('employees',0)+(asset == 'employee' ? 1 : 0) && d.staffRevenue == o.get('staffRevenue',0) &&
         d.pendingStaffRevenue == o.get('pendingStaffRevenue',0)+(asset == 'employee' ? c.employeeRevenue : 0) &&
         d.activeResearchBps == researchBps(o) && d.pendingResearchBps == o.get('pendingResearchBps',0)+(asset == 'research' ? c.researchBoostBps : 0);
+    }
+    function investmentReceipt(cid,id,r) {
+      let o=operations(cid);
+      let d=getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data;
+      let field=r.asset == 'employee' ? 'employees' : r.asset;
+      let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      return manager(cid) && !o.locked && r.keys().hasOnly(['asset','quantity','cost','activeFromDay','createdAt']) &&
+        r.asset in ['factory','equipment','research','employee'] && r.quantity == 1 && number(r.cost,1000000000000) && r.cost > 0 &&
+        r.activeFromDay == dayNumber()+1 && r.createdAt == request.time && d.lastInvestment == id &&
+        d[field] == o.get(field,0)+1 && d.cash == o.cash+funding-o.receivedIssuerCash-r.cost;
     }
     match /economyConfig/{id} {
       allow get: if id == 'main' && participant();
@@ -532,6 +547,12 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
         investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
       allow list,delete: if false;
+      match /investments/{id} {
+        allow get: if participant();
+        allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if sparkId(id) && investmentReceipt(cid,id,request.resource.data);
+        allow update,delete: if false;
+      }
       match /days/{dayId} {
         allow get: if participant();
         allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
