@@ -1,3 +1,4 @@
+import {setupRegistration} from './registration.js';
 import {marketSession} from '../client/market-session.js';
 import {newsCategory} from '../src/news-category.js';
 import {renderDayChange} from './quote-change.js';
@@ -166,11 +167,11 @@ document.addEventListener('click',event=>{
   const company=event.target.closest('button[data-company]');
   if(company)showCompany(company.dataset.company);
   const prompt=event.target.closest('#prompt-login,[data-open-login]');
-  if(prompt)$('#login-dialog').showModal();
+  if(prompt)registration.open();
 });
 $('#company-search').addEventListener('input',renderCompanies);
 $('#account-button').addEventListener('click',async()=>{
-  if(!state.user){$('#login-dialog').showModal();return;}
+  if(!state.user){await registration.open();return;}
   closeTrading();
   try {await logout();}catch(e){alert(e.message);return;}
   ++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
@@ -178,78 +179,10 @@ $('#account-button').addEventListener('click',async()=>{
   if(state.page==='management')loadManagement();if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind);}
   if(state.page==='company')showCompany(state.companyId,false);
 });
-$('#close-login').addEventListener('click',()=>$('#login-dialog').close());
-let signupMode=false;
-function verificationPanel(show){
-  $('#verification-panel').hidden=!show;
-  for(const selector of ['#username','#password','label[for="username"]','label[for="password"]','#auth-submit','#auth-toggle'])$(selector).hidden=show;
-  $('#signup-name-label').hidden=show||!signupMode;
-  $('#signup-warning').hidden=show||!signupMode;
-}
-async function finishLogin(){
-  let data;
-  try{data=await getJSON('/api/me');}
-  catch(error){
-    const status=await verificationStatus();
-    if(!status||!status.verified||!/^[^\s@]+@hcu\.hs\.kr$/i.test(status.email||''))throw error;
-    const name=$('#verification-name').value.trim()||$('#signup-name').value.trim();
-    if(!name)throw new Error('이메일 인증 후 학생 이름을 입력해 주세요.');
-    await getJSON('/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:name})});
-    data=await getJSON('/api/me');
-  }
-  state.user=data.user;await initialLoad();$('#password').value='';
-  verificationPanel(false);$('#login-dialog').close();updateAccountButton();
-  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
-}
-$('#verification-resend').addEventListener('click',async()=>{
-  const b=$('#verification-resend');b.disabled=true;
-  try{await sendVerification();$('#verification-message').textContent='인증 메일을 다시 보냈습니다. 스팸메일함도 확인하세요.';}
-  catch{$('#verification-message').textContent='메일을 보내지 못했습니다. 잠시 후 다시 시도하세요.';}
-  finally{setTimeout(()=>{b.disabled=false;},60000);}
-});
-$('#verification-check').addEventListener('click',async()=>{
-  const b=$('#verification-check');b.disabled=true;
-  try{const status=await verificationStatus(true);if(!status?.verified){$('#verification-message').textContent='아직 인증되지 않았습니다. 메일의 인증 링크를 눌러 주세요.';return;}await finishLogin();}
-  catch(e){$('#verification-message').textContent=e.message;}
-  finally{b.disabled=false;}
-});
-$('#auth-toggle').addEventListener('click',()=>{
-  signupMode=!signupMode;
-  $('#auth-title').textContent=signupMode?'학생 회원가입':'로그인';
-  $('#auth-submit').textContent=signupMode?'회원가입':'로그인';
-  $('#auth-toggle').textContent=signupMode?'이미 가입했나요? 로그인':'처음 오셨나요? 회원가입';
-  $('#auth-description').textContent=signupMode?'학생 계정으로 가입합니다. 사장 역할은 관리자가 지정합니다.':'이메일과 비밀번호로 로그인하세요.';
-  $('#signup-name-label').hidden=!signupMode;
-  $('#signup-name').disabled=!signupMode;
-  $('#signup-name').required=signupMode;
-  $('#signup-warning').hidden=!signupMode;
-  $('#password').minLength=signupMode?6:0;
-  $('#password').autocomplete=signupMode?'new-password':'current-password';
-  $('#login-error').textContent='';
-});
-$('#login-form').addEventListener('submit',async(e)=>{
-  e.preventDefault();
-  $('#login-error').textContent='';
-  const username=$('#username').value.trim().toLowerCase();
-  const password=$('#password').value;
-  const submit=$('#auth-submit');submit.disabled=true;
-  try{
-    if(signupMode){
-      if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(username)){throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');}
-      try{await signup(username,password);}catch(error){if(error.code==='auth/email-already-in-use')await login(username,password);else throw error;}
-    }else await login(username,password);
-    // Existing active admin profiles are exempt; the server decides that exemption.
-    try{await finishLogin();}catch(error){
-      const status=await verificationStatus();
-      if(!status||!/^[^\s@]+@hcu\.hs\.kr$/i.test(status.email||''))throw error;
-      verificationPanel(true);$('#password').value='';$('#auth-title').textContent='이메일 인증';
-      $('#verification-address').textContent=status.email;$('#verification-name').value=$('#signup-name').value;
-      $('#verification-message').textContent=status.verified?error.message:'메일의 인증 링크를 누른 뒤 인증 완료 확인을 눌러 주세요.';
-      if(signupMode&&!status.verified){try{await sendVerification();$('#verification-message').textContent='인증 메일을 보냈습니다. 스팸메일함도 꼭 확인하세요.';}catch{$('#verification-message').textContent='인증 메일을 보내지 못했습니다. 잠시 후 재발송 버튼을 눌러 주세요.';}}
-    }
-  }catch(error){await logout().catch(()=>{});$('#login-error').textContent=signupMode&&error.message.includes('학교 이메일')?error.message:'로그인 또는 가입을 완료하지 못했습니다. 이메일·비밀번호와 참가 상태를 확인하세요.';}
-  finally{submit.disabled=false;}
-});
+const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
+ state.user=user;await initialLoad();updateAccountButton();
+ if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
+}});
 const adminUI=setupAdmin(getJSON);
 installUpdateNotice(typeof __APP_BUILD__==='string'?__APP_BUILD__:'dev');
-initialLoad().then(()=>window.dispatchEvent(new Event('app-ready'))).catch(()=>window.dispatchEvent(new Event('app-startup-error')));
+initialLoad().then(async()=>{if(!state.user)await registration.resume().catch(()=>{});window.dispatchEvent(new Event('app-ready'));}).catch(()=>window.dispatchEvent(new Event('app-startup-error')));
