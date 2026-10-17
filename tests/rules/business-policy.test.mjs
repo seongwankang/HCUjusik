@@ -3,9 +3,9 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
-import {doc,getDoc,setDoc,updateDoc} from 'firebase/firestore';
+import {doc,getDoc,setDoc,updateDoc,Timestamp} from 'firebase/firestore';
 import {initialOperations,initializeOperations,invest,operationsView,settleDay,dayPlan,koreaDay,DEFAULT_CONFIG} from '../../client/economy.js';
-import {publishEvent,chooseEvent} from '../../client/events.js';
+import {publishEvent,chooseEvent,applyEvent} from '../../client/events.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw new Error('Loopback emulator required');
 let env,admin,president,student;const cid='standard-ipo';
 before(async()=>{
@@ -56,7 +56,7 @@ test('policy changes preserve purchased staff yield and R&D points; new purchase
 });
 test('research choice destruction updates both current and pending bonus without refund or double application',async()=>{
  const e={kind:'destroy',asset:'research',count:1};await publishEvent(admin,{id:'rd-damage',type:'choice',title:'R&D 손상',content:'대응하세요',deadline:new Date(Date.now()+86400000).toISOString(),options:[0,1,2].map(i=>({label:'선택 '+i,effect:e}))});
- const before=(await operationsView(president,cid)).ops;await chooseEvent(president,cid,'rd-damage',0);await chooseEvent(president,cid,'rd-damage',0);
+ const before=(await operationsView(president,cid)).ops;await chooseEvent(president,cid,'rd-damage',0);await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'events/rd-damage'),{endsAt:Timestamp.fromMillis(Date.now()-1000)}));await applyEvent(president,cid,'rd-damage',0);await applyEvent(president,cid,'rd-damage',0);
  const o=(await operationsView(president,cid)).ops;assert.equal(o.research,1);assert.equal(o.activeResearchBps,250);assert.equal(o.pendingResearchBps,50);assert.equal(o.cash,before.cash);assert.equal(o.staffRevenue,before.staffRevenue);
  await apiFor(president,'president')('/api/economy?companyId='+cid);await apiFor(admin,'admin')('/api/economy?companyId='+cid);assert.deepEqual((await getDoc(doc(admin,'companyOperations',cid))).data(),o);
 });

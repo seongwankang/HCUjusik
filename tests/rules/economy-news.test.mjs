@@ -19,14 +19,15 @@ before(async()=>{
 });
 after(async()=>env?.cleanup());
 test('news admin publishes, students read, edits preserve ID, general notices clear old company names',async()=>{
- const body={id:'news-test-1',title:'설비 투자 뉴스 <img src=x onerror=alert(1)>',content:'첫째 줄\n둘째 줄',companyId:cid};
- await api('/api/admin/news',{method:'POST',body:JSON.stringify(body)});let n=(await studentApi('/api/news')).news[0];assert.equal(n.id,body.id);assert.equal(n.companyName,'뉴스·경제 테스트');assert.equal(n.content,body.content);assert.ok(Date.parse(n.publishedAt));
+ const body={id:'news-test-1',category:'시장 동향',title:'설비 투자 뉴스 <img src=x onerror=alert(1)>',content:'첫째 줄\n둘째 줄',companyId:cid};
+ await api('/api/admin/news',{method:'POST',body:JSON.stringify(body)});let n=(await studentApi('/api/news')).news[0];assert.equal(n.id,body.id);assert.equal(n.category,'시장 동향');assert.equal(n.companyName,'뉴스·경제 테스트');assert.equal(n.content,body.content);assert.ok(Date.parse(n.publishedAt));
  await api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,title:'수정한 전체 공지',companyId:''})});n=(await studentApi('/api/news')).news[0];assert.equal(n.id,body.id);assert.equal(n.companyName,'');assert.equal(n.companyId,'');assert.equal(n.title,'수정한 전체 공지');
  await assert.rejects(studentApi('/api/admin/news',{method:'POST',body:JSON.stringify(body)}),/관리자/);
  await assertFails(setDoc(doc(student,'news/student-forged'),{...body,publishedAt:serverTimestamp()}));
  await assertFails(setDoc(doc(admin,'news/backdate'),{title:'T',content:'C',companyId:'',companyName:'',publishedAt:new Date(0)}));
  await assert.rejects(api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,title:'',companyId:''})}));
  await assert.rejects(api('/api/admin/news',{method:'POST',body:JSON.stringify({...body,companyId:'missing'})}));
+ await assertFails(setDoc(doc(admin,'news/bad-category'),{title:'T',content:'C',category:'위조 분류',companyId:'',companyName:'',publishedAt:serverTimestamp()}));
  await assertFails(getDocs(collection(student,'news')));
 });
 test('IPO proceeds finance only assigned presidents, purchases mature tomorrow, funds cannot be fabricated',async()=>{
