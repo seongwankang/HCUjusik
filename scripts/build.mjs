@@ -13,7 +13,7 @@ export async function buildSite({outdir=resolve(root,'dist'),publicDir=resolve(r
  const entry=Object.entries(result.metafile.outputs).find(([path,meta])=>meta.entryPoint&&path.endsWith('.js'))[0];
  let html=await readFile(resolve(publicDir,'index.html'),'utf8');
  html=html.replace('./app.js','./'+relative(outdir,resolve(entry)).replaceAll('\\','/'));
- for(const name of ['style.css','hts.css']){
+ for(const name of ['style.css','hts.css','workspace.css']){
   const content=await readFile(resolve(publicDir,name));const hash=createHash('sha256').update(content).digest('hex').slice(0,12),filename=name.replace('.css','-'+hash+'.css');
   await writeFile(resolve(outdir,'assets',filename),content);html=html.replace('./'+name,'./assets/'+filename);
  }

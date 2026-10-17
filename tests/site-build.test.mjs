@@ -14,13 +14,14 @@ test('company URLs survive reload and unknown/unsafe routes do not become docume
 test('HTML loads hashed JS/CSS and dependency edits produce a different entry URL',async()=>{
  const temp=await mkdtemp(join(tmpdir(),'hcujusik-build-test-'));
  try{
-  for(const [name,content]of Object.entries({'index.html':'<link href="./style.css"><link href="./hts.css"><script type="module" src="./app.js"></script>','style.css':'body{color:red}','hts.css':'main{padding:10px}','app.js':'import {value} from "./dependency.js";document.title=value;','dependency.js':'export const value="first";','auth.js':'export const auth="fixture";'}))await writeFile(join(temp,name),content);
+  for(const [name,content]of Object.entries({'index.html':'<link href="./style.css"><link href="./hts.css"><link href="./workspace.css"><script type="module" src="./app.js"></script>','style.css':'body{color:red}','hts.css':'main{padding:10px}','workspace.css':'body{background:white}','app.js':'import {value} from "./dependency.js";document.title=value;','dependency.js':'export const value="first";','auth.js':'export const auth="fixture";'}))await writeFile(join(temp,name),content);
   const options={publicDir:temp,authEntry:join(temp,'auth.js'),outdir:join(temp,'built'),buildId:'test-build'};
   // Keep output separate from public input, as in the real repository.
   options.outdir=await mkdtemp(join(tmpdir(),'hcujusik-build-test-'));
   try{
    const first=await buildSite(options),html=await readFile(join(options.outdir,'index.html'),'utf8');
    assert.ok(html.includes(first.entry));assert.ok(!html.includes('src="./app.js"'));assert.match(html,/assets\/style-[a-f0-9]+\.css/);
+   assert.match(html,/assets\/workspace-[a-f0-9]+\.css/);
    assert.equal(JSON.parse(await readFile(join(options.outdir,'version.json'),'utf8')).buildId,'test-build');
    await writeFile(join(temp,'dependency.js'),'export const value="second";');
    const second=await buildSite(options);assert.notEqual(first.entry,second.entry);
