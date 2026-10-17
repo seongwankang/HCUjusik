@@ -1,3 +1,4 @@
+import {marketSession} from '../client/market-session.js';
 import {newsCategory} from '../src/news-category.js';
 import {renderDayChange} from './quote-change.js';
 import {showRankings} from './rankings.js';
@@ -11,6 +12,7 @@ import {dataRequest, login, signup, logout, sessionVersion, watchCompanyQuotes, 
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+function marketNotice(){const el=document.querySelector('.event-date'),open=marketSession().open;el.dataset.open=String(open);el.innerHTML='<span class="live-dot"></span>'+(open?'장 운영 중 · 21:00 마감':'장 마감 · 09:00 시작');}marketNotice();setInterval(marketNotice,60000);
 const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -31,7 +33,7 @@ function navigate(page,writeRoute=true) {
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
   $$('button[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===(page==='company'?'market':page==='article'?'news':page)));
   document.querySelectorAll('.workspace-tabs button').forEach(el=>el.classList.toggle('selected',el.dataset.goto===(page==='company'?'market':page)));
-  $('#current-title').textContent = {dashboard:'종합화면',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래',article:'뉴스 상세',rankings:'순위표'}[page];
+  $('#current-title').textContent = {dashboard:'홈',market:'주식시장',news:'시장 뉴스',portfolio:'내 자산',management:'기업 경영',admin:'관리자',company:'종목 거래',article:'뉴스 상세',rankings:'순위표'}[page];
   document.title=$('#current-title').textContent+' | 청운증권HTS';
   if(page==='portfolio') loadPortfolio();
   if(page==='rankings')loadRankings();
