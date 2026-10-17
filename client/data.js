@@ -1,6 +1,6 @@
 import {publishLeadership} from './leadership.js';
 import {effectiveConfig} from './business-policy.js';
-import {publishEvent,chooseEvent,applyEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
+import {publishEvent,chooseEvent,applyEvent,closeChoiceEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
 import {investorSnapshot} from './investor.js';
 import {accountAssets,allRows,priceRankings,publishCashRankings} from './rankings.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
@@ -49,11 +49,11 @@ export function createClientApi({db,getUser}){
    return investorSnapshot({companyId:cid,ops,book,account,effects,events});
   }
   if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
-  if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-choose','/api/event-apply'].includes(route)){
+  if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-close','/api/event-choose','/api/event-apply'].includes(route)){
    const b=JSON.parse(options.body||'{}');
-   if(route==='/api/event-publish'||route==='/api/event-random'){
+   if(route==='/api/event-publish'||route==='/api/event-random'||route==='/api/event-close'){
     if(profile.role!=='admin')message('관리자만 이벤트를 발행할 수 있습니다.');
-    return route==='/api/event-publish'?publishEvent(db,b):applyRandomEvent(db,b.id);
+    return route==='/api/event-publish'?publishEvent(db,b):route==='/api/event-close'?closeChoiceEvent(db,b.id):applyRandomEvent(db,b.id);
    }
    return route==='/api/event-choose'?chooseEvent(db,b.companyId,b.id,b.option):applyEvent(db,b.companyId,b.id,b.option);
   }

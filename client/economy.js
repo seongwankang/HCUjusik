@@ -1,7 +1,7 @@
 import {DEFAULT_CONFIG,validateConfig,effectiveConfig,researchBps,hasPending,staffCapacity,RESEARCH_LIMIT} from './business-policy.js';
 export {DEFAULT_CONFIG,validateConfig} from './business-policy.js';
 import {productionPool,adjustedRevenue,requireProduction} from './event-model.js';
-import {effectRecords,applyEvent} from './events.js';
+import {effectRecords,applyEvent,applyDueCompanyChoices} from './events.js';
 import {doc,getDoc,getDocs,collection,query,where,orderBy,limit,startAfter,FieldPath,runTransaction,serverTimestamp} from 'firebase/firestore';
 export const ASSETS={factory:'공장',equipment:'생산 설비',research:'R&D센터',employee:'직원'};
 const MAX=1000000000000;
@@ -41,7 +41,7 @@ export async function invest(db,cid,asset){
  });
 }
 export async function beginDay(db,cid,retry=0){
- if(!validId(cid))fail('기업을 선택하세요.');let before=await getDoc(doc(db,'companyOperations',cid));if(before.data()?.pendingEvent){const eid=before.data().pendingEvent,selected=await getDoc(doc(db,'companyChoices',cid,'items',eid));await applyEvent(db,cid,eid,selected.data().option);before=await getDoc(doc(db,'companyOperations',cid));}const records=await effectRecords(db,cid);return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid))]);
+ if(!validId(cid))fail('기업을 선택하세요.');const existing=(await getDoc(doc(db,'companyOperations',cid))).data();if(existing?.locked)return existing.currentDay;await applyDueCompanyChoices(db,cid);let before=await getDoc(doc(db,'companyOperations',cid));if(before.data()?.pendingEvent){const eid=before.data().pendingEvent,selected=await getDoc(doc(db,'companyChoices',cid,'items',eid));const event=await getDoc(doc(db,'events',eid));if(event.data()?.type==='choice'&&event.data().endsAt.toMillis()>Date.now()){await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),s=await t.get(r);if(!s.data().locked&&s.data().pendingEvent===eid)t.update(r,{pendingEvent:''});});}else await applyEvent(db,cid,eid,selected.data().option);before=await getDoc(doc(db,'companyOperations',cid));}const records=await effectRecords(db,cid);return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid))]);
  if(!os.exists()||!bs.exists())fail('회사 계좌와 주식 판매 내역을 확인하세요.');const o=os.data();if(o.locked)return o.currentDay;if(o.pendingEvent||o.lastEvent!==before.data()?.lastEvent)throw new Error('EVENT_RETRY');
  const day=koreaDay(),key='d'+day,p=dayPlan(o,bs.data(),day,records),dayRef=doc(db,'companyOperations',cid,'days',key);if((await t.get(dayRef)).exists())fail('이미 정산한 날짜입니다.');
  t.set(dayRef,{day,revenue:p.revenue,sold:p.sold,perShare:p.perShare,dividend:p.dividend,retained:p.retained,rateBps:o.dividendBps,createdAt:serverTimestamp()});

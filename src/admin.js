@@ -1,3 +1,4 @@
+import {NEWS_CATEGORIES} from './news-category.js';
 import {HttpError} from './errors.js';
 const fail=()=>{throw new HttpError(400,'입력값 형식과 범위를 확인하세요.');};
 const text=(v,max)=>typeof v==='string'&&v.trim().length>0&&v.length<=max?v.trim():fail();
@@ -13,7 +14,8 @@ export function validateAdmin(kind,b){
     // Economic fields are only initial demonstration values; existing values cannot be edited.
     if(b.initial===true){for(const k of ['referencePrice','issuedShares'])if(!Number.isSafeInteger(b[k])||b[k]<1||b[k]>1000000)fail();Object.assign(data,{referencePrice:b.referencePrice,issuedShares:b.issuedShares,companyCash:0,dailyRevenue:0});}
   } else if(kind==='news'){
-    data={title:text(b.title,120),content:text(b.content,5000),companyId:b.companyId?id(b.companyId):'',publishedAt:new Date().toISOString()};
+    if(b.category!==undefined&&!NEWS_CATEGORIES.includes(b.category))fail();
+    data={title:text(b.title,120),content:text(b.content,5000),category:b.category||'공지',companyId:b.companyId?id(b.companyId):'',publishedAt:new Date().toISOString()};
   } else if(kind==='events'){
     const start=new Date(b.startsAt),end=new Date(b.endsAt);
     if(!Number.isFinite(start.valueOf())||!Number.isFinite(end.valueOf())||end<=start)fail();

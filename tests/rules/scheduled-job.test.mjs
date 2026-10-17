@@ -8,7 +8,7 @@ import {initialOperations,koreaDay} from '../../client/economy.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let app,db,job;
 before(async()=>{
- await writeFile('.generated-scheduled-test-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {beginDay,payHolder} from './client/economy.js';");
+ await writeFile('.generated-scheduled-test-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {runDueChoiceEvents} from './server/choice-events.js';export {beginDay,payHolder} from './client/economy.js';");
  await buildJob('.generated-scheduled-test-entry.mjs','.generated-scheduled-test.mjs');job=await import('../../.generated-scheduled-test.mjs?test='+Date.now());
  app=initializeApp({projectId:'demo-scheduled-economy'},'scheduled-test');db=getFirestore(app);
  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-scheduled-economy/databases/(default)/documents',{method:'DELETE'});
@@ -28,4 +28,19 @@ test('interrupted payouts resume without duplicating receipts; one broken compan
  await seed('broken');await db.doc('companyOperations/broken').update({pendingEvent:'missing'});
  const before=(await db.doc('sparkAccounts/student').get()).data().cash;
  const r=await job.runScheduledEconomy(db,{now:koreaDay()*86400000+1});assert.equal(r.resumed,1);assert.deepEqual(r.failed,['broken']);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,before);assert.equal((await db.doc('companyOperations/resume').get()).data().locked,false);
+});
+
+test('deadline queue waits, applies destruction exactly once and retries locked targets without selecting for absent companies',async()=>{
+ const cid='deadline-company',eid='deadline-event',future=new Date(Date.now()+60000);await seed(cid);await db.doc('companyOperations/'+cid).update({factory:2,revenue:2000,production:{factory:2000,equipment:0,research:0}});
+ await db.doc('events/'+eid).set({type:'choice',targets:[cid,'no-choice'],endsAt:future,startsAt:new Date(),options:['a','b','c']});await db.doc('eventOutcomes/'+eid+'/options/0').set({effect:{kind:'destroy',asset:'factory',count:1,percent:0,hours:0}});await db.doc('companyChoices/'+cid+'/items/'+eid).set({option:0,chosenAt:new Date(Date.now()-60000)});await db.doc('eventQueue/'+eid).set({endsAt:future});
+ let r=await job.runDueChoiceEvents(db);assert.equal(r.processed,0);assert.equal((await db.doc('companyEffects/'+cid+'/items/'+eid).get()).exists,false);
+ const deadline=new Date(Date.now()-1000);await db.doc('events/'+eid).update({endsAt:deadline});await db.doc('eventQueue/'+eid).update({endsAt:deadline});await db.doc('companyOperations/'+cid).update({locked:true});r=await job.runDueChoiceEvents(db);assert.equal(r.failed,1);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,true);
+ await db.doc('companyOperations/'+cid).update({locked:false});r=await job.runDueChoiceEvents(db);assert.equal(r.processed,1);assert.equal((await db.doc('companyOperations/'+cid).get()).data().factory,1);assert.equal((await db.doc('companyEffects/'+cid+'/items/'+eid).get()).data().effectiveAt.toMillis(),deadline.getTime());assert.equal((await db.doc('companyEffects/no-choice/items/'+eid).get()).exists,false);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,false);
+ await job.runDueChoiceEvents(db);assert.equal((await db.doc('companyOperations/'+cid).get()).data().factory,1);
+});
+
+test('overdue choice cannot deadlock a previously interrupted settlement',async()=>{
+ const cid='locked-choice-recovery',eid='locked-choice-event';await seed(cid);await db.doc('sparkBooks/'+cid).update({treasuryShares:10});const future=new Date(Date.now()+60000);await db.doc('events/'+eid).set({type:'choice',targets:[cid],endsAt:future,startsAt:new Date(),options:['a','b','c']});await db.doc('eventOutcomes/'+eid+'/options/0').set({effect:{kind:'destroy',asset:'factory',count:1,percent:0,hours:0}});await db.doc('companyChoices/'+cid+'/items/'+eid).set({option:0,chosenAt:new Date()});await db.doc('eventQueue/'+eid).set({endsAt:future});await job.beginDay(db,cid);
+ const deadline=new Date(Date.now()-1000);await db.doc('events/'+eid).update({endsAt:deadline});await db.doc('eventQueue/'+eid).update({endsAt:deadline});await job.runScheduledEconomy(db);assert.equal((await db.doc('companyOperations/'+cid).get()).data().locked,false);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,true);
+ await job.runScheduledEconomy(db);assert.equal((await db.doc('companyOperations/'+cid).get()).data().factory,0);assert.equal((await db.doc('eventQueue/'+eid).get()).exists,false);
 });

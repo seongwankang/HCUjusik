@@ -1,3 +1,4 @@
+import {newsCategory} from '../src/news-category.js';
 import {renderDayChange} from './quote-change.js';
 import {showRankings} from './rankings.js';
 import {showArticle} from './news.js';
@@ -69,15 +70,15 @@ function renderCompanies() {
   $('#market-rows').innerHTML = rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td class="muted">${esc(c.ticker)}</td><td>${quoteText(c)}${c.quoteKind==='initial'?'<small>첫 거래 전</small>':''}</td><td><span class="state-tag ${c.status==='listed'?'listed':''}">${c.status==='listed'?'상장':'준비 중'}</span></td><td><button class="row-button" data-company="${esc(c.id)}">거래하기</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">검색 결과가 없습니다.</td></tr>';
 }
 function newsCard(n,compact=false,kind='news') {
- return '<a class="'+(compact?'news-item news-headline-mini':'news-headline')+'" href="'+articleRoute(n.id,kind)+'">'+(compact?'':'<span class="headline-category">'+(kind==='event'?'기업 이벤트':n.companyName?'기업 뉴스 · '+esc(n.companyName):'운영 공지')+'</span>')+'<strong>'+esc(n.title)+'</strong>'+(compact?'':'<span class="headline-date">'+(n.publishedAt?esc(new Date(n.publishedAt).toLocaleDateString('ko-KR')):'')+' ↗</span>')+'</a>';
+ return '<a class="'+(compact?'news-item news-headline-mini':'news-headline')+'" href="'+articleRoute(n.id,kind)+'">'+(compact?'':'<span class="headline-category">'+(kind==='event'?'기업 이벤트':esc(newsCategory(n))+(n.companyName?' · '+esc(n.companyName):''))+'</span>')+'<strong>'+esc(n.title)+'</strong>'+(compact?'':'<span class="headline-date">'+(n.publishedAt?esc(new Date(n.publishedAt).toLocaleDateString('ko-KR')):'')+' ↗</span>')+'</a>';
 }
 let newsRead=0;
-async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid){renderNews();return;}try{const [n,e]=await Promise.all([getJSON('/api/news'),getJSON('/api/events')]);if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;state.events=e.events;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
+async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid){renderNews();return;}try{const n=await getJSON('/api/news');if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
 window.addEventListener('admin-saved',e=>{if(['companies','users'].includes(e.detail?.kind))initialLoad();else refreshNews();});
 function renderNews() {
   if(!state.user){$('#featured-news').textContent='로그인하면 시장 뉴스를 확인할 수 있습니다.';$('#all-news').innerHTML=loginPrompt('학교 계정으로 로그인하면 뉴스와 공지를 확인할 수 있습니다.');return;}
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
-  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') + state.events.map(e=>newsCard(e,false,'event')).join('') || '<div class="panel empty-state">등록된 뉴스·이벤트가 없습니다.</div>';
+  $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') || '<div class="panel empty-state">등록된 뉴스가 없습니다.</div>';
 }
 function showCompany(id,writeRoute=true) {
   navigate('company',false);state.companyId=id;
@@ -137,7 +138,7 @@ async function refreshSession() {
   updateAccountButton();
 }
 async function initialLoad() {
-  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession(),getJSON('/api/events')]);
+  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession()]);
   if(results[0].status==='fulfilled') {
     state.companies=results[0].value.companies;
     state.companyError=null;
@@ -149,10 +150,9 @@ async function initialLoad() {
   }
   if(results[1].status==='fulfilled')state.news=results[1].value.news;
   else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
-  state.events=results[3].status==='fulfilled'?results[3].value.events:[];
   renderCompanies();
   await startQuotes();
-  if(!state.user || results[1].status==='fulfilled' || results[3].status==='fulfilled')renderNews();
+  if(!state.user || results[1].status==='fulfilled')renderNews();
   await startQuotes();
   applyRoute();
 }

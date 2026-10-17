@@ -7,5 +7,5 @@ if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
 const result=await runScheduledEconomy(getFirestore(app));
 // Public Actions logs contain counts only, never student names/cash/credentials.
-console.log(JSON.stringify({settled:result.settled,resumed:result.resumed,skipped:result.skipped,failedCount:result.failed.length}));
-if(result.failed.length)throw Error('Some companies need settlement recovery; inspect company status in the administrator page.');
+console.log(JSON.stringify({settled:result.settled,resumed:result.resumed,skipped:result.skipped,failedCount:result.failed.length,choiceEvents:result.choiceEvents}));
+if(result.failed.length||result.choiceEvents.failed)throw Error('Some companies need settlement recovery; inspect company status in the administrator page.');

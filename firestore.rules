@@ -66,7 +66,7 @@ service cloud.firestore {
     match /news/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','companyId','companyName','publishedAt']) && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt == request.time && request.resource.data.companyName is string &&
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','category','companyId','companyName','publishedAt']) && request.resource.data.get('category','공지') in ['공지','기업 뉴스','시장 동향','이벤트'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt == request.time && request.resource.data.companyName is string &&
         (request.resource.data.companyId == '' ? request.resource.data.companyName == '' : request.resource.data.companyName == get(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.name);
       allow delete: if false;
     }
@@ -77,8 +77,16 @@ service cloud.firestore {
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
-        request.resource.data.startsAt == request.time && request.resource.data.endsAt > request.time;
+        request.resource.data.startsAt == request.time && request.resource.data.endsAt > request.time &&
+        (request.resource.data.type == 'random' || getAfter(/databases/$(database)/documents/eventQueue/$(id)).data.endsAt == request.resource.data.endsAt);
       allow update,delete: if false;
+    }
+    // Queue contains only a public deadline. Processing/deletion uses the trusted job.
+    match /eventQueue/{eid} {
+      allow create: if admin() && request.resource.data.keys().hasOnly(['endsAt']) &&
+        getAfter(/databases/$(database)/documents/events/$(eid)).data.type == 'choice' &&
+        request.resource.data.endsAt == getAfter(/databases/$(database)/documents/events/$(eid)).data.endsAt;
+      allow read, update, delete: if false;
     }
     function eventData(eid) { return get(/databases/$(database)/documents/events/$(eid)).data; }
     function outcome(eid,option) { return get(/databases/$(database)/documents/eventOutcomes/$(eid)/options/$(string(option))).data.effect; }
@@ -91,7 +99,7 @@ service cloud.firestore {
         (e.kind == 'destroy' ? e.count > 0 : e.count == 0);
     }
     match /eventOutcomes/{eid}/options/{option} {
-      allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' &&
+      allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' && request.time >= eventData(eid).endsAt &&
         selectedOption(eid,option));
       allow create: if admin() && !exists(/databases/$(database)/documents/events/$(eid)) &&
         getAfter(/databases/$(database)/documents/events/$(eid)).data.type in ['random','choice'] && option in ['0','1','2'] &&
@@ -112,13 +120,13 @@ service cloud.firestore {
     match /companyChoices/{cid}/items/{eid} {
       allow get: if manager(cid);
       allow create: if manager(cid) && eventData(eid).type == 'choice' && cid in eventData(eid).targets && request.time < eventData(eid).endsAt &&
-        request.resource.data.keys().hasOnly(['option','chosenAt']) && request.resource.data.option is int && request.resource.data.option in [0,1,2] && request.resource.data.chosenAt == request.time && !operations(cid).locked && operations(cid).get('pendingEvent','') == '' && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.pendingEvent == eid;
+        request.resource.data.keys().hasOnly(['option','chosenAt']) && request.resource.data.option is int && request.resource.data.option in [0,1,2] && request.resource.data.chosenAt == request.time && !operations(cid).locked;
       allow list,update,delete: if false;
     }
     function eventReceipt(cid,eid,d) {
       let e=eventData(eid);
-      return manager(cid) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : d.option == choice(cid,eid).option) &&
-        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt']) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? choice(cid,eid).chosenAt : e.startsAt) &&
+      return manager(cid) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
+        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt']) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
         (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
           (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
     }
@@ -456,7 +464,7 @@ service cloud.firestore {
     function eventOperation(cid,d,o) {
       let eid=d.lastEvent;
       let r=getAfter(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)).data;
-      return !o.locked && manager(cid) && (eventData(eid).type == 'choice' ? o.get('pendingEvent','') == eid && d.pendingEvent == '' : d.get('pendingEvent','') == o.get('pendingEvent','')) && !exists(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)) &&
+      return !o.locked && manager(cid) && (eventData(eid).type == 'choice' ? request.time >= eventData(eid).endsAt && d.get('pendingEvent','') == '' : d.get('pendingEvent','') == o.get('pendingEvent','')) && !exists(/databases/$(database)/documents/companyEffects/$(cid)/items/$(eid)) &&
         r.appliedAt == request.time && (r.effect.kind == 'destroy' ? destroyed(cid,eid,r.effect) : d.diff(o).affectedKeys().hasOnly(['lastEvent','pendingEvent']));
     }
     function researchBps(o) { return o.get('activeResearchBps',(o.research < 6 ? o.research : 6)*500); }
@@ -503,7 +511,6 @@ service cloud.firestore {
       allow update: if admin() ? operationData(request.resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dividendBps']) ? dividendRate(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingEvent']) ? choiceOperation(cid,request.resource.data,resource.data) :
         investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
       allow list,delete: if false;
       match /days/{dayId} {
