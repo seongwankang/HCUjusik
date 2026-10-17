@@ -85,11 +85,12 @@ function showCompany(id,writeRoute=true) {
   renderWatchlist();
   $('#detail-title').textContent=c?.name||'종목 거래';$('#current-title').textContent=c?.name||'종목 거래';
   document.title=(c?.name||'종목 거래')+' | 청운증권HTS';
+  $('#company-president').textContent=c?'사장 · '+((c.presidentNames||[]).join(' · ')||'미배정'):'';
   $('#company-symbol').textContent=c?.ticker||'';$('#company-category').textContent=c?.category||'';
   $('#company-price-label').textContent=c?.quoteKind==='initial'?'초기 판매가 · 첫 거래 전':'현재가';$('#company-current-price').textContent=c?quoteText(c):'—';
   $('#company-listing').textContent=c?(c.status==='listed'?'거래 가능':'거래 준비 / 정지'):'';
   if(!c){$('#company-detail').textContent='';$('#test-trade').innerHTML=state.user?'<div class="placeholder">기업을 찾을 수 없습니다. 전체 종목에서 다시 선택하세요.</div>':loginPrompt('로그인하면 이 기업의 호가와 주문 화면을 사용할 수 있습니다.');return;}
-  $('#company-detail').innerHTML=`<p>${esc(c.description||'기업 소개가 아직 등록되지 않았습니다.')}</p><dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;
+  $('#company-detail').innerHTML=`<dl><div><dt>기업 코드</dt><dd>${esc(c.ticker)}</dd></div><div><dt>발행 주식</dt><dd>${Number(c.issuedShares).toLocaleString('ko-KR')}주</dd></div><div><dt>초기 판매가</dt><dd>${won(c.referencePrice)}</dd></div></dl>`;
   showTrading(c,getJSON);
 }
 let articleRead=0;

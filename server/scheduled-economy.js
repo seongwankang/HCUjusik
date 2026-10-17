@@ -1,3 +1,4 @@
+import {publishLeadership} from '../client/leadership.js';
 import {settleDay,koreaDay} from '../client/economy.js';
 import {publishCashRankings,allRows} from '../client/rankings.js';
 export const settlementDue=now=>now>=koreaDay(now)*86400000; // 09:00 KST = 00:00 UTC.
@@ -16,8 +17,9 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
    }
   }catch{result.failed.push(c.id);}
  }
+ const leadership=(await db.doc('companyLeadership/main').get()).data();
  const board=(await db.doc('leaderboards/cash').get()).data(),last=board?.updatedAt?.toMillis?.()||0;
  // Avoid rereading every participant on each settlement retry (Spark quota).
- result.rankingsUpdated=!!(result.settled||result.resumed||!last||now-last>=3600000);
- if(result.rankingsUpdated)await publish(db);return result;
+ result.rankingsUpdated=!!(result.settled||result.resumed||!leadership||!last||now-last>=3600000);
+ if(result.rankingsUpdated){await publish(db);await publishLeadership(db);}return result;
 }
