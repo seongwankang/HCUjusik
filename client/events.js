@@ -1,5 +1,5 @@
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
-import {validateEffect,eventMutation,NEW_EFFECTS,currentEffect,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
+import {validateEffect,eventMutation,NEW_EFFECTS,currentEffect,remainingSettlements,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 import {effectiveConfig} from './business-policy.js';
 import {initializeOperations} from './economy.js';
 import {nextSettlement} from './settlement-time.js';
@@ -49,7 +49,7 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
   const patch=os.exists()?eventMutation(os.data(),effect,{config:config?effectiveConfig(config.data()):null,book:book?.data(),eventId:eid,effectiveAt:(n.type==='choice'?n.endsAt:n.startsAt).toMillis()}):{};
   const result=effect.kind==='cash'?{amount:patch.cash-(os.data().cash+(book?.data()?.issuerCash||0)-os.data().receivedIssuerCash)}:effect.kind==='workforce'?{count:patch.employees-(os.data().employees||0)}:effect.kind==='grant'?{count:patch[effect.asset]-os.data()[effect.asset]}:null;
   if(os.exists())t.update(ops,{...patch,lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
-  t.set(receipt,{option,effect,...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
+  t.set(receipt,{option,effect,...(Number.isInteger(effect.settlements)&&effect.settlements>0?{startsAfterSettlement:os.data()?.settlementCount||0}:{}),...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
  });
 }
 export async function eventCompanyView(db,cid){
@@ -58,7 +58,7 @@ export async function eventCompanyView(db,cid){
  const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await getDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
  const os=await getDoc(doc(db,'companyOperations',cid));const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
  const next=nextSettlement(os.data()),settlementProjection=projection.needsProduction?projection:os.exists()?adjustedRevenue(os.data(),next.day,effects,next.at):{base:0,revenue:0};
- return {choices,effects:effects.map(r=>({...r,active:currentEffect(os.data()||{},r),title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection,settlementProjection,settlementAt:next.at};
+ return {choices,effects:effects.map(r=>({...r,active:currentEffect(os.data()||{},r),...(Number.isInteger(r.effect.settlements)&&r.effect.settlements>0?{remainingSettlements:remainingSettlements(os.data()||{},r)}:{}),title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection,settlementProjection,settlementAt:next.at};
 }
 export async function applyRandomEvent(db,eid){
  const s=await getDoc(doc(db,'events',eid));if(!s.exists()||s.data().type!=='random')fail('랜덤 이벤트를 선택하세요.');
