@@ -1,3 +1,4 @@
+import {dividendAllocation} from './dividends.js';
 import {revenueEffects,adjustedRevenue,currentEffect,effectiveDividendBps,needsProduction,effectText,ONE_TIME_EFFECTS,TIMED_EFFECTS,remainingSettlements} from './event-model.js';
 import {staffCapacity,researchBps} from './business-policy.js';
 import {initialOperations,koreaDay} from './economy.js';
@@ -7,7 +8,7 @@ export function investorSnapshot({companyId,ops,book,account,effects=[],events=[
  const o=ops||initialOperations(),day=koreaDay(now),settlement=nextSettlement(o,now),tomorrowAt=settlement.at;
  const unclassified=needsProduction(o),tomorrow=unclassified?null:adjustedRevenue(o,settlement.day,effects,tomorrowAt);
  const sold=book?book.issuedShares-book.treasuryShares:0,rate=effectiveDividendBps(o,tomorrowAt);
- const perShare=tomorrow&&sold>0?Number(BigInt(tomorrow.revenue)*BigInt(rate)/10000n/BigInt(sold)):0;
+ const perShare=tomorrow?dividendAllocation(tomorrow.revenue,rate,book).perShare:0;
  const shares=account?.positions?.[companyId]||0;
  const timestamp=v=>typeof v==='number'?v:v?.toMillis?.()??Date.parse(v);
  const recentEvents=effects.filter(r=>[...ONE_TIME_EFFECTS,...TIMED_EFFECTS,'none'].includes(r.effect?.kind)&&Number.isFinite(timestamp(r.appliedAt))&&timestamp(r.appliedAt)<=now).sort((a,b)=>timestamp(b.appliedAt)-timestamp(a.appliedAt)||String(a.id).localeCompare(String(b.id))).slice(0,20).map(r=>({
