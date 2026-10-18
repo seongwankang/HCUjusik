@@ -117,7 +117,14 @@ test('ordinary student uses the same direct Firebase trade API without backend c
  const {createClientApi}=await import('../../client/data.js');
  const api=createClientApi({db:a,getUser:async()=>({uid:'a',getIdTokenResult:async()=>({claims})})});
  const view=await api('/api/exchange?companyId=test-b');assert.equal(view.mode,'spark-limit-v1');
- const placed=await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('student-api-order',{companyId:'test-b',price:9999}))});
+ await assert.rejects(api('/api/limit-order',{method:'POST',body:JSON.stringify(order('invalid-tick-api',{companyId:'test-b',price:9999}))}),/10원 단위/);
+ await initializeSpark(c,'c','test-b');const bookRef=doc(c,'sparkBooks/test-b'),book=(await getDoc(bookRef)).data(),seq=book.version+1,id='invalid-tick-raw';
+ const entry={uid:'c',id,side:'buy',price:9999,quantity:1,remaining:1,sequence:seq},raw=writeBatch(c);
+ raw.update(bookRef,{orders:[...book.orders,entry],version:seq,lastAction:{kind:'place',actor:'c',entry},updatedAt:serverTimestamp()});
+ raw.update(doc(c,'sparkAccounts/c'),{reservedCash:increment(9999),version:increment(1),lastMarket:'test-b'});
+ raw.set(doc(c,'sparkAccounts/c/orders',id),{companyId:'test-b',orderId:id,uid:'c',side:'buy',price:9999,quantity:1,sequence:seq,remaining:1,filled:0,cancelled:0,status:'open',createdAt:serverTimestamp(),marketVersion:seq});
+ await assertFails(raw.commit());
+ const placed=await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('student-api-order',{companyId:'test-b',price:9990}))});
  assert.equal(placed.order.status,'open');
  await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'student-api-order'})});
  assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/student-api-order'))).data().status,'cancelled');

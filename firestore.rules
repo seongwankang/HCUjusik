@@ -235,7 +235,7 @@ service cloud.firestore {
     function entryValid(e,v) {
       return e.keys().hasOnly(['uid','id','side','price','quantity','remaining','sequence']) &&
         e.uid == request.auth.uid && orderId(e.id) && e.side in ['buy','sell'] &&
-        number(e.price,1000000) && e.price > 0 && number(e.quantity,1000000) && e.quantity > 0 &&
+        number(e.price,1000000) && e.price >= 10 && e.price % 10 == 0 && number(e.quantity,1000000) && e.quantity > 0 &&
         e.price*e.quantity <= 1000000000 && e.remaining == e.quantity && e.sequence == v;
     }
     function unchangedTreasury(d,o) {
