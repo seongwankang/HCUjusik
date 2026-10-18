@@ -51,7 +51,9 @@ export async function placeSpark(db,uid,b){
    return {order:old.data(),duplicate:true};
   }
   const book=bookDoc.data(),account=accountDoc.data();if(!book||!account)throw new Error('종목 화면을 열어 계좌를 준비하세요.');
-  if(book.orders.length>=4)throw new Error('종목의 대기 주문 4건이 찼습니다. 체결하거나 잔량을 취소하세요.');
+  // Reserve one extra slot for a taker so a full resting book can still trade.
+  const executable=book.orders.some(o=>o.uid!==uid&&o.side!==b.side&&(b.side==='buy'?b.price>=o.price:b.price<=o.price))||(b.side==='buy'&&book.treasuryShares>0&&b.price>=book.initialPrice);
+  if(book.orders.length>=5||(book.orders.length>=4&&!executable))throw new Error('대기 주문이 가득 찼습니다. 반대편 대기 주문과 체결 가능한 가격으로 주문하거나 기존 잔량을 취소하세요.');
   if(book.orders.some(o=>o.uid===uid&&o.side!==b.side&&(b.side==='buy'?b.price>=o.price:b.price<=o.price)))throw new Error('본인의 반대 주문과 가격이 겹칩니다. 기존 주문을 먼저 취소하세요.');
   if(b.side==='buy'&&account.cash-account.reservedCash<b.price*b.quantity)throw new Error('주문 가능 현금이 부족합니다.');
   if(b.side==='sell'&&(account.positions[b.companyId]??0)-(account.reservedPositions[b.companyId]??0)<b.quantity)throw new Error('매도 가능 수량이 부족합니다.');

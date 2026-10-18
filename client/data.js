@@ -92,9 +92,15 @@ export function createClientApi({db,getUser}){
   if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role);
   if(route==='/api/limit-order'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');await initializeSpark(db,user.uid,b.companyId);
-   const result=await placeSpark(db,user.uid,b);
+   let result;
+   try{result=await placeSpark(db,user.uid,b);}catch(error){
+    // Deterministic rejection must unlock the form for a corrected order.
+    if(!error.code||error.code==='invalid-argument'||error.code==='failed-precondition')error.status=400;
+    if(error.code==='permission-denied')error.status=403;
+    throw error;
+   }
    const history=await marketHistory(db,b.companyId,1);
-   try{for(let i=0;i<8;i++)if(!await matchSpark(db,user.uid,b.companyId,{recordPublic:history.available}))break;}catch{return {...result,matchPending:true};}
+   try{for(let i=0;i<8;i++)if(!await matchSpark(db,user.uid,b.companyId,{recordPublic:history.available}))break;}catch(error){return {...result,order:await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`),matchPending:true,matchError:error.code==='permission-denied'?'주문은 접수됐지만 체결 권한 확인에 실패했습니다. 호가 새로고침 후에도 계속되면 관리자에게 문의하세요.':'주문은 접수됐지만 체결 처리가 지연됐습니다. 호가 새로고침으로 결과를 확인하세요.'};}
    return {...result,order:await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`)};
   }
   if(route==='/api/cancel-order'&&method==='POST'){

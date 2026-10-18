@@ -186,3 +186,60 @@ test('administrator-created company IDs trade, settle and appear in assets witho
  await assertFails(placeSpark(a,'a',order('new-company-paused',{companyId:cid,price:2400})));
 });
 
+
+test('two ordinary accounts match in both directions with an initialized operating company',async()=>{
+ const cid='two-account-company';
+ await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await setDoc(doc(db,'companies',cid),{status:'listed',referencePrice:10000,issuedShares:10});await setDoc(doc(db,'companyOperations',cid),{locked:false});});
+ const {createClientApi}=await import('../../client/data.js');
+ const apiA=createClientApi({db:a,getUser:async()=>({uid:'a',getIdTokenResult:async()=>({claims})})});
+ const apiB=createClientApi({db:b,getUser:async()=>({uid:'b',getIdTokenResult:async()=>({claims})})});
+ const submit=(api,id,side,price,quantity=1)=>api('/api/limit-order',{method:'POST',body:JSON.stringify({companyId:cid,orderId:id,side,price,quantity})});
+ await submit(apiA,'two-account-issue','buy',10000,10);
+ assert.equal((await apiA('/api/exchange?companyId='+cid)).account.positions[cid],10);
+ await submit(apiA,'two-account-ask','sell',12000,2);
+ const bought=await submit(apiB,'two-account-take-ask','buy',12000);
+ assert.equal(bought.matchPending,undefined);assert.equal(bought.order.filled,1);
+ await apiA('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:cid,orderId:'two-account-ask'})});
+ await submit(apiB,'two-account-bid','buy',11000,2);
+ const sold=await submit(apiA,'two-account-take-bid','sell',11000);
+ assert.equal(sold.matchPending,undefined);assert.equal(sold.order.filled,1);
+});
+
+test('initialized company with four entries can settle as an ordinary counterparty',async()=>{
+ const cid='two-account-company';
+ await placeSpark(a,'a',{companyId:cid,orderId:'ops-depth-ask-one',side:'sell',price:13010,quantity:1});
+ await placeSpark(a,'a',{companyId:cid,orderId:'ops-depth-ask-two',side:'sell',price:14000,quantity:1});
+ await placeSpark(b,'b',{companyId:cid,orderId:'ops-depth-take-ask',side:'buy',price:13010,quantity:1});
+ assert.equal((await getDoc(doc(a,'sparkBooks',cid))).data().orders.length,4);
+ assert.equal(await matchSpark(b,'b',cid),true);
+});
+
+test('full resting book accepts a crossing fifth order but rejects another non-crossing order',async()=>{
+ const cid='full-taker-slot';
+ await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await setDoc(doc(db,'companies',cid),{status:'listed',referencePrice:10000,issuedShares:10});await setDoc(doc(db,'companyOperations',cid),{locked:false});});
+ await initializeSpark(a,'a',cid);await initializeSpark(b,'b',cid);
+ await placeSpark(a,'a',{companyId:cid,orderId:'slot-issuance-buy',side:'buy',price:10000,quantity:10});await matchSpark(a,'a',cid);
+ for(let i=0;i<4;i++)await placeSpark(a,'a',{companyId:cid,orderId:'slot-sell-'+i,side:'sell',price:11000+i*10,quantity:1});
+ await assert.rejects(placeSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing',side:'buy',price:10000,quantity:1}),/가득/);
+ const rawPlace=async(id,price)=>{
+  const ref=doc(b,'sparkBooks',cid),old=(await getDoc(ref)).data(),v=old.version+1;
+  const entry={uid:'b',id,side:'buy',price,quantity:1,remaining:1,sequence:v},batch=writeBatch(b);
+  batch.update(ref,{orders:[...old.orders,entry],version:v,lastAction:{kind:'place',actor:'b',entry},updatedAt:serverTimestamp()});
+  batch.update(doc(b,'sparkAccounts/b'),{reservedCash:increment(price),version:increment(1),lastMarket:cid});
+  batch.set(doc(b,'sparkAccounts/b/orders',id),{companyId:cid,orderId:id,uid:'b',side:'buy',price,quantity:1,sequence:v,remaining:1,filled:0,cancelled:0,status:'open',createdAt:serverTimestamp(),marketVersion:v});
+  return batch.commit();
+ };
+ // The additional slot cannot become a fifth non-executable resting order.
+ await assertFails(rawPlace('slot-forged-resting',10000));
+ await placeSpark(b,'b',{companyId:cid,orderId:'slot-crossing-buy',side:'buy',price:11000,quantity:1});
+ assert.equal((await getDoc(doc(b,'sparkBooks',cid))).data().orders.length,5);
+ await assertFails(rawPlace('slot-forged-sixth',11000));
+ assert.equal(await matchSpark(b,'b',cid),true);
+ assert.equal((await getDoc(doc(b,'sparkAccounts/b/orders/slot-crossing-buy'))).data().filled,1);
+ // Mirror case: four bids must also accept a crossing seller.
+ let book=(await getDoc(doc(admin,'sparkBooks',cid))).data();for(const o of book.orders)await cancelSpark(admin,'operator',{companyId:cid,ownerUid:o.uid,orderId:o.id});
+ for(let i=0;i<4;i++)await placeSpark(b,'b',{companyId:cid,orderId:'slot-bid-'+i,side:'buy',price:9000+i*10,quantity:1});
+ await placeSpark(a,'a',{companyId:cid,orderId:'slot-crossing-sell',side:'sell',price:9000,quantity:1});
+ assert.equal(await matchSpark(a,'a',cid),true);
+ assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/slot-crossing-sell'))).data().filled,1);
+});
