@@ -42,3 +42,9 @@ test('market rankings separate daily volume, gains and losses, with shared ties 
  const r=marketRankingLists(prices,{a:{volume:20,change:{percent:5}},b:{volume:20,change:{percent:10}},c:{volume:100,change:{percent:-20}},d:{volume:0,change:{percent:0}}});
  assert.deepEqual(r.volume.map(x=>[x.id,x.rank]),[['c',1],['a',2],['b',2],['d',4]]);assert.deepEqual(r.gainers.map(x=>x.id),['b','a']);assert.deepEqual(r.losers.map(x=>x.id),['c']);assert.equal(r.unavailable,1);
 });
+
+test('cheap stocks outside the first hundred price ranks can lead volume and return rankings',()=>{
+ const companies=Array.from({length:101},(_,i)=>({id:'c'+i,name:'기업 '+i,ticker:'C'+i,status:'listed',referencePrice:10000-i*10}));
+ const prices=priceRankings(companies,[],Infinity),sessions=Object.fromEntries(prices.map(p=>[p.id,{volume:p.id==='c100'?999:1,change:{percent:p.id==='c100'?50:0}}]));
+ const r=marketRankingLists(prices,sessions);assert.equal(r.prices.length,100);assert.equal(r.volume[0].id,'c100');assert.equal(r.gainers[0].id,'c100');
+});
