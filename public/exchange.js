@@ -35,7 +35,7 @@ export async function showTrading(c,request){
   const a=data.account;lastMatchError=data.matchError;settlementLocked=!!data.settlementLocked;
   box.querySelector('#limit-account').innerHTML=`<div><span>주문 가능 현금</span><strong>${won(a.cash-a.reservedCash)}</strong></div><div><span>매수 대기금액</span><strong>${won(a.reservedCash)}</strong></div><div><span>보유 수량</span><strong>${a.positions[c.id]||0}<small>주</small></strong></div><div><span>매도 가능</span><strong>${(a.positions[c.id]||0)-(a.reservedPositions[c.id]||0)}<small>주</small></strong></div>`;
   c.previousClose=data.market?.previousClose;c.closeKind=data.market?.closeKind;renderDayChange(c,data.market?.lastPrice||c.referencePrice);
-  const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(data.market?.lastPrice||c.referencePrice);quoteLabel.textContent=data.market?.lastPrice?'최근 체결가':'초기 판매가';}
+  const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(data.market?.lastPrice||c.referencePrice);quoteLabel.textContent=data.market?.lastPrice?'최근 체결가':'첫 거래 전';}
   box.querySelector('#limit-book').innerHTML=`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':'가격별 대기 주문'}</span></div>`+renderOrderBook(data.book,data.market?.lastPrice||c.referencePrice,form.elements.price.value);
 
   const orders=data.orders.filter(o=>o.companyId===c.id),fills=data.fills.filter(f=>f.companyId===c.id);
