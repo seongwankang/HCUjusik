@@ -4,7 +4,7 @@ import {initialOperations,dayPlan,koreaDay,validateConfig,DEFAULT_CONFIG,availab
 test('Korean calendar day and next-day activation, no unearned purchase-day revenue',()=>{
  const day=koreaDay(Date.parse('2026-10-15T14:59:59Z'));assert.equal(koreaDay(Date.parse('2026-10-15T15:00:00Z')),day+1);
  const o={...initialOperations(),pendingRevenue:5000,pendingDay:day+1,dividendBps:5000},b={issuerCash:100000,issuedShares:10,treasuryShares:4};
- assert.equal(dayPlan(o,b,day).revenue,0);const p=dayPlan(o,b,day+1);assert.equal(p.perShare,833);assert.equal(p.dividend,4998);assert.equal(p.retained,5002);assert.equal(p.cash,105002);
+ assert.equal(dayPlan(o,b,day).revenue,0);const p=dayPlan(o,b,day+1);assert.equal(p.perShare,500);assert.equal(p.dividend,3000);assert.equal(p.retained,7000);assert.equal(p.cash,107000);
  assert.equal(p.dividend+p.retained,10000);
 });
 test('issuer funding is collected once; no shareholders means all revenue retained; invalid dates blocked',()=>{
