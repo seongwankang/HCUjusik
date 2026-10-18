@@ -533,7 +533,7 @@ service cloud.firestore {
     function staffCapacity(o) { let n=10+o.factory*25+o.equipment*10; return n < 1000 ? n : 1000; }
     function economyPolicy() {
       return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 4 ? get(/databases/$(database)/documents/economyConfig/main).data :
-        {'version':4,'factoryCost':2000000,'factoryRevenue':400000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
+        {'version':4,'factoryCost':1000000,'factoryRevenue':400000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
     }
     function investmentDay(o) {
       return request.time.toMillis() < dayNumber()*86400000 && o.lastSettledDay < dayNumber() ? dayNumber() : dayNumber()+1;
@@ -580,33 +580,38 @@ service cloud.firestore {
       allow list,delete: if false;
     }
     function spyPolicy() {
-      return exists(/databases/$(database)/documents/spyPolicy/main) ? get(/databases/$(database)/documents/spyPolicy/main).data : {'cost':2000000,'bps':200,'settlements':3};
+      return {'cost':1000000,'bps':50,'settlements':0};
     }
     function spyHireOperation(cid,d,o) {
       let s=getAfter(/databases/$(database)/documents/companySpies/$(cid)).data;
+      let a=getAfter(/databases/$(database)/documents/companySpies/$(cid)/hires/$(s.hireId)).data;
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
       return manager(cid) && !o.locked && o.get('pendingEvent','') == '' && d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash','lastSpyHire']) &&
-        getAfter(/databases/$(database)/documents/companySpies/$(cid)/hires/$(s.hireId)).data == s && s.createdAt == request.time && s.hireId == d.lastSpyHire && d.lastSpyHire != o.get('lastSpyHire','') &&
-        number(d.cash,1000000000000) && d.cash == o.cash+funding-o.receivedIssuerCash-spyPolicy().cost && d.receivedIssuerCash == funding &&
+        s.agents[s.slot] == a && s.diff(a).affectedKeys().hasOnly(['agents','slot']) && s.createdAt == request.time && s.hireId == d.lastSpyHire && d.lastSpyHire != o.get('lastSpyHire','') &&
+        number(d.cash,1000000000000) && d.cash == o.cash+funding-o.receivedIssuerCash-1000000 && d.receivedIssuerCash == funding &&
         getAfter(/databases/$(database)/documents/spyRegistry/main).data == {'version':(exists(/databases/$(database)/documents/spyRegistry/main) ? get(/databases/$(database)/documents/spyRegistry/main).data.version : 0)+1,'companyId':cid,'hireId':s.hireId};
     }
     function spyContract(cid,d) {
       let p=spyPolicy();
+      let old=exists(/databases/$(database)/documents/companySpies/$(cid)) ? resource.data : {};
+      let agents=old.get('agents',old.size() > 0 ? {'0':old} : {});
       return manager(cid) && sparkId(cid) && sparkId(d.targetId) && cid != d.targetId && sparkId(d.hireId) &&
-        d.keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt']) &&
-        d.companyId == cid && d.cost == p.cost && d.bps == p.bps && d.settlements == p.settlements && d.remaining == p.settlements && d.lastRoundDay == 0 &&
+        d.keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt','agents','slot']) &&
+        d.slot in ['0','1','2','3','4','5','6','7','8','9'] && d.agents is map && d.agents.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9']) &&
+        d.agents.diff(agents).affectedKeys().hasOnly([d.slot]) && agents.get(d.slot,{'remaining':0}).remaining == 0 &&
+        d.agents[d.slot].keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt']) &&
+        d.diff(d.agents[d.slot]).affectedKeys().hasOnly(['agents','slot']) &&
+        d.companyId == cid && d.cost == 1000000 && d.bps == 50 && d.settlements == p.settlements && d.remaining == 1 && d.lastRoundDay == 0 &&
         d.hireId != operations(cid).get('lastSpyHire','') && d.activeFromDay == investmentDay(operations(cid)) && d.createdAt == request.time &&
         get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && get(/databases/$(database)/documents/companies/$(d.targetId)).data.status == 'listed' &&
         exists(/databases/$(database)/documents/sparkBooks/$(d.targetId)) &&
-        (!exists(/databases/$(database)/documents/companySpies/$(cid)) || get(/databases/$(database)/documents/companySpies/$(cid)).data.remaining == 0) &&
         getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastSpyHire == d.hireId;
     }
     match /spyPolicy/{id} {
       allow get: if id == 'main' && participant();
       allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['cost','bps','settlements']) &&
-        request.resource.data.cost is int && request.resource.data.cost >= 1000000 && request.resource.data.cost <= 100000000 &&
-        request.resource.data.bps is int && request.resource.data.bps >= 1 && request.resource.data.bps <= 500 &&
-        request.resource.data.settlements is int && request.resource.data.settlements >= 1 && request.resource.data.settlements <= 30;
+        request.resource.data.cost == 1000000 && request.resource.data.bps == 50 &&
+        request.resource.data.settlements is int && request.resource.data.settlements == 0;
       allow list,delete: if false;
     }
     match /spyRegistry/{id} {
@@ -626,7 +631,7 @@ service cloud.firestore {
       match /hires/{id} {
         allow get: if participant();
         allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-        allow create: if sparkId(id) && request.resource.data.hireId == id && getAfter(/databases/$(database)/documents/companySpies/$(cid)).data == request.resource.data && manager(cid) && request.resource.data.createdAt == request.time;
+        allow create: if sparkId(id) && request.resource.data.hireId == id && getAfter(/databases/$(database)/documents/companySpies/$(cid)).data.diff(request.resource.data).affectedKeys().hasOnly(['agents','slot']) && getAfter(/databases/$(database)/documents/companySpies/$(cid)).data.agents[getAfter(/databases/$(database)/documents/companySpies/$(cid)).data.slot] == request.resource.data && manager(cid) && request.resource.data.createdAt == request.time;
         allow update,delete: if false;
       }
       match /history/{id} {
