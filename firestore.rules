@@ -361,11 +361,21 @@ service cloud.firestore {
          (a.kind == 'fill' && (e == a.buy || e == a.sell) && d.remaining == o.remaining-q && d.filled == o.filled+q && d.cancelled == o.cancelled && d.status == (d.remaining == 0 ? 'filled' : 'open')));
     }
     function leaderboardData(d) {
-      return d.keys().hasOnly(['entries','participants','updatedAt']) && d.entries is list && d.entries.size() <= 100 && number(d.participants,1000000) && d.participants >= d.entries.size() && d.updatedAt == request.time;
+      return d.keys().hasOnly(['entries','participants','updatedAt','generation']) && (!('generation' in d) || sparkId(d.generation)) && d.entries is list && d.entries.size() <= 100 && number(d.participants,1000000) && d.participants >= d.entries.size() && d.updatedAt == request.time;
     }
     match /leaderboards/{id} {
       allow get: if id == 'cash' && participant();
       allow create,update: if id == 'cash' && admin() && leaderboardData(request.resource.data);
+      allow list,delete: if false;
+    }
+    match /investorSnapshots/{id} {
+      allow get: if participant() && id.matches('^[a-f0-9]{64}$') && resource.data.generation == get(/databases/$(database)/documents/leaderboards/cash).data.generation;
+      allow create,update: if admin() && id.matches('^[a-f0-9]{64}$') &&
+        request.resource.data.keys().hasOnly(['name','cash','holdings','generation','updatedAt']) &&
+        str(request.resource.data.name,80) && number(request.resource.data.cash,1000000000000) &&
+        request.resource.data.holdings is list && request.resource.data.holdings.size() <= 100 &&
+        request.resource.data.generation == getAfter(/databases/$(database)/documents/leaderboards/cash).data.generation &&
+        request.resource.data.updatedAt == request.time;
       allow list,delete: if false;
     }
     match /sparkAccounts/{uid} {
