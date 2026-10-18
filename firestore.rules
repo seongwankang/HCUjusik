@@ -63,17 +63,33 @@ service cloud.firestore {
       allow update: if admin() && companyData() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','ticker','description','category','status']);
       allow delete: if false;
     }
+    function eventNewsData(d) {
+      return !('eventId' in d) && !('eventSummary' in d) ||
+        sparkId(d.eventId) && eventData(d.eventId).get('autoNews',false) &&
+        (eventData(d.eventId).type == 'random' || request.time >= eventData(d.eventId).endsAt) &&
+        d.eventSummary.keys().hasOnly(['type','groups','unselected']) && d.eventSummary.type == eventData(d.eventId).type &&
+        d.eventSummary.groups is list && d.eventSummary.groups.size() == (d.eventSummary.type == 'choice' ? 3 : 1) &&
+        d.eventSummary.unselected is list && d.eventSummary.unselected.size() <= 100;
+    }
+    function newsData(d) {
+      return d.keys().hasOnly(['title','content','category','companyId','companyName','publishedAt','eventId','eventSummary']) &&
+        d.get('category','공지') in ['공지','기업 뉴스','시장 동향','이벤트'] && str(d.title,120) && str(d.content,5000) &&
+        d.companyId is string && d.companyId.size() <= 128 && d.companyName is string &&
+        (d.companyId == '' ? d.companyName == '' : d.companyName == get(/databases/$(database)/documents/companies/$(d.companyId)).data.name) && eventNewsData(d);
+    }
     match /news/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-      allow create, update: if admin() && request.resource.data.keys().hasOnly(['title','content','category','companyId','companyName','publishedAt']) && request.resource.data.get('category','공지') in ['공지','기업 뉴스','시장 동향','이벤트'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) && request.resource.data.companyId is string && request.resource.data.companyId.size() <= 128 && request.resource.data.publishedAt == request.time && request.resource.data.companyName is string &&
-        (request.resource.data.companyId == '' ? request.resource.data.companyName == '' : request.resource.data.companyName == get(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.name);
+      allow create: if admin() && newsData(request.resource.data) && request.resource.data.publishedAt == request.time;
+      allow update: if admin() && newsData(request.resource.data) &&
+        (request.resource.data.publishedAt == request.time ||
+          request.resource.data.publishedAt == resource.data.publishedAt && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['eventSummary']));
       allow delete: if false;
     }
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt']) &&
+      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews']) && (!('autoNews' in request.resource.data) || request.resource.data.autoNews == true) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -81,11 +97,12 @@ service cloud.firestore {
         (request.resource.data.type == 'random' || getAfter(/databases/$(database)/documents/eventQueue/$(id)).data.endsAt == request.resource.data.endsAt);
       allow update,delete: if false;
     }
-    // Queue contains only a public deadline. Processing/deletion uses the trusted job.
+    // Queue contains only a public activation/deadline; the trusted job retries news too.
     match /eventQueue/{eid} {
       allow create: if admin() && request.resource.data.keys().hasOnly(['endsAt']) &&
-        getAfter(/databases/$(database)/documents/events/$(eid)).data.type == 'choice' &&
-        request.resource.data.endsAt == getAfter(/databases/$(database)/documents/events/$(eid)).data.endsAt;
+        (getAfter(/databases/$(database)/documents/events/$(eid)).data.type == 'choice' ?
+          request.resource.data.endsAt == getAfter(/databases/$(database)/documents/events/$(eid)).data.endsAt :
+          getAfter(/databases/$(database)/documents/events/$(eid)).data.autoNews == true && request.resource.data.endsAt == request.time);
       allow read, update, delete: if false;
     }
     function eventData(eid) { return get(/databases/$(database)/documents/events/$(eid)).data; }
@@ -130,7 +147,7 @@ service cloud.firestore {
       return manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
         d.keys().hasOnly(['option','effect','appliedAt','effectiveAt','result','startsAfterSettlement']) &&
         (d.effect.get('settlements',0) > 0 ? d.startsAfterSettlement == (exists(/databases/$(database)/documents/companyOperations/$(cid)) ? operations(cid).get('settlementCount',0) : 0) : !('startsAfterSettlement' in d)) &&
-        (!('result' in d) || (admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
+        (!('result' in d) || (d.effect.kind == 'destroy' ? d.result.keys().hasOnly(['count']) && d.result.count == operations(cid)[d.effect.asset]-getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data[d.effect.asset] : admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
         (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
           (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
     }

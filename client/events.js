@@ -1,3 +1,4 @@
+import {publishEventNews} from './event-news.js';
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {validateEffect,eventMutation,NEW_EFFECTS,currentEffect,remainingSettlements,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 import {effectiveConfig} from './business-policy.js';
@@ -22,8 +23,8 @@ export async function publishEvent(db,b){
  const effects=b.type==='choice'?b.options.map(o=>validateEffect(o.effect)):[validateEffect(b.effect)];
  const ref=doc(db,'events',b.id);if((await getDoc(ref)).exists())fail('이미 발행한 이벤트입니다. 적용 상태를 조회하세요.');
  const batch=writeBatch(db);
- if(b.type==='choice')batch.set(doc(db,'eventQueue',b.id),{endsAt:deadline});
- batch.set(ref,{type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
+ batch.set(doc(db,'eventQueue',b.id),{endsAt:b.type==='choice'?deadline:serverTimestamp()});
+ batch.set(ref,{autoNews:true,type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
  effects.forEach((effect,i)=>batch.set(doc(db,'eventOutcomes',b.id,'options',String(i)),{effect}));
  await batch.commit();return {id:b.id};
 }
@@ -47,7 +48,7 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
   if(os.exists()&&['destroy','efficiency','grant'].includes(effect.kind))requireProduction(os.data());
   if(os.exists()&&os.data().locked)fail('배당 정산 완료 후 결과 적용을 다시 눌러 주세요. 선택은 저장되어 있습니다.');
   const patch=os.exists()?eventMutation(os.data(),effect,{config:config?effectiveConfig(config.data()):null,book:book?.data(),eventId:eid,effectiveAt:(n.type==='choice'?n.endsAt:n.startsAt).toMillis()}):{};
-  const result=effect.kind==='cash'?{amount:patch.cash-(os.data().cash+(book?.data()?.issuerCash||0)-os.data().receivedIssuerCash)}:effect.kind==='workforce'?{count:patch.employees-(os.data().employees||0)}:effect.kind==='grant'?{count:patch[effect.asset]-os.data()[effect.asset]}:null;
+  const result=effect.kind==='cash'?{amount:patch.cash-(os.data().cash+(book?.data()?.issuerCash||0)-os.data().receivedIssuerCash)}:effect.kind==='workforce'?{count:patch.employees-(os.data().employees||0)}:effect.kind==='grant'?{count:patch[effect.asset]-os.data()[effect.asset]}:effect.kind==='destroy'?{count:os.data()[effect.asset]-patch[effect.asset]}:null;
   if(os.exists())t.update(ops,{...patch,lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
   t.set(receipt,{option,effect,...(Number.isInteger(effect.settlements)&&effect.settlements>0?{startsAfterSettlement:os.data()?.settlementCount||0}:{}),...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
  });
@@ -63,9 +64,17 @@ export async function eventCompanyView(db,cid){
 export async function applyRandomEvent(db,eid){
  const s=await getDoc(doc(db,'events',eid));if(!s.exists()||s.data().type!=='random')fail('랜덤 이벤트를 선택하세요.');
  const failed=[];let applied=0;for(const cid of s.data().targets){try{await initializeOperations(db,cid);await applyEvent(db,cid,eid);applied++;}catch(e){failed.push({companyId:cid,message:e.message});}}
+ try{await publishEventNews(db,eid);}catch(error){return {applied,failed,newsPending:true,newsError:error.message};}
  return {applied,failed};
 }
 
 // Apply due selections before manual settlement as well as the scheduled job.
 export async function applyDueCompanyChoices(db,cid){let cursor=null;for(;;){const page=await getDocs(query(collection(db,'events'),orderBy('__name__'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const e of page.docs){const n=e.data();if(n.type!=='choice'||!n.targets.includes(cid)||n.endsAt.toMillis()>Date.now())continue;const selected=await getDoc(doc(db,'companyChoices',cid,'items',e.id));if(selected.exists())await applyEvent(db,cid,e.id,selected.data().option);}if(page.size<100)break;cursor=page.docs.at(-1);}}
-export async function closeChoiceEvent(db,eid){const event=await getDoc(doc(db,'events',eid)),n=event.data();if(n?.type!=='choice'||n.endsAt.toMillis()>Date.now())fail('선택 마감 후 처리할 수 있습니다.');let applied=0;const failed=[];for(const cid of n.targets){try{const c=await getDoc(doc(db,'companyChoices',cid,'items',eid));if(c.exists()){await applyEvent(db,cid,eid,c.data().option);applied++;}}catch{failed.push(cid);}}return {applied,failed};}
+export async function closeChoiceEvent(db,eid){
+ const event=await getDoc(doc(db,'events',eid)),n=event.data();
+ if(n?.type!=='choice'||n.endsAt.toMillis()>Date.now())fail('선택 마감 후 처리할 수 있습니다.');
+ let applied=0;const failed=[];
+ for(const cid of n.targets){try{const c=await getDoc(doc(db,'companyChoices',cid,'items',eid));if(c.exists()){await applyEvent(db,cid,eid,c.data().option);applied++;}}catch{failed.push(cid);}}
+ try{await publishEventNews(db,eid);}catch(error){return {applied,failed,newsPending:true,newsError:error.message};}
+ return {applied,failed};
+}

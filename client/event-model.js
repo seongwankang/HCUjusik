@@ -69,7 +69,7 @@ export function adjustedRevenue(o,day,records=[],now=Date.now()){
  return {base,revenue,additive,staff,supported,capacity:staffCapacity(o),researchBonus,boostBps:boost};
 }
 export function effectText(input,result){
- const e={...input,...(result&&input.kind==='cash'?{amount:result.amount}:{}),...(result&&['workforce','grant'].includes(input.kind)?{count:result.count}:{})};
+ const e={...input,...(result&&input.kind==='cash'?{amount:result.amount}:{}),...(result&&['workforce','grant','destroy'].includes(input.kind)?{count:result.count}:{})};
  const names={...ASSET_NAMES,employee:'직원 채용',all:'전체 투자'},sign=n=>n>0?'+'+n:String(n);
  const duration=Number.isInteger(e.settlements)?'정산 '+e.settlements+'회':e.hours+'시간 (이전 방식)';
  if(e.kind==='cash')return '회사 자금 '+sign(e.amount).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원 · 일회성';

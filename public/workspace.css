@@ -140,3 +140,5 @@ body .price-step-buttons button{flex:1;min-height:32px;padding:5px 8px;border:1p
 body .company-heading #company-description{width:100%;order:2;font-size:12px;font-weight:400;color:#64748b;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0 2px}body .company-heading #company-category{order:3}body .company-heading #company-president{order:4}
 
 body .business-finances{grid-template-columns:repeat(2,minmax(0,1fr))}body .business-finances article small{font-size:11px;color:var(--muted)}@media(max-width:780px){body .business-finances{grid-template-columns:1fr}}
+
+.event-news-results{margin-top:30px;padding-top:24px;border-top:1px solid var(--edge)}.event-news-results h2{font-size:19px;margin:0 0 20px}.event-news-group{margin:0 0 22px}.event-news-group h3{font-size:15px;margin:0 0 6px}.event-news-effect{font-size:13px;color:var(--muted);margin:0 0 12px}.event-news-results table{min-width:420px}.event-news-results th,.event-news-results td{text-align:left!important;white-space:normal}.event-news-unselected{font-size:13px;padding:16px;background:#f6f8fc;border-radius:8px;line-height:1.8}
