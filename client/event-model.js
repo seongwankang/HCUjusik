@@ -20,12 +20,13 @@ export function validateEffect(e){
  if(!(kind==='cost'?[...keys,'employee','all']:keys).includes(asset))fail('대상 설비를 선택하세요.');
  const percent=['revenue','efficiency','cost','dividendCap'].includes(kind)?Number(e.percent):0;
  const count=['destroy','workforce','grant'].includes(kind)?Number(e.count):0;
- const hours=TIMED_EFFECTS.includes(kind)?Number(e.hours):0;
+ const counted=Object.hasOwn(e,'settlements'),settlements=TIMED_EFFECTS.includes(kind)?Number(e.settlements):0;
+ const hours=TIMED_EFFECTS.includes(kind)&&!counted?Number(e.hours):0;
  if(!Number.isInteger(percent)||percent<(kind==='cost'?-90:kind==='dividendCap'?0:-100)||percent>(kind==='cost'?300:kind==='dividendCap'?100:500))fail('변동률 범위를 확인하세요. 비용은 -90~300%, 배당 상한은 0~100%입니다.');
  if(!Number.isInteger(count)||count<(kind==='workforce'?-1000:0)||count>1000||['destroy','grant'].includes(kind)&&count<1||kind==='workforce'&&count===0)fail('수량은 1~1,000개, 인원 변화는 -1,000~1,000명(0 제외)입니다.');
- if(!Number.isInteger(hours)||hours<0||hours>2160||TIMED_EFFECTS.includes(kind)&&hours<1)fail('기간은 1~2,160시간으로 입력하세요.');
+ if(counted?(!Number.isInteger(settlements)||settlements<0||settlements>365||TIMED_EFFECTS.includes(kind)&&settlements<1):(!Number.isInteger(hours)||hours<0||hours>2160||TIMED_EFFECTS.includes(kind)&&hours<1))fail('적용 횟수는 1~365회로 입력하세요.');
  if(kind==='cash'&&(!Number.isSafeInteger(Number(e.amount))||Math.abs(Number(e.amount))>100000000||Number(e.amount)===0))fail('지원금·손실금은 0을 제외한 ±1억 원 이내 정수로 입력하세요.');
- return {kind,asset,percent,count,hours,...(kind==='cash'?{amount:Number(e.amount)}:{})};
+ return {kind,asset,percent,count,...(counted?{settlements}:{hours}),...(kind==='cash'?{amount:Number(e.amount)}:{})};
 }
 export const needsProduction=o=>(!o.production||!o.pendingProduction)&&(o.revenue||o.pendingRevenue)>0;
 export function requireProduction(o){if(needsProduction(o))fail('기존 설비의 종류별 매출을 관리자가 회사경영에서 먼저 확인·저장해야 합니다.');}
@@ -37,9 +38,12 @@ export function destruction(o,e){
  p[e.asset]-=activeLoss;q[e.asset]-=pendingLoss;
  return {...(e.asset==='research'?{activeResearchBps:researchBps(o)-(n?Math.floor(researchBps(o)*lost/n):0),pendingResearchBps:(o.pendingResearchBps||0)-(n?Math.floor((o.pendingResearchBps||0)*lost/n):0)}:{}),[e.asset]:n-lost,revenue:o.revenue-activeLoss,pendingRevenue:o.pendingRevenue-pendingLoss,production:p,pendingProduction:q};
 }
-export function activeEffect(r,now=Date.now()){
+export function remainingSettlements(o,r){
+ return Math.max(0,r.effect.settlements-Math.max(0,(o.settlementCount||0)-(r.startsAfterSettlement||0)));
+}
+export function activeEffect(r,now=Date.now(),o={}){
  const at=r.effectiveAt??r.appliedAt,start=typeof at==='number'?at:at?.toMillis?.()??Date.parse(at);
- return TIMED_EFFECTS.includes(r.effect.kind)&&start<=now&&now<start+r.effect.hours*3600000;
+ return TIMED_EFFECTS.includes(r.effect.kind)&&start<=now&&(Number.isInteger(r.effect.settlements)?remainingSettlements(o,r)>0:now<start+r.effect.hours*3600000);
 }
 export function adjustedRevenue(o,day,records=[],now=Date.now()){
  if(o.research>0)requireProduction(o);
@@ -51,10 +55,10 @@ export function adjustedRevenue(o,day,records=[],now=Date.now()){
  const supported=Math.min(employees,staffCapacity(o)),staff=employees?Math.floor(staffPool*supported/employees):0;
  const additive=facilities+staff;
  const baseBoost=Math.min(BOOST_LIMIT,researchBps(o)+(mature?(o.pendingResearchBps||0):0));let boost=baseBoost,extra=0;
- for(const r of records)if(activeEffect(r,now)&&r.effect.kind==='efficiency'&&r.effect.asset==='research')boost+=Math.trunc(baseBoost*r.effect.percent/100);
+ for(const r of records)if(activeEffect(r,now,o)&&r.effect.kind==='efficiency'&&r.effect.asset==='research')boost+=Math.trunc(baseBoost*r.effect.percent/100);
  boost=Math.max(0,Math.min(BOOST_LIMIT,boost));
  const researchBonus=Math.floor(additive*boost/10000),enhanced=additive+researchBonus;
- for(const r of records)if(['revenue','efficiency'].includes(r.effect.kind)&&activeEffect(r,now)){
+ for(const r of records)if(['revenue','efficiency'].includes(r.effect.kind)&&activeEffect(r,now,o)){
   const e=r.effect;if(e.kind==='efficiency'&&e.asset==='research')continue;
   if(e.kind==='efficiency')requireProduction(o);
   const raw=e.kind==='revenue'?enhanced:p[e.asset]+(mature?q[e.asset]:0);
@@ -67,25 +71,26 @@ export function adjustedRevenue(o,day,records=[],now=Date.now()){
 export function effectText(input,result){
  const e={...input,...(result&&input.kind==='cash'?{amount:result.amount}:{}),...(result&&['workforce','grant'].includes(input.kind)?{count:result.count}:{})};
  const names={...ASSET_NAMES,employee:'직원 채용',all:'전체 투자'},sign=n=>n>0?'+'+n:String(n);
+ const duration=Number.isInteger(e.settlements)?'정산 '+e.settlements+'회':e.hours+'시간 (이전 방식)';
  if(e.kind==='cash')return '회사 자금 '+sign(e.amount).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원 · 일회성';
- if(e.kind==='cost')return names[e.asset]+' 비용 '+sign(e.percent)+'% · '+e.hours+'시간';
+ if(e.kind==='cost')return names[e.asset]+' 비용 '+sign(e.percent)+'% · '+duration;
  if(e.kind==='workforce')return e.count===0?'직원 변화 없음 (정원·재직 인원 기준)':e.count>0?'직원 '+e.count+'명 무상 충원 (정원 이내)':'직원 '+(-e.count)+'명 이탈';
  if(e.kind==='grant')return ASSET_NAMES[e.asset]+' '+e.count+'개 무상 지급';
- if(e.kind==='dividendCap')return '배당률 상한 '+e.percent+'% · '+e.hours+'시간';
- return e.kind==='destroy'?ASSET_NAMES[e.asset]+' '+e.count+'개 파괴 (영구)':e.kind==='none'?'변화 없음':(e.kind==='revenue'?'일매출':ASSET_NAMES[e.asset]+' 효율')+' '+sign(e.percent)+'% · '+e.hours+'시간';
+ if(e.kind==='dividendCap')return '배당률 상한 '+e.percent+'% · '+duration;
+ return e.kind==='destroy'?ASSET_NAMES[e.asset]+' '+e.count+'개 파괴 (영구)':e.kind==='none'?'변화 없음':(e.kind==='revenue'?'일매출':ASSET_NAMES[e.asset]+' 효율')+' '+sign(e.percent)+'% · '+duration;
 }
-const termActive=(t,now)=>!!t&&t.startsAt<=now&&now<t.endsAt;
+export const termActive=(t,now,o={})=>!!t&&t.startsAt<=now&&(Number.isInteger(t.settlements)?(o.settlementCount||0)<t.startsAfterSettlement+t.settlements:now<t.endsAt);
 export function investmentCost(o,config,asset,now=Date.now()){
- const base=config[asset+'Cost'],term=o.costEvents?.[asset],percent=termActive(term,now)?term.percent:0;
+ const base=config[asset+'Cost'],term=o.costEvents?.[asset],percent=termActive(term,now,o)?term.percent:0;
  return Math.max(1,Math.ceil(base*(100+percent)/100));
 }
 export function effectiveDividendBps(o,now=Date.now()){
- return termActive(o.dividendLimit,now)?Math.min(o.dividendBps,o.dividendLimit.percent*100):o.dividendBps;
+ return termActive(o.dividendLimit,now,o)?Math.min(o.dividendBps,o.dividendLimit.percent*100):o.dividendBps;
 }
 export function currentEffect(o,r,now=Date.now()){
- if(!activeEffect(r,now))return false;
- if(r.effect.kind==='cost')return Object.values(o.costEvents||{}).some(t=>t.eventId===r.id&&termActive(t,now));
- if(r.effect.kind==='dividendCap')return o.dividendLimit?.eventId===r.id&&termActive(o.dividendLimit,now);
+ if(!activeEffect(r,now,o))return false;
+ if(r.effect.kind==='cost')return Object.values(o.costEvents||{}).some(t=>t.eventId===r.id&&termActive(t,now,o));
+ if(r.effect.kind==='dividendCap')return o.dividendLimit?.eventId===r.id&&termActive(o.dividendLimit,now,o);
  return true;
 }
 // One receipt and the company update commit together. Stored yields never compound.
@@ -101,7 +106,7 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
   return {cash,receivedIssuerCash:book?.issuerCash||0};
  }
  if(e.kind==='cost'||e.kind==='dividendCap'){
-  const term={eventId,percent:e.percent,startsAt:effectiveAt,endsAt:effectiveAt+e.hours*3600000};
+  const term={eventId,percent:e.percent,startsAt:effectiveAt,...(Number.isInteger(e.settlements)?{settlements:e.settlements,startsAfterSettlement:o.settlementCount||0}:{endsAt:effectiveAt+e.hours*3600000})};
   if(e.kind==='dividendCap')return {dividendLimit:term};
   const costs={...o.costEvents};for(const asset of ['factory','equipment','research','employee'])if(e.asset==='all'||e.asset===asset)costs[asset]=term;
   return {costEvents:costs};
