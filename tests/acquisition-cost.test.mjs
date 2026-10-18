@@ -1,0 +1,8 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {acquisitionCosts} from '../client/acquisition-cost.js';
+const f=(side,price,quantity,marketVersion,companyId='a')=>({side,price,quantity,marketVersion,companyId});
+test('weighted buys, partial sells preserve average, later buys use remaining cost, full exit resets',()=>{const rows=[f('buy',10000,10,1),f('buy',12000,10,3),f('sell',15000,5,4),f('buy',14000,5,7)];assert.equal(acquisitionCosts(rows.slice(0,2),{a:20}).a.averagePrice,11000);assert.equal(acquisitionCosts(rows.slice(0,3),{a:15}).a.averagePrice,11000);assert.equal(acquisitionCosts(rows.toReversed(),{a:20}).a.averagePrice,11750);assert.equal(acquisitionCosts([...rows,f('sell',16000,20,8),f('buy',9000,2,9)],{a:2}).a.averagePrice,9000);});
+test('per-symbol sequence controls cost, not timestamp, recent page or sell proceeds',()=>{const rows=Array.from({length:65},(_,i)=>f('buy',1000+i*10,1,i+1));rows.push(f('buy',30000,2,1,'b'));const p=acquisitionCosts(rows,{a:65,b:2});assert.equal(p.a.averagePrice,1320);assert.equal(p.b.averagePrice,30000);});
+test('missing or invalid history never fabricates an average',()=>{for(const rows of [[],[f('sell',100,1,1)],[f('buy',100,1,1),f('buy',100,1,1)],[f('buy',100,-1,1)]])assert.equal(acquisitionCosts(rows,{a:3}).a.averagePrice,null);assert.equal(acquisitionCosts([],{a:0}).a.averagePrice,null);});
+test('fractional cost remains precise through repeated sells',()=>{const rows=[f('buy',10000,1,1),f('buy',10010,2,2),f('sell',50000,1,3),f('sell',9000,1,4)];assert.ok(Math.abs(acquisitionCosts(rows,{a:1}).a.averagePrice-10006.6666666667)<0.00001);});
