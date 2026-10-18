@@ -188,7 +188,7 @@ service cloud.firestore {
     }
     // Spark-only two-symbol limit exchange. Books contain pseudonymous order
     // entries, not names/email/balances. Private accounts/orders/fills stay owner-only.
-    // At most 4 resting orders per symbol allows full price/time validation.
+    // Four resting orders plus one executable taker; validate all five at settlement.
     function sparkId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$'); }
     function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
     function number(v,n) { return v is int && v >= 0 && v <= n; }
@@ -216,7 +216,7 @@ service cloud.firestore {
     }
     function best(orders,c) {
       let score=(c.side == 'buy' ? -c.price : c.price)*1000000001+c.sequence;
-      return noBetter(orders,c.side,score,0) && noBetter(orders,c.side,score,1) && noBetter(orders,c.side,score,2) && noBetter(orders,c.side,score,3);
+      return noBetter(orders,c.side,score,0) && noBetter(orders,c.side,score,1) && noBetter(orders,c.side,score,2) && noBetter(orders,c.side,score,3) && noBetter(orders,c.side,score,4);
     }
     function notSelf(orders,e,i) {
       return orders.size() <= i || orders[i].uid != e.uid || orders[i].side == e.side ||
@@ -227,7 +227,7 @@ service cloud.firestore {
     }
     function firstInitial(orders,b,price) {
       return noEarlierInitial(orders,b,price,0) && noEarlierInitial(orders,b,price,1) &&
-        noEarlierInitial(orders,b,price,2) && noEarlierInitial(orders,b,price,3);
+        noEarlierInitial(orders,b,price,2) && noEarlierInitial(orders,b,price,3) && noEarlierInitial(orders,b,price,4);
     }
     function noSelfCross(orders,e) {
       return notSelf(orders,e,0) && notSelf(orders,e,1) && notSelf(orders,e,2) && notSelf(orders,e,3);
@@ -241,10 +241,19 @@ service cloud.firestore {
     function unchangedTreasury(d,o) {
       return d.treasuryShares == o.treasuryShares && d.issuerCash == o.issuerCash && d.lastPrice == o.lastPrice;
     }
+    function crossesAt(orders,e,i) {
+      return orders.size() > i && orders[i].uid != e.uid && orders[i].side != e.side &&
+        (e.side == 'buy' ? e.price >= orders[i].price : e.price <= orders[i].price);
+    }
+    function takerSlot(o,e) {
+      return o.orders.size() == 4 &&
+        ((e.side == 'buy' && o.treasuryShares > 0 && e.price >= o.initialPrice) ||
+          crossesAt(o.orders,e,0) || crossesAt(o.orders,e,1) || crossesAt(o.orders,e,2) || crossesAt(o.orders,e,3));
+    }
     function placeBook(cid,d,o) {
       let e=d.lastAction.entry;
       return d.lastAction.keys().hasOnly(['kind','actor','entry']) && entryValid(e,d.version) &&
-        o.orders.size() < 4 && d.orders == o.orders.concat([e]) && noSelfCross(o.orders,e) &&
+        (o.orders.size() < 4 || takerSlot(o,e)) && d.orders == o.orders.concat([e]) && noSelfCross(o.orders,e) &&
         unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
     }
     function cancelBook(cid,d,o) {
