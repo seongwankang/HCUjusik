@@ -14,9 +14,9 @@ export function cashRankings(users,accounts,companies=[],books=[]){
  const rows=assetRows(users,accounts,companies,books).map(({uid,portfolio,...row})=>row);
  return {entries:ranked(rows,'totalValue').slice(0,100),participants:rows.length};
 }
-export function priceRankings(companies,books){
+export function priceRankings(companies,books,max=100){
  const map=new Map(books.map(b=>[b.id,b]));
- return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const last=map.get(c.id)?.lastPrice,initial=!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,100);
+ return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const last=map.get(c.id)?.lastPrice,initial=!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
 }
 export async function allRows(db,path){let cursor=null,rows=[];for(;;){const page=await getDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])));rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
 export async function investorSnapshots(users,accounts,companies=[],books=[]){
@@ -36,10 +36,10 @@ export async function publishCashRankings(db){
 }
 export function marketRankingLists(prices,sessions){
  const rows=prices.map(p=>{const session=sessions[p.id];return {...p,volume:session?.volume??null,change:session?.change??null};});
- return {prices:rows,volume:ranked(rows.filter(r=>r.volume!==null),'volume').slice(0,100),gainers:ranked(rows.filter(r=>r.change?.percent>0).map(r=>({...r,percent:r.change.percent})),'percent').slice(0,100),losers:ranked(rows.filter(r=>r.change?.percent<0).map(r=>({...r,percent:r.change.percent})),'percent',true).slice(0,100),unavailable:rows.filter(r=>r.volume===null||r.change===null).length};
+ return {prices:rows.slice(0,100),volume:ranked(rows.filter(r=>r.volume!==null),'volume').slice(0,100),gainers:ranked(rows.filter(r=>r.change?.percent>0).map(r=>({...r,percent:r.change.percent})),'percent').slice(0,100),losers:ranked(rows.filter(r=>r.change?.percent<0).map(r=>({...r,percent:r.change.percent})),'percent',true).slice(0,100),unavailable:rows.filter(r=>r.volume===null||r.change===null).length};
 }
 export async function marketRankings(db,companies,books,now=Date.now()){
- const prices=priceRankings(companies,books),start=koreaDayStart(now),sessions={};
+ const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={};
  await Promise.all(prices.map(async p=>{try{
   const path=collection(db,'sparkBooks',p.id,'trades');let cursor=null,volume=0;
   for(;;){const page=await getDocs(query(path,where('createdAt','>=',Timestamp.fromMillis(start)),where('createdAt','<',Timestamp.fromMillis(start+86400000)),orderBy('createdAt'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const d of page.docs){const q=d.data().quantity;if(!Number.isSafeInteger(q)||q<=0)throw Error('체결 수량 오류');volume+=q;}if(page.size<100)break;cursor=page.docs.at(-1);}
