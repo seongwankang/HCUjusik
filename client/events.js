@@ -2,6 +2,7 @@ import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransact
 import {validateEffect,eventMutation,NEW_EFFECTS,currentEffect,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 import {effectiveConfig} from './business-policy.js';
 import {initializeOperations} from './economy.js';
+import {eventTargets} from './event-targets.js';
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 const fail=s=>{throw new Error(s);};
 export async function effectRecords(db,cid){
@@ -13,8 +14,7 @@ export async function publishEvent(db,b){
  const title=String(b.title||'').trim(),content=String(b.content||'').trim();
  if(!title||title.length>120||!content||content.length>5000)fail('제목과 상황 설명을 입력하세요.');
  const companies=(await getDocs(query(collection(db,'companies'),limit(100)))).docs;
- const targets=b.type==='choice'||!b.companyId?companies.map(s=>s.id):[b.companyId];
- if(!targets.length||targets.some(id=>!companies.some(s=>s.id===id)))fail('대상 기업을 확인하세요.');
+ const targets=eventTargets(b,companies.map(s=>s.id));
  const deadline=Timestamp.fromDate(new Date(b.deadline));if(!Number.isFinite(deadline.toMillis())||deadline.toMillis()<=Date.now())fail('미래의 선택 마감 시간을 입력하세요.');
  const labels=b.type==='choice'?b.options?.map(o=>String(o.label||'').trim()):[];
  if(b.type==='choice'&&(labels?.length!==3||labels.some(l=>!l||l.length>200)))fail('선택지 3개를 각각 200자 이내로 입력하세요.');
@@ -22,7 +22,7 @@ export async function publishEvent(db,b){
  const ref=doc(db,'events',b.id);if((await getDoc(ref)).exists())fail('이미 발행한 이벤트입니다. 적용 상태를 조회하세요.');
  const batch=writeBatch(db);
  if(b.type==='choice')batch.set(doc(db,'eventQueue',b.id),{endsAt:deadline});
- batch.set(ref,{type:b.type,title,content,companyId:b.companyId||'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
+ batch.set(ref,{type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
  effects.forEach((effect,i)=>batch.set(doc(db,'eventOutcomes',b.id,'options',String(i)),{effect}));
  await batch.commit();return {id:b.id};
 }
