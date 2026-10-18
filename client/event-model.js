@@ -127,3 +127,9 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
  }
  return {};
 }
+
+// These are the percentage modifiers used by the displayed revenue forecast,
+// evaluated at its settlement time rather than only at the viewing time.
+export function revenueEffects(ops,records=[],at=Date.now()){
+ return records.filter(r=>['revenue','efficiency'].includes(r.effect?.kind)&&r.effect.percent!==0&&activeEffect(r,at,ops)).map(r=>({id:r.id,kind:r.effect.kind,asset:r.effect.asset,percent:r.effect.percent}));
+}
