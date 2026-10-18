@@ -148,3 +148,13 @@ body .business-finances{grid-template-columns:repeat(2,minmax(0,1fr))}body .busi
 .trading-account{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}#portfolio-transactions{margin-top:28px}#portfolio-transactions td:first-child{white-space:nowrap}#portfolio-transactions [data-more-transactions]{margin-top:12px}
 
 .revenue-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.revenue-effects{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}.revenue-effect{display:inline-block;padding:3px 7px;border-radius:5px;font-size:12px;line-height:1.5;font-weight:600;white-space:nowrap;background:#f0f3f8;color:#526078}.revenue-effect[data-direction="down"]{background:#edf3ff;color:#285bb1}.revenue-effect[data-direction="up"]{background:#fff0ef;color:#ba3e37}.investor-summary .revenue-value{margin-top:7px}.investor-summary .revenue-value strong{margin-top:0}
+
+/* Keep growing records local; headers/actions remain outside each scroll area. */
+body .table-wrap,body .trade-table-wrap,body .portfolio-table-wrap{max-height:min(420px,60vh);overflow:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;min-height:0}
+body #limit-fills .trade-table-wrap,body #limit-orders .trade-table-wrap{max-height:min(340px,50vh)}
+body :is(.table-wrap,.trade-table-wrap,.portfolio-table-wrap) thead th{position:sticky;top:0;z-index:2;background:#f5f7fb;box-shadow:inset 0 -1px #e1e7ef}
+body .investor-history-list,body .investor-event-list,body .event-history-list,body #comment-list{max-height:min(360px,55vh);overflow:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;min-height:0}
+body .company-event-list{max-height:min(520px,65vh);overflow:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+body #all-news{max-height:min(640px,70vh);overflow:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+body :is(.table-wrap,.trade-table-wrap,.portfolio-table-wrap,.investor-history-list,.investor-event-list,.event-history-list,.company-event-list,#comment-list,#all-news):focus-visible{outline:2px solid #3978e5;outline-offset:2px}
+@media(max-width:780px){body .table-wrap,body .trade-table-wrap,body .portfolio-table-wrap{max-height:min(340px,55vh)}body #limit-fills .trade-table-wrap,body #limit-orders .trade-table-wrap{max-height:min(300px,50vh)}}
