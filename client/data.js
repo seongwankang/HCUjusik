@@ -2,7 +2,7 @@ import {publishLeadership} from './leadership.js';
 import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,closeChoiceEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
 import {investorSnapshot} from './investor.js';
-import {accountAssets,allRows,priceRankings,publishCashRankings} from './rankings.js';
+import {accountAssets,allRows,marketRankings,publishCashRankings} from './rankings.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -34,7 +34,12 @@ export function createClientApi({db,getUser}){
    const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies')]);
    const books=await Promise.all(companies.map(c=>get('sparkBooks/'+c.id)));
    const own=accountAssets(account,Object.fromEntries(companies.map(c=>[c.id,c])),Object.fromEntries(books.filter(Boolean).map(b=>[b.id,b])));
-   return {cash,myCash:own.cash,myTotalValue:own.totalValue,prices:priceRankings(companies,books.filter(Boolean))};
+   return {cash,myCash:own.cash,myTotalValue:own.totalValue,...await marketRankings(db,companies,books.filter(Boolean))};
+  }
+  if(route==='/api/investor-profile'&&method==='GET'){
+   const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))message('순위표에서 참가자를 선택하세요.');
+   const snapshot=await get('investorSnapshots/'+id);if(!snapshot)message('집계된 보유 현황이 없습니다. 순위표를 새로고침하세요.');
+   return {name:snapshot.name,cash:snapshot.cash,holdings:snapshot.holdings,updatedAt:snapshot.updatedAt};
   }
   if(route==='/api/news-detail'&&method==='GET'){const id=url.searchParams.get('id');if(!newsId(id))message('뉴스 주소를 확인하세요.');const news=await get((url.searchParams.get('kind')==='event'?'events/':'news/')+id);if(!news)message('뉴스가 없거나 삭제되었습니다.');return {news};}
   if(route==='/api/news-comments'&&method==='GET'){const cursor=url.searchParams.get('cursor');return readComments(db,user.uid,url.searchParams.get('id'),cursor?JSON.parse(cursor):null);}

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {cashRankings,priceRankings} from '../client/rankings.js';
+import {cashRankings,priceRankings,investorSnapshots,marketRankingLists} from '../client/rankings.js';
 import {settlementDue} from '../server/scheduled-economy.js';
 test('cash ranks exclude admins/inactive users, include untraded starting cash, ties and no identities',()=>{
  const users=[['a','가','student',true],['b','나','president',true],['c','다','student',true],['admin','관리자','admin',true],['off','중지','student',false]].map(([id,displayName,role,active])=>({id,displayName,role,active}));
@@ -27,4 +27,18 @@ test('asset rankings use cash plus current holdings without double counting rese
  const r=cashRankings(users,accounts,companies,[{id:'one',lastPrice:20000}]);assert.equal(r.entries[0].name,'가');assert.equal(r.entries[0].stockValue,2000000);assert.equal(r.entries[0].totalValue,2500000);assert.equal(r.entries[0].cash,500000);assert.equal('positions' in r.entries[0],false);
  const initial=cashRankings(users,accounts,companies,[]);assert.equal(initial.entries[0].totalValue,1500000);assert.deepEqual(initial.entries.map(x=>x.rank),[1,1]);
  assert.throws(()=>cashRankings(users,accounts,[],[]),/가격/);
+});
+
+test('public investor snapshots contain only name, cash and stock quantities, with stable opaque keys',async()=>{
+ const users=[{id:'private-uid-a',displayName:'김학생',role:'student',active:true},{id:'private-off',displayName:'중지',role:'student',active:false}];
+ const accounts=[{id:'private-uid-a',cash:700000,reservedCash:100000,positions:{one:20},reservedPositions:{one:5},email:'secret@example.test',lastMarket:'one'}],companies=[{id:'one',name:'기업',ticker:'ONE',referencePrice:10000}];
+ const a=await investorSnapshots(users,accounts,companies),b=await investorSnapshots(users,accounts,companies);
+ assert.equal(a.profiles.length,1);assert.equal(a.board.entries[0].investorKey,b.board.entries[0].investorKey);assert.notEqual(a.board.generation,b.board.generation);
+ const p=a.profiles[0].profile;assert.deepEqual(p.holdings,[{companyId:'one',name:'기업',ticker:'ONE',quantity:20}]);assert.equal(p.cash,700000);
+ const text=JSON.stringify(a);for(const secret of ['private-uid-a','private-off','secret@example.test','reservedCash','reservedPositions','lastMarket'])assert.equal(text.includes(secret),false);
+});
+test('market rankings separate daily volume, gains and losses, with shared ties and missing-data exclusion',()=>{
+ const prices=['a','b','c','d','missing'].map((id,i)=>({id,name:id,price:10000,rank:i+1}));
+ const r=marketRankingLists(prices,{a:{volume:20,change:{percent:5}},b:{volume:20,change:{percent:10}},c:{volume:100,change:{percent:-20}},d:{volume:0,change:{percent:0}}});
+ assert.deepEqual(r.volume.map(x=>[x.id,x.rank]),[['c',1],['a',2],['b',2],['d',4]]);assert.deepEqual(r.gainers.map(x=>x.id),['b','a']);assert.deepEqual(r.losers.map(x=>x.id),['c']);assert.equal(r.unavailable,1);
 });

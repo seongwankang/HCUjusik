@@ -3,6 +3,14 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full: 정산·이벤트·순위 / rankings-only: 자산 순위만 갱신'
+        type: choice
+        options:
+          - full
+          - rankings-only
+        default: full
 permissions:
   contents: read
   id-token: write
@@ -29,3 +37,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
+          ECONOMY_JOB_MODE: ${{ inputs.mode || 'full' }}
