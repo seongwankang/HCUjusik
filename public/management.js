@@ -1,3 +1,4 @@
+import {showSpies} from './spies.js';
 import {nextSettlement} from '../client/settlement-time.js';
 import {INCOME_MULTIPLIER,BASE_CAPACITY,FACTORY_CAPACITY,EQUIPMENT_CAPACITY,DEFAULT_CONFIG,researchBps,staffCapacity,hasPending} from '../client/business-policy.js';
 import {previewPurchase,startupExample} from '../client/investment-preview.js';
@@ -28,6 +29,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    try{
     const data=await api('/api/economy?companyId='+encodeURIComponent(id));if(!current()||selected!==id)return;
     view=data;render();
+    await showSpies(host.querySelector('#business-spies'),api,id,companies,user,view,load,()=>current()&&selected===id);if(!current()||selected!==id)return;
     await showCompanyEvents(host.querySelector('#company-events'),api,id,load,()=>current()&&selected===id,summary=>{
      if(!current()||selected!==id)return;
      const badge=host.querySelector('#business-event-count');badge.textContent=summary.pendingCount||'';badge.hidden=!summary.pendingCount;
@@ -49,7 +51,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
     </section>
     ${o.locked?'<p class="business-lock">배당 지급 중입니다. 거래·투자는 정산 완료 후 재개됩니다.</p>':''}
     ${o.pendingEvent?'<p class="business-lock">선택한 이벤트의 결과 적용을 완료해 주세요. <button class="text-link" data-management-tab="events">이벤트 확인</button></p>':''}
-    <div class="management-tabs" role="tablist" aria-label="기업 경영 메뉴">${[['investments','시설·채용'],['events','이벤트'],['settlement','회계·배당']].map(([id,label])=>`<button id="business-tab-${id}" type="button" role="tab" data-management-tab="${id}" aria-controls="business-panel-${id}">${label}${id==='events'?'<span id="business-event-count" class="tab-count" hidden></span>':''}</button>`).join('')}</div>
+    <div class="management-tabs" role="tablist" aria-label="기업 경영 메뉴">${[['investments','시설·채용'],['events','이벤트'],['spies','산업스파이'],['settlement','회계·배당']].map(([id,label])=>`<button id="business-tab-${id}" type="button" role="tab" data-management-tab="${id}" aria-controls="business-panel-${id}">${label}${id==='events'?'<span id="business-event-count" class="tab-count" hidden></span>':''}</button>`).join('')}</div>
     <section id="business-panel-investments" role="tabpanel" aria-labelledby="business-tab-investments" data-management-panel="investments">
      <section class="business-inventory">     <div class="business-section-heading"><h2>시설·인력 현황</h2><span>보유 수량</span></div>
      <div class="inventory-overview">${Object.entries(choices).map(([id,name])=>`<article class="inventory-tile ${id==='employee'?'inventory-staff':''}"><span>${name}</span><strong>${id==='employee'?employees:o[id]}<small>${id==='employee'?'명':'개'}</small></strong><small>${id==='factory'?'수용 인원 '+o.factory*FACTORY_CAPACITY+'명':id==='equipment'?'수용 인원 '+o.equipment*EQUIPMENT_CAPACITY+'명':id==='research'?'수익 보너스 +'+bonus+'%':'배치 '+Math.min(employees,capacity)+'명'+(idle?' · 유휴 '+idle+'명':'')}</small></article>`).join('')}</div>
@@ -65,6 +67,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
      }).join('')}</div>
      <details class="business-guide"><summary>투자 수익 비교·운영 안내</summary><p>기본 정원 10명에 공장당 25명·생산 설비당 10명이 추가됩니다. 수익은 운영비·급여 차감 후 원장 기여액에 운영 수익 배수 2배를 한 번 적용하며 오전 9시 전에 구매하면 당일 9시 정산부터 반영됩니다. R&D는 설비·직원 수익에 비율로 적용됩니다.</p><div class="table-wrap"><table><thead><tr><th>투자</th><th>예상 일수익 증가</th><th>단순 회수 기간</th></tr></thead><tbody>${Object.keys(choices).map(id=>{const p=needs?null:previewPurchase(o,c,id,day,settlement.day);return `<tr><td>${choices[id]}</td><td>${p?won(Math.max(0,p.gain)):'—'}</td><td>${p?.payback?p.payback+'일':'—'}</td></tr>`;}).join('')}</tbody></table></div><p>회수 기간은 배당·이벤트가 없다는 단순 비교입니다. 회사 자금에는 최초 발행 주식의 실제 판매금만 들어옵니다.</p><h3>1,000만 원 투자 예시</h3><p>공장 2개 · 설비 3개 · 직원 25명 · R&D 1개<br>투자 ${won(example.cost)} / 남는 현금 ${won(example.remaining)} / 정산 시 기본 일수익 ${won(example.revenue)}</p></details>
     </section>
+    <section id="business-panel-spies" role="tabpanel" aria-labelledby="business-tab-spies" data-management-panel="spies" hidden><div id="business-spies"></div></section>
     <section id="business-panel-events" role="tabpanel" aria-labelledby="business-tab-events" data-management-panel="events" hidden><div id="company-events"></div></section>
     <section id="business-panel-settlement" role="tabpanel" aria-labelledby="business-tab-settlement" data-management-panel="settlement" hidden>
      ${termActive(o.dividendLimit,Date.now(),o)?`<p class="inline-warning">배당 상한 ${o.dividendLimit.percent}% 적용 중 · 설정 배당률 ${o.dividendBps/100}% · ${Number.isInteger(o.dividendLimit.settlements)?'남은 정산 '+Math.max(0,o.dividendLimit.startsAfterSettlement+o.dividendLimit.settlements-(o.settlementCount||0))+'회':new Date(o.dividendLimit.endsAt).toLocaleString('ko-KR')+' 종료'}</p>`:''}<div class="settlement-overview"><div><span>배당률</span><strong>${effectiveDividendBps(o)/100}%</strong></div><div><span>최초 주식 판매 누적</span><strong>${won(book?.issuerCash)}</strong></div></div>
@@ -83,7 +86,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const action=button.dataset.business,cid=selected;button.disabled=true;host.querySelector('#business-company').disabled=true;message(action==='settle'?'배당 정산 중…':'처리 중…');
    try{await post('/api/economy-'+({invest:'invest',settle:'settle'}[action]),{companyId:cid,asset:button.dataset.asset});await load();if(current()&&selected===cid)message(action==='settle'?'정산을 완료했습니다.':'반영했습니다.');}catch(err){await load();if(current())message(err.message);}finally{if(current())host.querySelector('#business-company').disabled=false;}
   };
-  host.onkeydown=e=>{const nav=e.target.closest('[role="tab"][data-management-tab]');if(!nav||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=['investments','events','settlement'],index=tabs.indexOf(tab);setTab(e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(index+(e.key==='ArrowRight'?1:2))%3],true);};
+  host.onkeydown=e=>{const nav=e.target.closest('[role="tab"][data-management-tab]');if(!nav||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=['investments','events','spies','settlement'],index=tabs.indexOf(tab);setTab(e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(index+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length],true);};
   host.onsubmit=async e=>{
    if(!['dividend-form','economy-config-form','production-form'].includes(e.target.id))return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
    try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='production-form')await post('/api/economy-production',{companyId:selected,...Object.fromEntries(['production','pendingProduction'].map(key=>[key,Object.fromEntries(Object.keys(assets).map(asset=>[asset,Number(b[key+'-'+asset])]))]))});else if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,k==='researchBoostBps'?Math.round(Number(v)*100):Number(v)])));await load();if(current())message('설정을 저장했습니다.');}catch(err){if(current())message(err.message);button.disabled=false;}

@@ -1,3 +1,4 @@
+import {settleSpies} from '../client/spies.js';
 import {runDueChoiceEvents} from './choice-events.js';
 import {publishLeadership} from '../client/leadership.js';
 import {settleDay,koreaDay} from '../client/economy.js';
@@ -22,6 +23,7 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
    }
   }catch{result.failed.push(c.id);}
  }
+ try{result.spies=await settleSpies(db,now);}catch(error){result.spies={status:'failed',message:error.message};result.failed.push('industrial-spies');}
  const leadership=(await db.doc('companyLeadership/main').get()).data();
  const board=(await db.doc('leaderboards/cash').get()).data(),last=board?.updatedAt?.toMillis?.()||0;
  // Avoid rereading every participant on each settlement retry (Spark quota).

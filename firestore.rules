@@ -489,7 +489,7 @@ service cloud.firestore {
       return int((c[asset+'Cost']*(100+percent)+99) / 100);
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount']) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire']) &&
         number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && number(d.cash,1000000000000) && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
@@ -579,6 +579,68 @@ service cloud.firestore {
         number(request.resource.data.employeeCost,100000000) && request.resource.data.employeeCost > 0 && number(request.resource.data.employeeRevenue,100000000) && request.resource.data.employeeRevenue > 0;
       allow list,delete: if false;
     }
+    function spyPolicy() {
+      return exists(/databases/$(database)/documents/spyPolicy/main) ? get(/databases/$(database)/documents/spyPolicy/main).data : {'cost':2000000,'bps':200,'settlements':3};
+    }
+    function spyHireOperation(cid,d,o) {
+      let s=getAfter(/databases/$(database)/documents/companySpies/$(cid)).data;
+      let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      return manager(cid) && !o.locked && o.get('pendingEvent','') == '' && d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash','lastSpyHire']) &&
+        getAfter(/databases/$(database)/documents/companySpies/$(cid)/hires/$(s.hireId)).data == s && s.createdAt == request.time && s.hireId == d.lastSpyHire && d.lastSpyHire != o.get('lastSpyHire','') &&
+        number(d.cash,1000000000000) && d.cash == o.cash+funding-o.receivedIssuerCash-spyPolicy().cost && d.receivedIssuerCash == funding &&
+        getAfter(/databases/$(database)/documents/spyRegistry/main).data == {'version':(exists(/databases/$(database)/documents/spyRegistry/main) ? get(/databases/$(database)/documents/spyRegistry/main).data.version : 0)+1,'companyId':cid,'hireId':s.hireId};
+    }
+    function spyContract(cid,d) {
+      let p=spyPolicy();
+      return manager(cid) && sparkId(cid) && sparkId(d.targetId) && cid != d.targetId && sparkId(d.hireId) &&
+        d.keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt']) &&
+        d.companyId == cid && d.cost == p.cost && d.bps == p.bps && d.settlements == p.settlements && d.remaining == p.settlements && d.lastRoundDay == 0 &&
+        d.hireId != operations(cid).get('lastSpyHire','') && d.activeFromDay == investmentDay(operations(cid)) && d.createdAt == request.time &&
+        get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && get(/databases/$(database)/documents/companies/$(d.targetId)).data.status == 'listed' &&
+        exists(/databases/$(database)/documents/sparkBooks/$(d.targetId)) &&
+        (!exists(/databases/$(database)/documents/companySpies/$(cid)) || get(/databases/$(database)/documents/companySpies/$(cid)).data.remaining == 0) &&
+        getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastSpyHire == d.hireId;
+    }
+    match /spyPolicy/{id} {
+      allow get: if id == 'main' && participant();
+      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['cost','bps','settlements']) &&
+        request.resource.data.cost is int && request.resource.data.cost >= 1000000 && request.resource.data.cost <= 100000000 &&
+        request.resource.data.bps is int && request.resource.data.bps >= 1 && request.resource.data.bps <= 500 &&
+        request.resource.data.settlements is int && request.resource.data.settlements >= 1 && request.resource.data.settlements <= 30;
+      allow list,delete: if false;
+    }
+    match /spyRegistry/{id} {
+      allow get: if id == 'main' && participant();
+      allow create,update: if id == 'main' && request.resource.data.keys().hasOnly(['version','companyId','hireId']) && manager(request.resource.data.companyId) &&
+        request.resource.data.version == (exists(/databases/$(database)/documents/spyRegistry/main) ? resource.data.version : 0)+1 &&
+        getAfter(/databases/$(database)/documents/companySpies/$(request.resource.data.companyId)).data.hireId == request.resource.data.hireId &&
+        getAfter(/databases/$(database)/documents/companySpies/$(request.resource.data.companyId)).data.createdAt == request.time;
+      allow list,delete: if false;
+    }
+    match /companySpies/{cid} {
+      allow get: if participant();
+      allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
+      allow create: if spyContract(cid,request.resource.data);
+      allow update: if admin() || spyContract(cid,request.resource.data);
+      allow delete: if false;
+      match /hires/{id} {
+        allow get: if participant();
+        allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if sparkId(id) && request.resource.data.hireId == id && getAfter(/databases/$(database)/documents/companySpies/$(cid)).data == request.resource.data && manager(cid) && request.resource.data.createdAt == request.time;
+        allow update,delete: if false;
+      }
+      match /history/{id} {
+        allow get: if participant();
+        allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if admin();
+        allow update,delete: if false;
+      }
+    }
+    match /spyRounds/{id} {
+      allow get: if participant();
+      allow create: if admin();
+      allow update,delete,list: if false;
+    }
     function dividendRate(cid,d,o) {
       return manager(cid) && !o.locked && d.diff(o).affectedKeys().hasOnly(['dividendBps']) && number(d.dividendBps,10000);
     }
@@ -589,6 +651,7 @@ service cloud.firestore {
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if admin() ? operationData(request.resource.data) :
+        request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastSpyHire']) ? spyHireOperation(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dividendBps']) ? dividendRate(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
         investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
