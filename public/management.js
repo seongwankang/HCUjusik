@@ -1,3 +1,4 @@
+import {revenueEffectBadges} from './revenue-effects.js';
 import {showSpies} from './spies.js';
 import {nextSettlement} from '../client/settlement-time.js';
 import {INCOME_MULTIPLIER,BASE_CAPACITY,FACTORY_CAPACITY,EQUIPMENT_CAPACITY,DEFAULT_CONFIG,researchBps,staffCapacity,hasPending} from '../client/business-policy.js';
@@ -33,7 +34,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
     await showCompanyEvents(host.querySelector('#company-events'),api,id,load,()=>current()&&selected===id,summary=>{
      if(!current()||selected!==id)return;
      const badge=host.querySelector('#business-event-count');badge.textContent=summary.pendingCount||'';badge.hidden=!summary.pendingCount;
-     const projection=summary.settlementProjection||summary.projection;host.querySelector('#business-next-income').textContent=projection.needsProduction?'분류 필요':won(projection.revenue);
+     const projection=summary.settlementProjection||summary.projection;host.querySelector('#business-next-income').textContent=projection.needsProduction?'분류 필요':won(projection.revenue);host.querySelector('#business-income-effects').innerHTML=projection.needsProduction?'':revenueEffectBadges(summary.revenueEffects||[]);
     });
    }catch(e){if(current()&&selected===id)message(e.message);}
   }
@@ -46,7 +47,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100,example=startupExample(c);
    host.querySelector('#business-body').innerHTML=`
     <section class="business-overview" aria-label="경영 요약">
-     <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>다음 정산 예상 영업수익</span><strong id="business-next-income">${tomorrow===null?'분류 필요':won(tomorrow)}</strong><small>${settlementLabel} 정산 기준</small></article></div>
+     <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>다음 정산 예상 영업수익</span><div class="revenue-value"><strong id="business-next-income">${tomorrow===null?'분류 필요':won(tomorrow)}</strong><span id="business-income-effects" class="revenue-effects"></span></div><small>${settlementLabel} 정산 기준</small></article></div>
      <p class="compact-note">오전 9시 전 투자·채용은 당일 정산부터, 9시 이후에는 다음 날 정산부터 반영됩니다.</p>
     </section>
     ${o.locked?'<p class="business-lock">배당 지급 중입니다. 거래·투자는 정산 완료 후 재개됩니다.</p>':''}

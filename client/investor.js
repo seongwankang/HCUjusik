@@ -1,4 +1,4 @@
-import {adjustedRevenue,currentEffect,effectiveDividendBps,needsProduction,effectText,ONE_TIME_EFFECTS,TIMED_EFFECTS,remainingSettlements} from './event-model.js';
+import {revenueEffects,adjustedRevenue,currentEffect,effectiveDividendBps,needsProduction,effectText,ONE_TIME_EFFECTS,TIMED_EFFECTS,remainingSettlements} from './event-model.js';
 import {staffCapacity,researchBps} from './business-policy.js';
 import {initialOperations,koreaDay} from './economy.js';
 import {nextSettlement} from './settlement-time.js';
@@ -24,7 +24,7 @@ export function investorSnapshot({companyId,ops,book,account,effects=[],events=[
  const recentHistory=[...recentEvents,...investmentHistory].sort((a,b)=>b.appliedAt-a.appliedAt||String(a.id).localeCompare(String(b.id))).slice(0,20);
  return {initialized:!!ops,asOf:now,settlementAt:tomorrowAt,tomorrowAt,factory:o.factory,equipment:o.equipment,research:o.research,employees:o.employees||0,capacity:staffCapacity(o),researchBps:Math.min(3000,researchBps(o)+(o.pendingResearchBps||0)),
   dividendBps:effectiveDividendBps(o,now),configuredDividendBps:o.dividendBps,tomorrowDividendBps:rate,soldShares:sold,myShares:shares,tomorrowRevenue:tomorrow?.revenue??null,perShare:tomorrow?perShare:null,myDividend:tomorrow?perShare*shares:null,
-  pendingEvent:!!o.pendingEvent,settling:o.locked,unclassified,recentEvents,recentHistory,
+  revenueEffects:unclassified?[]:revenueEffects(o,effects,tomorrowAt),pendingEvent:!!o.pendingEvent,settling:o.locked,unclassified,recentEvents,recentHistory,
   activeEvents:effects.filter(r=>currentEffect(o,r,now)).map(r=>({id:r.id,title:events.find(e=>e.id===r.id)?.title||'기업 이벤트',effect:r.effect,...(Number.isInteger(r.effect.settlements)?{remainingSettlements:remainingSettlements(o,r)}:{endsAt:timestamp(r.effectiveAt??r.appliedAt)+r.effect.hours*3600000})})),
   damage:effects.filter(r=>r.effect.kind==='destroy').sort((a,b)=>timestamp(b.appliedAt)-timestamp(a.appliedAt)).slice(0,10).map(r=>({id:r.id,title:events.find(e=>e.id===r.id)?.title||'설비 피해',effect:r.effect})),
  };
