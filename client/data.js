@@ -1,3 +1,5 @@
+import {spyView,hireSpy} from './spies.js';
+import {spyPolicy} from './spy-model.js';
 import {publishLeadership} from './leadership.js';
 import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,closeChoiceEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
@@ -76,6 +78,9 @@ export function createClientApi({db,getUser}){
    if(profile.role==='admin'||assigned)await initializeOperations(db,cid);
    return operationsView(db,cid);
   }
+  if(route==='/api/spies'&&method==='GET'){const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');return spyView(db,cid);}
+  if(route==='/api/spy-policy'&&method==='POST'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const policy=spyPolicy(JSON.parse(options.body||'{}'));await runTransaction(db,async t=>t.set(doc(db,'spyPolicy/main'),policy));return {ok:true};}
+  if(route==='/api/spy-hire'&&method==='POST'){const b=JSON.parse(options.body||'{}');const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(b.companyId);if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 고용할 수 있습니다.');return hireSpy(db,b.companyId,b.targetId);}
   if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
   if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
    const b=JSON.parse(options.body||'{}');
@@ -85,7 +90,7 @@ export function createClientApi({db,getUser}){
    if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 사용할 수 있습니다.');
    if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
    if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
-   if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');return settleDay(db,cid);}
+   if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');const result=await settleDay(db,cid);return {...result,spies:{status:'scheduled'}};}
    if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<0||b.dividendBps>10000)message('배당률은 0~100%로 입력하세요.');
    await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists()||o.data().locked)message('회사 계좌 준비 또는 진행 중인 정산 완료가 필요합니다.');t.update(r,{dividendBps:b.dividendBps});});return {ok:true};
   }
