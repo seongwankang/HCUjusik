@@ -12,7 +12,10 @@ test('reset backs up nested data privately, preserves identities/config, restore
  const projectId='demo-market-reset',env=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8')}}),app=initializeApp({projectId},'market-reset'),db=getFirestore(app);
  try{
   await env.clearFirestore();
-  const paused=await runScheduledEconomy(db,{now:Date.parse('2026-10-20T07:55:00+09:00'),settle:()=>assert.fail('paused'),publish:()=>assert.fail('paused')});assert.equal(paused.maintenance,true);assert.equal(paused.settled,0);
+  let published=0;
+  const paused=await runScheduledEconomy(db,{now:Date.parse('2026-10-20T07:55:00+09:00'),settle:()=>assert.fail('paused'),detect:()=>assert.fail('paused'),publish:()=>{published++;return {participants:0};}});assert.equal(paused.maintenance,true);assert.equal(paused.settled,0);assert.equal(paused.rankingsUpdated,true);assert.equal(published,1);
+  await db.doc('systemMaintenance/reset').set({resetId:'test'});
+  const locked=await runScheduledEconomy(db,{mode:'rankings-only',publish:()=>assert.fail('do not publish during reset')});assert.equal(locked.rankingsUpdated,false);await db.doc('systemMaintenance/reset').delete();
   await db.doc('users/student').set({role:'student',active:true,displayName:'test'});await db.doc('users/admin').set({role:'admin',active:true,displayName:'staff'});
   await db.doc('sparkAccounts/student').set({cash:23,positions:{a:9}});await db.doc('sparkAccounts/student/fills/old').set({quantity:9});
   await db.doc('news/n/comments/c').set({content:'old'});await db.doc('companies/a').set({name:'old'});await db.doc('economyConfig/main').set({version:4});
