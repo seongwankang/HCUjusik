@@ -11,8 +11,8 @@ test('restoration finishes before private reads; reload retains login and logout
  try{
   const result=await build({entryPoints:['client/auth.js'],bundle:true,write:false,format:'esm',plugins:[{
    name:'auth-session-fixture',setup(b){
-    b.onResolve({filter:/^(firebase\/|\.\/data\.js|\.\/immutable-reads\.js)/},a=>({path:a.path,namespace:'fixture'}));
-    b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='./immutable-reads.js'?'export async function setHistoryOwner(db,uid){globalThis.__sessionFixture.cacheOwners.push(uid)};export async function clearImmutableRows(){globalThis.__sessionFixture.cacheOwners.push(null)};':a.path==='firebase/auth'?`
+    b.onResolve({filter:/^(firebase\/|\.\/data\.js|\.\/immutable-reads\.js|\.\/live-reads\.js)/},a=>({path:a.path,namespace:'fixture'}));
+    b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='./live-reads.js'?'export const createViewReads=()=>({clear(){},refresh:async()=>{}});':a.path==='./immutable-reads.js'?'export async function setHistoryOwner(db,uid){globalThis.__sessionFixture.cacheOwners.push(uid)};export async function clearImmutableRows(){globalThis.__sessionFixture.cacheOwners.push(null)};':a.path==='firebase/auth'?`
      const f=globalThis.__sessionFixture;
      export const browserSessionPersistence={type:'SESSION'};
      export function getAuth(){f.currentUser=null;return {app:{},get currentUser(){return f.currentUser},authStateReady:()=>new Promise(resolve=>{f.restore=()=>{f.currentUser=f.saved;resolve()}})}}

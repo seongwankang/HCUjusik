@@ -1,3 +1,4 @@
+import {createRetainedViews} from './retained-views.js';
 import {batchPaint} from './render-batch.js';
 import {showTransactions} from './transactions.js';
 import {setupRegistration} from './registration.js';
@@ -11,7 +12,8 @@ import {parseRoute,companyRoute,articleRoute} from './routes.js';
 import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
 import {setupAdmin} from './admin.js';
-import {dataRequest, login, signup, logout, sessionVersion, watchCompanyQuotes, verificationStatus, sendVerification} from './auth.bundle.js';
+import {dataRequest, login, signup, logout, sessionVersion, refreshViewData, watchCompanyQuotes, verificationStatus, sendVerification} from './auth.bundle.js';
+const screens=createRetainedViews();
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -26,11 +28,13 @@ async function getJSON(url,options={}) {
   return data;
 }
 
+getJSON.refresh=refreshViewData;
+
 function navigate(page,writeRoute=true) {
   if (!['dashboard','market','news','portfolio','management','admin','company','article','rankings'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')page='dashboard';
   if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
-  closeTrading();
+  closeTrading();screens.pause();
   state.page = page;document.body.dataset.page=page;
   if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
   $$('.page').forEach(el=>el.classList.toggle('active',el.id===`page-${page}`));
@@ -80,14 +84,14 @@ function newsCard(n,compact=false,kind='news') {
 }
 let newsRead=0;
 async function refreshNews(){const read=++newsRead,uid=state.user?.id;if(!uid){renderNews();return;}try{const n=await getJSON('/api/news');if(read!==newsRead||uid!==state.user?.id)return;state.news=n.news;renderNews();}catch(e){if(state.page==='news')$('#all-news').textContent=e.message;}}
-window.addEventListener('admin-saved',e=>{if(['companies','users'].includes(e.detail?.kind))initialLoad();else refreshNews();});
+window.addEventListener('admin-saved',e=>{screens.invalidate();if(['companies','users'].includes(e.detail?.kind))initialLoad();else refreshNews();});
 function renderNews() {
   if(!state.user){$('#featured-news').textContent='로그인하면 시장 뉴스를 확인할 수 있습니다.';$('#all-news').innerHTML=loginPrompt('학교 계정으로 로그인하면 뉴스와 공지를 확인할 수 있습니다.');return;}
   $('#featured-news').innerHTML = state.news.slice(0,3).map(n=>newsCard(n,true)).join('') || '<div class="placeholder">등록된 공지가 없습니다.</div>';
   $('#all-news').innerHTML = state.news.map(n=>newsCard(n)).join('') || '<div class="panel empty-state">등록된 뉴스가 없습니다.</div>';
 }
-function showCompany(id,writeRoute=true) {
-  navigate('company',false);state.companyId=id;
+function showCompany(id,writeRoute=true,update=false) {
+  if(!update)navigate('company',false);state.companyId=id;
   if(writeRoute&&location.hash!==companyRoute(id))history.pushState(null,'',companyRoute(id));
   const c=state.companies.find(c=>c.id===id);
   renderWatchlist();
@@ -100,23 +104,23 @@ function showCompany(id,writeRoute=true) {
   $('#company-listing').textContent=c?(c.status==='listed'?'거래 가능':'거래 준비 / 정지'):'';
   if(!c){$('#company-description').textContent='';$('#test-trade').innerHTML=state.user?'<div class="placeholder">기업을 찾을 수 없습니다. 전체 종목에서 다시 선택하세요.</div>':loginPrompt('로그인하면 이 기업의 호가와 주문 화면을 사용할 수 있습니다.');return;}
   $('#company-description').textContent=c.description||'';$('#company-description').hidden=!c.description;
-  showTrading(c,getJSON);
+  screens.show($('#test-trade'),'company:'+state.user?.id+':'+id,(node)=>showTrading(c,getJSON,node));
 }
-let articleRead=0;
-function openArticle(id,kind='news'){navigate('article',false);const read=++articleRead,uid=state.user?.id;showArticle($('#article-content'),getJSON,state.user,id,kind,()=>read===articleRead&&state.page==='article'&&parseRoute(location.hash).articleId===id&&state.user?.id===uid);}
+function openArticle(id,kind='news',update=false){if(!update)navigate('article',false);const uid=state.user?.id;screens.show($('#article-content'),'article:'+uid+':'+kind+':'+id,(node,current)=>showArticle(node,getJSON,state.user,id,kind,()=>current()&&state.user?.id===uid));}
 function applyRoute(){const r=parseRoute(location.hash);if(r.page==='company')showCompany(r.companyId,false);else if(r.page==='article')openArticle(r.articleId,r.articleKind);else navigate(r.page,false);}
 window.addEventListener('hashchange',applyRoute);
 function loginPrompt(message) {
   return `<div>${esc(message)}<div><button class="login-prompt" id="prompt-login">로그인하기 →</button></div></div>`;
 }
-let rankingsRead=0;
-async function loadRankings(){const host=$('#rankings-content'),uid=state.user?.id,read=++rankingsRead;if(!uid){host.innerHTML=loginPrompt('로그인하면 개인·종목 순위를 확인할 수 있습니다.');return;}await showRankings(host,getJSON,state.user,()=>read===rankingsRead&&state.page==='rankings'&&state.user?.id===uid);}
-let portfolioRead=0;
-async function loadPortfolio() {
- const target=$('#portfolio-content'),uid=state.user?.id,read=++portfolioRead;
+async function loadRankings(){const uid=state.user?.id;if(!uid){$('#rankings-content').innerHTML=loginPrompt('로그인하면 개인·종목 순위를 확인할 수 있습니다.');return;}await screens.show($('#rankings-content'),'rankings:'+uid,(node,current)=>showRankings(node,getJSON,state.user,current));}
+async function loadPortfolio(refresh=false){
+ const uid=state.user?.id;if(!uid){$('#portfolio-content').innerHTML=loginPrompt('로그인하면 현재 가상 자산을 조회할 수 있습니다.');return;}
+ await screens.show($('#portfolio-content'),'portfolio:'+uid,(node,current)=>renderPortfolio(node,current),{refresh});
+}
+async function renderPortfolio(target,current) {
+ const uid=state.user?.id;
  if(!uid){target.innerHTML=loginPrompt('로그인하면 현재 가상 자산을 조회할 수 있습니다.');return;}
- const current=()=>read===portfolioRead&&state.page==='portfolio'&&state.user?.id===uid;
- target.classList.remove('empty-state');target.innerHTML='<div class="placeholder portfolio-loading">거래 계좌를 조회하는 중…</div>';
+ target.classList.remove('empty-state');if(!target.hasChildNodes())target.innerHTML='<div class="placeholder portfolio-loading">거래 계좌를 조회하는 중…</div>';
  try{
   const p=await getJSON('/api/trading-portfolio');if(!current())return;
   const value=n=>n===null?'—':won(n);
@@ -125,15 +129,14 @@ async function loadPortfolio() {
   try{const {dividends}=await getJSON('/api/dividends');if(current())target.insertAdjacentHTML('beforeend','<div class="panel-title"><h2>받은 배당 · 최근 30건</h2></div>'+ (dividends.length?'<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table><thead><tr><th>정산일</th><th>기업</th><th>보유 주식</th><th>받은 배당</th></tr></thead><tbody>'+dividends.map(d=>'<tr><td>'+new Date(d.day*86400000).toISOString().slice(0,10)+'</td><td>'+esc(state.companies.find(c=>c.id===d.companyId)?.name||d.companyId)+'</td><td>'+d.shares+'주</td><td>'+won(d.amount)+'</td></tr>').join('')+'</tbody></table></div>':'<p class="muted">아직 받은 배당이 없습니다.</p>'));}catch(e){if(current())target.insertAdjacentHTML('beforeend','<p class="muted">배당 내역: '+esc(e.message)+'</p>');}
  }catch(e){if(current())target.innerHTML=`<div class="portfolio-empty">${esc(e.message)}<br><button type="button" class="text-link" id="portfolio-refresh">다시 조회</button></div>`;}
 }
-let managementRead=0;
-async function loadManagement() {
- const target=$('#management-content'),user=state.user,read=++managementRead;
- if(!user){target.innerHTML=loginPrompt('사장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
- if(!['admin','president'].includes(user.role)){target.textContent='담당 사장 또는 관리자 계정으로 이용할 수 있습니다.';return;}
- await showManagement(target,getJSON,user,()=>read===managementRead&&state.user?.id===user.id&&state.page==='management');
+async function loadManagement(){
+ const host=$('#management-content'),user=state.user;
+ if(!user){host.innerHTML=loginPrompt('사장 계정으로 로그인하면 담당 기업을 확인할 수 있습니다.');return;}
+ if(!['admin','president'].includes(user.role)){host.textContent='담당 사장 또는 관리자 계정으로 이용할 수 있습니다.';return;}
+ await screens.show(host,'management:'+user.id+':'+user.role,(node,current)=>showManagement(node,getJSON,user,current));
 }
 function updateAccountButton() {
-  adminUI.session(state.user);
+  const key=state.user?.id+':'+state.user?.role;if(key!==updateAccountButton.sessionKey){updateAccountButton.sessionKey=key;adminUI.session(state.user);}
   $$('button[data-page="management"]').forEach(b=>b.hidden=!['admin','president'].includes(state.user?.role));
   if(state.page==='admin' && state.user?.role!=='admin')navigate('dashboard');
   const btn=$('#account-button');
@@ -150,7 +153,7 @@ async function initialLoad({authenticatedUser=null}={}) {
   const newsTask=getJSON('/api/news').then(value=>({value}),error=>({error}));
   const results=await Promise.allSettled([getJSON('/api/companies'),authenticatedUser?Promise.resolve():refreshSession()]);
   if(results[0].status==='fulfilled') {
-    state.companies=results[0].value.companies;
+    state.companies=results[0].value.companies.map(c=>Object.assign(state.companies.find(old=>old.id===c.id)||{},c));
     state.companyError=null;
   } else {
     state.companies=[];
@@ -170,7 +173,7 @@ async function initialLoad({authenticatedUser=null}={}) {
 
 $$('button[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
 document.addEventListener('click',event=>{
-  if(event.target.closest('#portfolio-refresh')){loadPortfolio();return;}
+  if(event.target.closest('#portfolio-refresh')){refreshViewData().then(()=>loadPortfolio(true)).catch(()=>loadPortfolio(true));return;}
   const go=event.target.closest('button[data-goto]');
   if(go)navigate(go.dataset.goto);
   const company=event.target.closest('button[data-company]');
@@ -183,13 +186,39 @@ $('#account-button').addEventListener('click',async()=>{
   if(!state.user){await registration.open();return;}
   closeTrading();
   try {await logout();}catch(e){alert(e.message);return;}
-  ++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
+  screens.clear();++quoteRun;stopQuotes();state.user=null;state.companies=[];state.companyError='상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';state.news=[];state.events=[];renderCompanies();renderNews();updateAccountButton();
   if(state.page==='portfolio')loadPortfolio();if(state.page==='rankings')loadRankings();
   if(state.page==='management')loadManagement();if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind);}
   if(state.page==='company')showCompany(state.companyId,false);
 });
+let viewTimer,viewUpdating=false,viewAgain=false;
+window.addEventListener('view-data-changed',e=>{
+ const path=e.detail?.path||'*';
+ screens.invalidate(key=>{
+  if(path==='*'||!path.includes('/')||path.startsWith('users/'))return true;
+  if(key.startsWith('company:'))return path.startsWith('sparkAccounts/'+state.user?.id)||path==='companyLeadership/main'||['companies/','sparkBooks/','companyOperations/','companyEffects/'].some(prefix=>path.startsWith(prefix)&&key.endsWith(':'+path.split('/')[1]));
+  if(key.startsWith('portfolio:'))return /^(sparkAccounts|sparkBooks|companies)\//.test(path);
+  if(key.startsWith('management:'))return /^(company|sparkBooks|assignments|economyConfig|spyPolicy)/.test(path);
+  if(key.startsWith('rankings:'))return /^(sparkAccounts|sparkBooks|companyOperations|companies|leaderboards)/.test(path);
+  return key.startsWith('article:')&&(path.startsWith('news/')||path.startsWith('events/'));
+ });clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);
+});
+async function updateVisibleView(){
+ if(viewUpdating){viewAgain=true;return;}if(!state.user)return;viewUpdating=true;
+ const uid=state.user.id,role=state.user.role;
+ try{
+  await refreshSession();if(state.user?.id!==uid||state.user?.role!==role){screens.clear();closeTrading();applyRoute();return;}
+  const [c,n]=await Promise.all([getJSON('/api/companies'),getJSON('/api/news')]);
+  if(state.user?.id!==uid)return;
+  const oldIds=state.companies.map(x=>x.id).join(',');
+  for(const company of c.companies){const existing=state.companies.find(x=>x.id===company.id);if(existing)Object.assign(existing,company);else state.companies.push(company);}
+  state.companies=state.companies.filter(x=>c.companies.some(y=>y.id===x.id));state.news=n.news;renderCompanies();renderNews();if(oldIds!==state.companies.map(x=>x.id).join(','))await startQuotes();
+  if(state.page==='company'&&screens.dirty('company:'+uid+':'+state.companyId))showCompany(state.companyId,false,true);else if(state.page==='portfolio')loadPortfolio();else if(state.page==='management')loadManagement();else if(state.page==='rankings')loadRankings();else if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind,true);}
+ }catch{/* Retain the last usable screen during a transient connection failure. */}
+ finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}
+}
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
- state.user=user;updateAccountButton();await initialLoad({authenticatedUser:user});
+ screens.clear();state.user=user;updateAccountButton();await initialLoad({authenticatedUser:user});
  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
 }});
 const adminUI=setupAdmin(getJSON);

@@ -4,7 +4,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const time=v=>new Date(v).toLocaleString('ko-KR');
 export async function showArticle(host,api,user,id,kind,isCurrent){
  host.onclick=null;
- host.innerHTML='<p class="placeholder">뉴스를 불러오는 중…</p>';
+ if(!host.hasChildNodes())host.innerHTML='<p class="placeholder">뉴스를 불러오는 중…</p>';
  const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
  if(!user){host.innerHTML='<p>학교 계정으로 로그인하면 뉴스 본문과 댓글을 볼 수 있습니다.</p><button class="account-btn" data-open-login>로그인하기</button>';return;}
  let rows=[],cursor=null,busy=false,pending=null;
