@@ -8,7 +8,7 @@ export function setupRegistration({root=document,api,login,signup,logout,verific
   for(const s of ['#username','#password','label[for="username"]','label[for="password"]','#auth-submit','#auth-toggle'])$(s).hidden=false;
   $('#username').disabled=false;$('#password').disabled=false;
   $('#auth-title').textContent=signingUp?'학생 회원가입':'로그인';
-  $('#auth-description').textContent=signingUp?'학교 이메일로 가입한 뒤 이메일 인증을 완료하세요.':'이메일과 비밀번호로 로그인하세요. 인증을 마치지 못한 계정도 여기서 이어갈 수 있습니다.';
+  $('#auth-description').textContent=signingUp?'학교 이메일 인증이 필요합니다.':'이메일과 비밀번호로 로그인하세요.';
   $('#auth-submit').textContent=signingUp?'회원가입':'로그인';
   $('#auth-toggle').textContent=signingUp?'이미 가입했나요? 로그인':'처음 오셨나요? 회원가입';
   $('#signup-name-label').hidden=!signingUp;$('#signup-warning').hidden=!signingUp;
@@ -22,7 +22,7 @@ export function setupRegistration({root=document,api,login,signup,logout,verific
   for(const s of ['#username','#password','label[for="username"]','label[for="password"]','#auth-submit','#auth-toggle','#signup-name-label','#signup-warning'])$(s).hidden=true;
   for(const s of ['#username','#password','#signup-name'])$(s).disabled=true;
   $('#password').value='';$('#auth-title').textContent=status.verified?'가입 마무리':'이메일 인증 이어하기';
-  $('#auth-description').textContent='계정은 이미 만들어졌습니다. 다시 회원가입하지 않고 여기서 이어갈 수 있어요.';
+  $('#auth-description').textContent='기존 계정의 이메일 인증을 완료하세요.';
   $('#verification-address').textContent=status.email;
   $('#verification-warning').hidden=status.verified;
   if(!$('#verification-name').value.trim())$('#verification-name').value=status.displayName||$('#signup-name').value;
