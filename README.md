@@ -1,6 +1,6 @@
 # 청운증권HTS — 현재 실행 방식
 
-현재 지정가 테스트는 [GitHub Pages + Firestore Spark](docs/spark-limit-exchange.md)만 사용합니다. 별도 서버/Render/서비스 계정 키가 필요하지 않습니다. 가격/수량 주문, 초기 발행 선착순, 가격·시간 우선, 부분 체결·예약·취소를 지원하며 **종목당 미체결 4건**으로 제한합니다. 최신 Firestore 규칙 게시 후 사용할 수 있습니다.
+현재 지정가 테스트는 [GitHub Pages + Firestore Spark](docs/spark-limit-exchange.md)만 사용합니다. 별도 서버/Render/서비스 계정 키가 필요하지 않습니다. 가격/수량 주문, 초기 발행 선착순, 가격·시간 우선, 부분 체결·예약·취소를 지원하며 종목당 미체결 4건 제한은 제거했습니다. 최신 Firestore 규칙 게시 후 사용할 수 있습니다.
 
 GitHub Pages + Firebase Auth/Firestore Spark로 전환했습니다. Cloudflare 계정은 필요하지 않습니다.
 
