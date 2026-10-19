@@ -62,7 +62,7 @@ export function createPriceChart(container){
   }
   svg.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')inspect(e);});svg.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')inspect(e);});
   svg.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')inspect(e);});
-  svg.addEventListener('pointercancel',hide);svg.addEventListener('pointerleave',hide);svg.addEventListener('blur',hide);
+  svg.addEventListener('pointercancel',hide);svg.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')hide();});svg.addEventListener('blur',hide);
   svg.addEventListener('keydown',e=>{
    if(e.key==='Escape'){hide();return;}
    if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){

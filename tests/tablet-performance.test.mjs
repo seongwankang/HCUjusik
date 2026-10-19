@@ -41,3 +41,14 @@ test('order refresh finishes before management history and ignores an older hist
  await context.refresh();pending[0]({version:1});await new Promise(r=>setImmediate(r));assert.equal(rendered,0);
  pending[1]({version:2});await new Promise(r=>setImmediate(r));assert.equal(rendered,1);assert.equal(lastInfo.version,2);
 });
+
+test('touch candle selection survives lifting the finger, while native scroll cancellation hides it',()=>{
+ const source=readFileSync(new URL('../public/price-history.js',import.meta.url),'utf8');
+ const bindings=source.slice(source.indexOf("svg.addEventListener('pointerenter'"),source.indexOf("svg.addEventListener('keydown'"));
+ const handlers={};let inspected=0,hidden=0;
+ runInNewContext(bindings,{svg:{addEventListener:(name,fn)=>handlers[name]=fn},inspect:()=>inspected++,hide:()=>hidden++});
+ handlers.pointerenter({pointerType:'touch'});handlers.pointermove({pointerType:'touch'});assert.equal(inspected,0);
+ handlers.pointerdown({pointerType:'touch'});handlers.pointerleave({pointerType:'touch'});assert.equal(inspected,1);assert.equal(hidden,0);
+ handlers.pointercancel({pointerType:'touch'});assert.equal(hidden,1);
+ handlers.pointerenter({pointerType:'mouse'});handlers.pointerleave({pointerType:'mouse'});assert.equal(inspected,2);assert.equal(hidden,2);
+});
