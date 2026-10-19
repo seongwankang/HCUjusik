@@ -57,12 +57,14 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
   t.set(receipt,{option,effect,...(Number.isInteger(effect.settlements)&&effect.settlements>0?{startsAfterSettlement:os.data()?.settlementCount||0}:{}),...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
  });
 }
-export async function eventCompanyView(db,cid){
+export async function eventCompanyView(db,cid,reads){
+ const readDoc=reads?.getDoc||getDoc,readDocs=reads?.getDocs||getDocs;
  if(!valid(cid))fail('기업을 선택하세요.');
- const opTask=getDoc(doc(db,'companyOperations',cid));
- const [eventRows,effects,os]=await Promise.all([immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true}),opTask.then(s=>effectRecords(db,cid,{revision:s.data()?.lastEvent||'',persistent:true})),opTask]);
+ const opTask=readDoc(doc(db,'companyOperations',cid));
+ const eventHead=reads?await reads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))):null;
+ const [eventRows,effects,os]=await Promise.all([immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(eventHead?{revision:eventHead.docs.map(d=>d.id).join(',')}:{})}),opTask.then(s=>effectRecords(db,cid,{revision:s.data()?.lastEvent||'',persistent:true})),opTask]);
  const events={docs:eventRows.map(r=>({id:r.id,data:()=>r}))};
- const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await getDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
+ const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await readDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
  const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
  const next=nextSettlement(os.data()),settlementProjection=projection.needsProduction?projection:os.exists()?adjustedRevenue(os.data(),next.day,effects,next.at):{base:0,revenue:0};
  return {choices,revenueEffects:projection.needsProduction?[]:revenueEffects(os.data()||{},effects,next.at),effects:effects.map(r=>({...r,active:currentEffect(os.data()||{},r),...(Number.isInteger(r.effect.settlements)&&r.effect.settlements>0?{remainingSettlements:remainingSettlements(os.data()||{},r)}:{}),title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection,settlementProjection,settlementAt:next.at};

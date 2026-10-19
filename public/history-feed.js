@@ -21,6 +21,8 @@ export function mountManagementHistory(root,request,companyId,{isCurrent=()=>tru
  const retry=e=>{if(e.target.closest('[data-history-retry]'))void load();};
  const scroll=()=>{if(!Observer&&!failed&&list.scrollTop+list.clientHeight>=list.scrollHeight-80)void load();};
  root.addEventListener('click',retry);list.addEventListener('scroll',scroll,{passive:true});
- if(Observer){observer=new Observer(entries=>{if(!current()){observer.disconnect();return;}if(!failed&&entries.some(e=>e.isIntersecting))void load();},{rootMargin:'120px'});observer.observe(sentinel);}else void load();
- return ()=>{disposed=true;observer?.disconnect();root.removeEventListener('click',retry);list.removeEventListener('scroll',scroll);};
+ if(Observer){observer=new Observer(entries=>{if(!current())return;if(!failed&&entries.some(e=>e.isIntersecting))void load();},{rootMargin:'120px'});observer.observe(sentinel);}else void load();
+ const stop=()=>{disposed=true;observer?.disconnect();root.removeEventListener('click',retry);list.removeEventListener('scroll',scroll);};
+ stop.resume=()=>{if(!done&&!disposed){if(observer){observer.unobserve(sentinel);observer.observe(sentinel);}else if(!failed)void load();}};
+ return stop;
 }

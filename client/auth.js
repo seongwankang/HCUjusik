@@ -1,4 +1,5 @@
 import {clearImmutableRows,setHistoryOwner} from './immutable-reads.js';
+import {createViewReads} from './live-reads.js';
 import {subscribeQuotes} from './quotes.js';
 import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
@@ -12,6 +13,7 @@ let auth;
 let ready;
 let generation = 0;
 let api;
+let viewReads;
 export const sessionVersion = () => generation;
 async function init() {
   const response = await fetch(new URL('firebase.config.json',document.baseURI),{cache:'no-store'});
@@ -19,7 +21,8 @@ async function init() {
   if (!response.ok) throw new Error(data.error);
   auth = getAuth(initializeApp(data));
   auth.languageCode = 'ko';
-  api=createClientApi({db:getFirestore(auth.app),getUser:async()=>auth.currentUser});
+  viewReads=createViewReads(getFirestore(auth.app),path=>window.dispatchEvent(new CustomEvent('view-data-changed',{detail:{path}})));
+  api=createClientApi({db:getFirestore(auth.app),viewReads,getUser:async()=>auth.currentUser});
   // Keep reloads signed in within this tab; do not retain a permanent login.
   await setPersistence(auth, browserSessionPersistence);
   // Do not query private data until Firebase restores the saved session.
@@ -37,6 +40,7 @@ export async function idToken() {
 export async function login(email, password) {
   await ensure();
   await signInWithEmailAndPassword(auth, email, password);
+  viewReads.clear();
   await setHistoryOwner(getFirestore(auth.app),auth.currentUser.uid);
   generation++;
 }
@@ -44,6 +48,7 @@ export async function signup(email, password, displayName='') {
   if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(email.trim()))throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');
   await ensure();
   await createUserWithEmailAndPassword(auth, email, password);
+  viewReads.clear();
   await setHistoryOwner(getFirestore(auth.app),auth.currentUser.uid);
   generation++;
   // Keep the pending student's name with their Auth account across tabs/devices.
@@ -64,15 +69,27 @@ export async function logout() {
   generation++;
   await ensure();
   await signOut(auth);
+  viewReads.clear();
   await clearImmutableRows(getFirestore(auth.app));
 }
 
 export async function dataRequest(path,options){
- await ensure();try{return await api(path,options);}catch(error){
+ await ensure();try{const result=await api(path,options);
+  if(options?.method==='POST'){
+   let b={};try{b=JSON.parse(options.body||'{}');}catch{}
+   // Transactions still read authoritative documents. Confirm only affected views.
+   const uid=auth.currentUser?.uid,cid=b.companyId;
+   const paths=['users/'+uid,'sparkAccounts/'+uid,...(cid?['sparkBooks/'+cid,'companyOperations/'+cid,'companySpies/'+cid,'companyChoices/'+cid]:[])];
+   if(path.includes('/admin/')||/event-|rankings-publish|economy-config|spy-policy/.test(path))paths.push('*');
+   await viewReads.refresh(paths).catch(()=>{});
+  }
+  return result;
+ }catch(error){
   if(!error.code)error.status=400;
   else if(['permission-denied','invalid-argument','not-found','already-exists'].includes(error.code))error.status=error.code==='permission-denied'?403:400;
   throw error;
  }
 }
 
-export async function watchCompanyQuotes(companies,update){await ensure();if(!auth.currentUser)return ()=>{};return subscribeQuotes(getFirestore(auth.app),companies,update);}
+export async function watchCompanyQuotes(companies,update){await ensure();if(!auth.currentUser)return ()=>{};return subscribeQuotes(getFirestore(auth.app),companies,update,viewReads);}
+export async function refreshViewData(){await ensure();await viewReads.refresh(['*']);}

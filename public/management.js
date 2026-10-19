@@ -14,7 +14,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
  let alive=true,selected='',companies=[],view=null,tab='investments';
  const current=()=>alive&&isCurrent()&&document.querySelector('#page-management')?.classList.contains('active');
  const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
- host.classList.remove('empty-state');host.innerHTML='<p class="placeholder">경영 현황을 불러오는 중…</p>';
+ host.classList.remove('empty-state');if(!host.hasChildNodes())host.innerHTML='<p class="placeholder">경영 현황을 불러오는 중…</p>';
  try{
   companies=(await api(user.role==='admin'?'/api/companies':'/api/my-company')).companies;if(!current())return;
   if(!companies.length){host.innerHTML='<div class="blank-state"><h2>담당 기업이 없습니다</h2><p>관리자가 기업과 사장을 연결하면 경영을 시작할 수 있습니다.</p></div>';return;}
@@ -79,7 +79,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    setTab(tab);
   }
   host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};
-  host.querySelector('#business-refresh').onclick=load;
+  host.querySelector('#business-refresh').onclick=async()=>{await api.refresh?.();await load();};
   host.onclick=async e=>{
    const nav=e.target.closest('[data-management-tab]');if(nav){setTab(nav.dataset.managementTab);return;}
    const button=e.target.closest('[data-business]');if(!button||button.disabled)return;
@@ -92,6 +92,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='production-form')await post('/api/economy-production',{companyId:selected,...Object.fromEntries(['production','pendingProduction'].map(key=>[key,Object.fromEntries(Object.keys(assets).map(asset=>[asset,Number(b[key+'-'+asset])]))]))});else if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,k==='researchBoostBps'?Math.round(Number(v)*100):Number(v)])));await load();if(current())message('설정을 저장했습니다.');}catch(err){if(current())message(err.message);button.disabled=false;}
   };
   await load();
+  return {refresh:load,dispose:()=>{alive=false;}};
  }catch(e){if(current())host.textContent=e.message;}
- return ()=>{alive=false;};
+ return {dispose:()=>{alive=false;}};
 }

@@ -4,8 +4,9 @@ import {investmentDay,koreaDay,settlementTime} from './settlement-time.js';
 import {DEFAULT_SPY_POLICY,effectiveSpyPolicy,spyTransfers,spyAgents,MAX_SPIES} from './spy-model.js';
 import {allRows} from './rankings.js';
 const id=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x);
-export async function spyView(db,cid){
- const [p,s,h]=await Promise.all([getDoc(doc(db,'spyPolicy/main')),getDoc(doc(db,'companySpies',cid)),immutableRows(db,'companySpies/'+cid+'/history',{field:'day',pageSize:30,maxRecords:30,persistent:true})]);
+export async function spyView(db,cid,reads){
+ const readDoc=reads?.getDoc||getDoc,readDocs=reads?.getDocs||getDocs;
+ const [p,s,h]=await Promise.all([readDoc(doc(db,'spyPolicy/main')),readDoc(doc(db,'companySpies',cid)),immutableRows(db,'companySpies/'+cid+'/history',{field:'day',pageSize:30,maxRecords:30,persistent:true})]);
  return {policy:effectiveSpyPolicy(p.data()),contract:s.data()?{...s.data(),agents:spyAgents(s.data())}:null,history:h};
 }
 export async function hireSpy(db,cid,targetId,retry=0){

@@ -17,13 +17,16 @@ import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView,marketHistor
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
 const message=s=>{throw new Error(s);};
 function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(Array.isArray(v))return v.map(plain);if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,plain(x)]));return v;}
-export function createClientApi({db,getUser}){
- const get=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
- const list=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
+export function createClientApi({db,getUser,viewReads}){
+ const freshGet=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
+ const freshList=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
  const investmentsFor=(cid,ops)=>immutableRows(db,'companyOperations/'+cid+'/investments',{field:'createdAt',pageSize:30,revision:ops?.lastInvestment||'',persistent:true});
- const eventsFor=()=>immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true});
+ const eventsFor=async()=>{const head=viewReads?await viewReads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))):null;return immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(head?{revision:head.docs.map(d=>d.id).join(',')}:{})});};
  return async function api(path,options={}){
   const url=new URL(path,'https://local.invalid'),route=url.pathname,method=options.method||'GET';
+  const reads=method==='GET'?viewReads:null;
+  const get=reads?async path=>{const s=await reads.getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;}:freshGet;
+  const list=reads?async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await reads.getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));}:freshList;
   const user=await getUser();
   if(!user){if(route==='/api/me')return {authenticated:false,user:null};message('로그인이 필요합니다.');}
   const claims=(await user.getIdTokenResult()).claims;
@@ -38,10 +41,10 @@ export function createClientApi({db,getUser}){
   if(profile.active!==true)message('비활성화된 참가 계정입니다. 관리자에게 문의하세요.');
   if(route==='/api/rankings-publish'&&method==='POST'){if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');await publishCashRankings(db);return {ok:true};}
   if(route==='/api/rankings'&&method==='GET'){
-   const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies')]);
+   const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies',reads)]);
    const books=await Promise.all(companies.map(c=>get('sparkBooks/'+c.id)));
    const own=accountAssets(account,Object.fromEntries(companies.map(c=>[c.id,c])),Object.fromEntries(books.filter(Boolean).map(b=>[b.id,b])));
-   return {cash,myCash:own.cash,myTotalValue:own.totalValue,...await marketRankings(db,companies,books.filter(Boolean))};
+   return {cash,myCash:own.cash,myTotalValue:own.totalValue,...await marketRankings(db,companies,books.filter(Boolean),Date.now(),reads)};
   }
   if(route==='/api/investor-profile'&&method==='GET'){
    const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))message('순위표에서 참가자를 선택하세요.');
@@ -70,7 +73,7 @@ export function createClientApi({db,getUser}){
    const [effects,events,investments]=await Promise.all([effectRecords(db,cid,{revision:ops?.lastEvent||'',persistent:true}),eventsFor(),investmentsFor(cid,ops)]);
    return historyPage(managementHistory({ops,effects,events,investments}).recentHistory,cursor);
   }
-  if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
+  if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId'),reads));
   if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-close','/api/event-choose','/api/event-apply'].includes(route)){
    const b=JSON.parse(options.body||'{}');
    if(route==='/api/event-publish'||route==='/api/event-random'||route==='/api/event-close'){
@@ -89,10 +92,10 @@ export function createClientApi({db,getUser}){
   if(route==='/api/economy'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
    const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
-   if(profile.role==='admin'||assigned)await initializeOperations(db,cid);
-   return operationsView(db,cid);
+   if((profile.role==='admin'||assigned)&&!(await get('companyOperations/'+cid)))await initializeOperations(db,cid);
+   return operationsView(db,cid,reads);
   }
-  if(route==='/api/spies'&&method==='GET'){const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');return spyView(db,cid);}
+  if(route==='/api/spies'&&method==='GET'){const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');return spyView(db,cid,reads);}
   if(route==='/api/spy-policy'&&method==='POST'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const policy=spyPolicy(JSON.parse(options.body||'{}'));await runTransaction(db,async t=>t.set(doc(db,'spyPolicy/main'),policy));return {ok:true};}
   if(route==='/api/spy-hire'&&method==='POST'){const b=JSON.parse(options.body||'{}');const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(b.companyId);if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 고용할 수 있습니다.');return hireSpy(db,b.companyId,b.targetId);}
   if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
@@ -108,7 +111,7 @@ export function createClientApi({db,getUser}){
    if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<0||b.dividendBps>10000)message('배당률은 0~100%로 입력하세요.');
    await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists()||o.data().locked)message('회사 계좌 준비 또는 진행 중인 정산 완료가 필요합니다.');t.update(r,{dividendBps:b.dividendBps});});return {ok:true};
   }
-  if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role);
+  if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role,reads);
   if(route==='/api/limit-order'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');await initializeSpark(db,user.uid,b.companyId);
    let result;
@@ -167,12 +170,12 @@ export function createClientApi({db,getUser}){
   if(method==='GET'&&kind==='companies'){const [companies,leadership]=await Promise.all([list('companies',100,'ticker'),get('companyLeadership/main')]);return {companies:companies.map(c=>({...c,presidentNames:leadership?.companies?.[c.id]||[]}))};}
   if(method==='GET'&&kinds[kind])return {[kind]:await list(kind,kinds[kind][1],kinds[kind][0])};
   if(route==='/api/trading-portfolio'&&method==='GET'){
-   const ledger=await accountLedger(db,user.uid),account=ledger.account;
+   const ledger=await accountLedger(db,user.uid,reads),account=ledger.account;
    const ids=[...new Set([...Object.keys(account?.positions||{}),...Object.keys(account?.reservedPositions||{}),...ledger.fills.map(f=>f.companyId)])];if(ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))message('보유 기업 ID를 확인하세요.');const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
    const portfolio=tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
    return {...portfolio,holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
   }
-  if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true}))};
+  if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true,revision:(await get('sparkAccounts/'+user.uid))?.version}))};
   if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
   if(route==='/api/my-company'&&method==='GET'){const ids=(await get(`assignments/${user.uid}`))?.companyIds||[];if(ids.length>5||ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(x)))message('담당 기업 설정을 확인하세요.');return {companies:(await Promise.all(ids.map(id=>get(`companies/${id}`)))).filter(Boolean)};}
   message('지원하지 않는 요청입니다.');
