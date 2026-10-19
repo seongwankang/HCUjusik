@@ -9,8 +9,8 @@ import {publishCashRankings,allRows} from '../client/rankings.js';
 import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=marketPaused}={}){
- if((await db.doc('systemMaintenance/reset').get()).exists||isPaused(now))return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
- if(mode==='rankings-only'){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants};}
+ if((await db.doc('systemMaintenance/reset').get()).exists)return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
+ if(mode==='rankings-only'||mode==='full'&&isPaused(now)){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants,maintenance:isPaused(now)};}
  if(mode==='spies-policy-only'){const migration=await migrateSpyPolicy(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
  if(mode!=='full')throw Error('Unknown economy job mode');
  await migrateSpyPolicy(db);
