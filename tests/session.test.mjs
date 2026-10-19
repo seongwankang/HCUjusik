@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 
 test('restoration finishes before private reads; reload retains login and logout clears it',async()=>{
- const fixture={saved:null,currentUser:null,restore:null};
+ const fixture={saved:null,currentUser:null,restore:null,cacheOwners:[]};
  globalThis.__sessionFixture=fixture;
  const originalFetch=globalThis.fetch,originalDocument=globalThis.document;
  globalThis.document={baseURI:'https://example.test/HCUjusik/'};
@@ -11,8 +11,8 @@ test('restoration finishes before private reads; reload retains login and logout
  try{
   const result=await build({entryPoints:['client/auth.js'],bundle:true,write:false,format:'esm',plugins:[{
    name:'auth-session-fixture',setup(b){
-    b.onResolve({filter:/^(firebase\/|\.\/data\.js)/},a=>({path:a.path,namespace:'fixture'}));
-    b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='firebase/auth'?`
+    b.onResolve({filter:/^(firebase\/|\.\/data\.js|\.\/immutable-reads\.js)/},a=>({path:a.path,namespace:'fixture'}));
+    b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='./immutable-reads.js'?'export async function setHistoryOwner(db,uid){globalThis.__sessionFixture.cacheOwners.push(uid)};export async function clearImmutableRows(){globalThis.__sessionFixture.cacheOwners.push(null)};':a.path==='firebase/auth'?`
      const f=globalThis.__sessionFixture;
      export const browserSessionPersistence={type:'SESSION'};
      export function getAuth(){f.currentUser=null;return {app:{},get currentUser(){return f.currentUser},authStateReady:()=>new Promise(resolve=>{f.restore=()=>{f.currentUser=f.saved;resolve()}})}}
@@ -40,6 +40,6 @@ test('restoration finishes before private reads; reload retains login and logout
   auth=await page();pending=auth.dataRequest('/api/me');await restore();assert.equal(await pending,null);
   await auth.signup('student@hcu.hs.kr','synthetic','홍학생');
   auth=await page();pending=auth.verificationStatus(true);await restore();
-  assert.deepEqual(await pending,{email:'student@hcu.hs.kr',verified:false,displayName:'홍학생'});
+  assert.deepEqual(await pending,{email:'student@hcu.hs.kr',verified:false,displayName:'홍학생'});assert.ok(fixture.cacheOwners.includes(null));assert.ok(fixture.cacheOwners.includes('synthetic-student'));
  }finally{globalThis.fetch=originalFetch;globalThis.document=originalDocument;delete globalThis.__sessionFixture;}
 });

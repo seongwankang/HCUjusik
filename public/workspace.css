@@ -241,3 +241,5 @@ body .admin-student-email{overflow-wrap:anywhere;font-size:12px;color:#475569}bo
  body .company-heading>div:first-child{max-width:56%;flex:1}
  body .company-quote{width:auto;min-width:200px;text-align:right;border:0;padding-top:0;grid-template-columns:auto auto}
 }
+body .history-sentinel{padding:16px 0;text-align:center;color:#64748b;font-size:12px;list-style:none}
+body .history-sentinel button{min-height:44px;border:1px solid var(--edge);border-radius:8px;padding:8px 16px;background:white;color:#2563eb}

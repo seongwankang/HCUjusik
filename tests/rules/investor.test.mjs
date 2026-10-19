@@ -35,7 +35,7 @@ test('student investor reads applied effects and own estimated dividends; query 
 });
 
 test('student sees actual event results and president investments; records cannot be forged, edited or removed',async()=>{
- const cid='ledger',at=Timestamp.fromMillis(Date.now()-10000);
+ const cid='ledger',at=Timestamp.now();
  await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();
   await setDoc(doc(d,'users/boss'),{displayName:'사장',role:'president',active:true});await setDoc(doc(d,'assignments/boss'),{companyIds:[cid]});
   await setDoc(doc(d,'companies',cid),{name:'기록 기업',status:'listed',referencePrice:10000,issuedShares:1000});
@@ -47,7 +47,7 @@ test('student sees actual event results and president investments; records canno
  const boss=env.authenticatedContext('boss',{email:'boss@hcu.hs.kr',email_verified:true}).firestore();
  await invest(boss,cid,'factory');await invest(boss,cid,'employee');
  const records=await getDocs(query(collection(db,'companyOperations',cid,'investments'),limit(30)));assert.equal(records.size,2);
- const result=await api('/api/company-investor?companyId='+cid);assert.equal(result.recentHistory.length,3);assert.ok(result.recentHistory.some(r=>r.title==='공장 1개 건설'&&r.description.includes('2,000,000원')));assert.ok(result.recentHistory.some(r=>r.title==='직원 1명 채용'&&r.description.includes('100,000원')));assert.ok(result.recentHistory.some(r=>r.title==='실제 지원금'));assert.equal(JSON.stringify(result.recentHistory).includes('미공개 결과'),false);
+ const result=await api('/api/company-history?companyId='+cid);assert.equal(result.rows.length,3);assert.ok(result.rows.some(r=>r.title==='공장 1개 건설'&&r.description.includes('2,000,000원')));assert.ok(result.rows.some(r=>r.title==='직원 1명 채용'&&r.description.includes('100,000원')));assert.ok(result.rows.some(r=>r.title==='실제 지원금'));assert.equal(JSON.stringify(result.rows).includes('미공개 결과'),false);
  await assertFails(getDocs(collection(db,'companyOperations',cid,'investments')));
  const existing=doc(boss,'companyOperations',cid,'investments',records.docs[0].id);await assertFails(updateDoc(existing,{cost:1}));await assertFails(deleteDoc(existing));await assertFails(setDoc(doc(db,'companyOperations',cid,'investments','student-fake'),{asset:'factory',quantity:1,cost:1,createdAt:serverTimestamp(),activeFromDay:koreaDay()+1}));
  const o=(await getDoc(doc(boss,'companyOperations',cid))).data();
@@ -56,7 +56,7 @@ test('student sees actual event results and president investments; records canno
  await assertFails(updateDoc(doc(boss,'companyOperations',cid),{...patch,lastInvestment:'missing-record',cash:o.cash-2000000}));
  assert.equal((await getDocs(query(collection(db,'companyOperations',cid,'investments'),limit(30)))).size,2);assert.equal((await getDoc(doc(boss,'companyOperations',cid))).data().cash,7900000);
  await env.withSecurityRulesDisabled(async c=>{const term={eventId:'all-discount',percent:-20,startsAt:Date.now()-1000,endsAt:Date.now()+86400000};await updateDoc(doc(c.firestore(),'companyOperations',cid),{costEvents:{factory:term,equipment:term,research:term,employee:term}});});
- await invest(boss,cid,'research');const discounted=await api('/api/company-investor?companyId='+cid);assert.ok(discounted.recentHistory.some(r=>r.title==='R&D센터 1개 건설'&&r.description.includes('400,000원')));
+ await invest(boss,cid,'research');const discounted=await api('/api/company-history?companyId='+cid);assert.ok(discounted.rows.some(r=>r.title==='R&D센터 1개 건설'&&r.description.includes('400,000원')));
 });
 
 
@@ -69,7 +69,10 @@ test('student history pages past thirty investments and retains the older cash-l
   await setDoc(doc(d,'companyEffects',cid,'items','history-loss'),{effect:{kind:'cash',amount:-1000000},result:{amount:-54246},appliedAt:Timestamp.fromMillis(now-60000)});
   await Promise.all(Array.from({length:35},(_,n)=>setDoc(doc(d,'companyOperations',cid,'investments','buy-'+n),{asset:'employee',quantity:1,cost:100000,activeFromDay:koreaDay(),createdAt:Timestamp.fromMillis(now-1000)})));
  });
- const result=await api('/api/company-investor?companyId='+cid);
- assert.equal(result.recentHistory.length,36);assert.equal(new Set(result.recentHistory.map(r=>r.id)).size,36);
- assert.equal(result.recentHistory.at(-1).id,'history-loss');assert.equal(result.recentHistory.at(-1).amount,-54246);assert.match(result.recentHistory.at(-1).description,/-54,246원/);
+ const summary=await api('/api/company-investor?companyId='+cid);assert.equal(summary.historyPending,true);assert.deepEqual(summary.recentHistory,[]);
+ const first=await api('/api/company-history?companyId='+cid);assert.equal(first.rows.length,20);assert.ok(first.next);
+ const second=await api('/api/company-history?companyId='+cid+'&cursor='+encodeURIComponent(JSON.stringify(first.next)));assert.equal(second.next,null);
+ const result={rows:[...first.rows,...second.rows]};
+ assert.equal(result.rows.length,36);assert.equal(new Set(result.rows.map(r=>r.id)).size,36);
+ assert.equal(result.rows.at(-1).id,'history-loss');assert.equal(result.rows.at(-1).amount,-54246);assert.match(result.rows.at(-1).description,/-54,246원/);
 });

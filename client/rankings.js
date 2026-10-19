@@ -78,7 +78,7 @@ async function completedRevenueTotal(db,cid,ops){
 }
 async function companyRevenueRows(db,prices,now){
  return Object.fromEntries(await Promise.all(prices.map(async p=>{try{
-  const ops=(await getDoc(doc(db,'companyOperations',p.id))).data(),[effects,days]=await Promise.allSettled([effectRecords(db,p.id),completedRevenueTotal(db,p.id,ops)]);
+  const ops=(await getDoc(doc(db,'companyOperations',p.id))).data(),[effects,days]=await Promise.allSettled([effectRecords(db,p.id,{revision:ops?.lastEvent||'',persistent:true}),completedRevenueTotal(db,p.id,ops)]);
   let expectedRevenue=null,cumulativeRevenue=null;
   if(effects.status==='fulfilled')try{expectedRevenue=companyRevenueMetrics(ops,[],effects.value,now).expectedRevenue;}catch{}
   if(days.status==='fulfilled')cumulativeRevenue=days.value;

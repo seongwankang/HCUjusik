@@ -1,3 +1,4 @@
+import {immutableRows} from './immutable-reads.js';
 import {publishEventNews,validateEventNews} from './event-news.js';
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {revenueEffects,validateEffect,eventMutation,NEW_EFFECTS,currentEffect,remainingSettlements,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
@@ -7,9 +8,8 @@ import {nextSettlement} from './settlement-time.js';
 import {eventTargets} from './event-targets.js';
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 const fail=s=>{throw new Error(s);};
-export async function effectRecords(db,cid){
- // Page through all receipts: no silent 100-event cutoff in accounting.
- let cursor=null,rows=[];for(;;){const page=await getDocs(query(collection(db,'companyEffects',cid,'items'),orderBy('__name__'),limit(100),...(cursor?[startAfter(cursor)]:[])));rows.push(...page.docs.map(s=>({id:s.id,...s.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}
+export function effectRecords(db,cid,options={}){
+ return immutableRows(db,'companyEffects/'+cid+'/items',{field:'appliedAt',pageSize:100,...options});
 }
 export async function publishEvent(db,b){
  if(!valid(b.id)||!['random','choice'].includes(b.type))fail('이벤트 종류를 확인하세요.');
@@ -59,9 +59,11 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
 }
 export async function eventCompanyView(db,cid){
  if(!valid(cid))fail('기업을 선택하세요.');
- const [events,effects]=await Promise.all([getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))),effectRecords(db,cid)]);
+ const opTask=getDoc(doc(db,'companyOperations',cid));
+ const [eventRows,effects,os]=await Promise.all([immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true}),opTask.then(s=>effectRecords(db,cid,{revision:s.data()?.lastEvent||'',persistent:true})),opTask]);
+ const events={docs:eventRows.map(r=>({id:r.id,data:()=>r}))};
  const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await getDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
- const os=await getDoc(doc(db,'companyOperations',cid));const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
+ const projection=os.exists()&&needsProduction(os.data())?{base:0,revenue:null,needsProduction:true}:os.exists()?adjustedRevenue(os.data(),Math.floor((Date.now()+32400000)/86400000),effects):{base:0,revenue:0};
  const next=nextSettlement(os.data()),settlementProjection=projection.needsProduction?projection:os.exists()?adjustedRevenue(os.data(),next.day,effects,next.at):{base:0,revenue:0};
  return {choices,revenueEffects:projection.needsProduction?[]:revenueEffects(os.data()||{},effects,next.at),effects:effects.map(r=>({...r,active:currentEffect(os.data()||{},r),...(Number.isInteger(r.effect.settlements)&&r.effect.settlements>0?{remainingSettlements:remainingSettlements(os.data()||{},r)}:{}),title:events.docs.find(e=>e.id===r.id)?.data().title||r.id})),projection,settlementProjection,settlementAt:next.at};
 }
