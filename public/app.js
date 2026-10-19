@@ -14,7 +14,7 @@ import {dataRequest, login, signup, logout, sessionVersion, watchCompanyQuotes, 
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-function marketNotice(){const el=document.querySelector('.event-date'),open=marketSession().open;el.dataset.open=String(open);el.innerHTML='<span class="live-dot"></span>'+(open?'장 운영 중 · 21:00 마감':'장 마감 · 09:00 시작');}marketNotice();setInterval(marketNotice,60000);
+function marketNotice(){const el=document.querySelector('.event-date'),open=marketSession().open;el.dataset.open=String(open);el.innerHTML='<span class="live-dot"></span>'+(open?'장 운영 중 · 21:00 마감':'장 마감 · 08:00 시작');}marketNotice();setInterval(marketNotice,60000);
 const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 

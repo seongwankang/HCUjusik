@@ -336,7 +336,7 @@ service cloud.firestore {
     }
     function marketOpen() {
       let minute=(int(request.time.toMillis() / 60000)+540)%1440;
-      return minute >= 540 && minute < 1260;
+      return minute >= 480 && minute < 1260;
     }
     match /sparkBooks/{cid} {
       allow get: if sparkId(cid) && participant();
