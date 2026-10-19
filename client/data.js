@@ -9,7 +9,7 @@ import {accountAssets,allRows,marketRankings,publishCashRankings} from './rankin
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
-import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,updateDoc,Timestamp,serverTimestamp} from 'firebase/firestore';
+import {getDoc,getDocs,doc,collection,query,orderBy,limit,startAfter,runTransaction,updateDoc,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
 import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView,marketHistory} from './spark-exchange.js';
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
@@ -18,6 +18,14 @@ function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(A
 export function createClientApi({db,getUser}){
  const get=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
  const list=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
+ const investmentsFor=async cid=>{
+  const rows=[];let cursor;
+  for(;;){
+   const page=await getDocs(query(collection(db,'companyOperations',cid,'investments'),orderBy('createdAt','desc'),limit(30),...(cursor?[startAfter(cursor)]:[])));
+   rows.push(...page.docs.map(s=>({...plain(s.data()),id:s.id})));
+   if(page.size<30)return rows;cursor=page.docs.at(-1);
+  }
+ };
  return async function api(path,options={}){
   const url=new URL(path,'https://local.invalid'),route=url.pathname,method=options.method||'GET';
   const user=await getUser();
@@ -53,7 +61,7 @@ export function createClientApi({db,getUser}){
   }
   if(route==='/api/company-investor'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
-   const [company,ops,book,account,effects,events,investments]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc'),list('companyOperations/'+cid+'/investments',20,'createdAt desc')]);
+   const [company,ops,book,account,effects,events,investments]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc'),investmentsFor(cid)]);
    if(!company)message('기업을 찾을 수 없습니다.');
    return investorSnapshot({companyId:cid,ops,book,account,effects,events,investments});
   }

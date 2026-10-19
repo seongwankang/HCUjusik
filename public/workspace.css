@@ -64,7 +64,6 @@ body .history-state[data-state="applied"]{background:#eaf7f0;color:#187451}
 body .investor-history-meta time{margin-left:auto;color:#94a3b8}
 body .investor-history-item>strong{display:block;font-size:14px;color:#172b4d}
 body .investor-history-item>p{margin:5px 0 0;font-size:13px;line-height:1.7;color:#475569}
-body .investor-history-more{padding-top:12px;border-top:1px solid var(--edge)}
 body .investor-history-empty{margin:16px 0 4px;font-size:13px;color:#64748b}
 @media(max-width:780px){body .investor-history{padding:16px}body .investor-history-meta time{margin-left:0}body .investor-history-item{padding:14px 0}}
 body .investor-history-note{font-size:11px;color:#94a3b8;margin:14px 0 0}

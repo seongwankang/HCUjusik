@@ -32,13 +32,23 @@ test('public history includes actual one-time outcomes and merges investment cos
  assert.equal(d.recentHistory[0].title,'직원 1명 채용');assert.match(d.recentHistory[0].description,/80,000원/);assert.equal(d.recentHistory[0].status,'applied');assert.equal(d.recentHistory[1].status,'pending');assert.match(d.recentHistory[2].description,/500,000원/);
  const publicData=JSON.stringify(d.recentHistory);assert.equal(publicData.includes('secret-uid'),false);assert.equal(publicData.includes('option'),false);assert.equal(publicData.includes('아직 미적용'),false);assert.equal(publicData.includes('later'),false);
 });
-test('public history is newest first, bounded to twenty and excludes invalid or future investment records',()=>{
+test('public history is newest first, retains older receipts and excludes invalid or future investment records',()=>{
  const i=input();i.effects=Array.from({length:25},(_,n)=>({id:'e'+n,appliedAt:now-n*1000,effect:{kind:'none'}}));
  i.investments=[{id:'bad',asset:'factory',quantity:1,cost:-1,activeFromDay:day,createdAt:now-1},{id:'future',asset:'factory',quantity:1,cost:1,activeFromDay:day,createdAt:now+1}];
- const d=investorSnapshot(i,now);assert.equal(d.recentHistory.length,20);assert.equal(d.recentHistory[0].id,'e0');assert.equal(d.recentHistory.at(-1).id,'e19');
+ const d=investorSnapshot(i,now);assert.equal(d.recentHistory.length,25);assert.equal(d.recentHistory[0].id,'e0');assert.equal(d.recentHistory.at(-1).id,'e24');
 });
 test('history distinguishes permanent results, active and replaced or expired effects',()=>{
  const i=input();i.ops.costEvents={factory:{eventId:'new-cost',startsAt:now-1000,endsAt:now+10000,percent:-20}};
  i.effects=[{id:'damage',appliedAt:now-1,effect:{kind:'destroy',asset:'factory',count:1}},{id:'new-cost',appliedAt:now-2,effectiveAt:now-1000,effect:{kind:'cost',asset:'factory',percent:-20,hours:1}},{id:'old-cost',appliedAt:now-3,effectiveAt:now-1000,effect:{kind:'cost',asset:'factory',percent:-30,hours:1}},{id:'expired',appliedAt:now-7200000,effect:{kind:'revenue',percent:-20,hours:1}}];
  assert.deepEqual(investorSnapshot(i,now).recentHistory.map(r=>r.status),['applied','active','ended','ended']);
+});
+
+
+test('loss events remain visible after more than twenty investments and use the actual signed receipt amount',()=>{
+ const i=input();i.events=[{id:'loss',title:'손실 발생'}];
+ i.effects=[{id:'loss',appliedAt:{toMillis:()=>now-60000},effect:{kind:'cash',amount:-1000000},result:{amount:-54246}}];
+ i.investments=Array.from({length:35},(_,n)=>({id:'buy'+n,asset:'employee',quantity:1,cost:100000,activeFromDay:day,createdAt:now-n*1000}));
+ const d=investorSnapshot(i,now);assert.equal(d.recentHistory.length,36);
+ const loss=d.recentHistory.at(-1);assert.equal(loss.id,'loss');assert.equal(loss.status,'applied');assert.equal(loss.amount,-54246);assert.match(loss.description,/-54,246원/);
+ const legacy=investorSnapshot({...i,effects:[{...i.effects[0],result:undefined}]},now).recentEvents[0];assert.equal(legacy.amount,-1000000);assert.match(legacy.description,/-1,000,000원/);
 });
