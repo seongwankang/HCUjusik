@@ -1,6 +1,9 @@
 import {aggregateCandles,CHART_RANGES,rangeCandles,INTERVALS} from './candles.js';
 const n=value=>Number(value).toLocaleString('ko-KR');
-const stamp=(time,day=false)=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',...(day?{}:{hour:'2-digit',minute:'2-digit',hour12:false})}).format(time);
+const dateFormats=new Map();
+const stamp=(time,day=false)=>{
+ let formatter=dateFormats.get(day);if(!formatter){formatter=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',...(day?{}:{hour:'2-digit',minute:'2-digit',hour12:false})});dateFormats.set(day,formatter);}return formatter.format(time);
+};
 const period={minute:'1분봉',five:'5분봉',day:'일봉',halfHour:'자동 봉',twoHours:'자동 봉',sixHours:'자동 봉'};
 const UP='#d95f72',DOWN='#507fc8',FLAT='#858b9a';
 function geometry(bars,slots,window){
@@ -26,7 +29,7 @@ export function priceHistory(trades,interval='minute'){
 }
 export function createPriceChart(container){
  let trades=[],range='5h',interval='five',available=null,zoom=1,bars=[],selected=-1,view;
- container.innerHTML=`<div class="candle-controls"><div role="group" aria-label="차트 기간">${Object.entries(CHART_RANGES).map(([key,{label}])=>`<button type="button" data-range="${key}" aria-pressed="${key===range}">${label}</button>`).join('')}</div><div role="group" aria-label="차트 확대 축소"><button type="button" data-zoom="in" aria-label="차트 확대">＋</button><button type="button" data-zoom="out" aria-label="차트 축소">−</button></div><span>전체 참가자 · 최근 100건</span></div><div class="candle-info" aria-live="off"></div><div class="candle-plot"><div class="chart-empty">종목 체결을 불러오는 중…</div></div><div class="candle-caption"><span><i class="candle-up"></i>양봉 <i class="candle-down"></i>음봉 <i class="candle-ma"></i>MA 5</span><span>한국시간</span></div>`;
+ container.innerHTML=`<div class="candle-controls"><div role="group" aria-label="차트 기간">${Object.entries(CHART_RANGES).map(([key,{label}])=>`<button type="button" data-range="${key}" aria-pressed="${key===range}">${label}</button>`).join('')}</div><div role="group" aria-label="차트 확대 축소"><button type="button" data-zoom="in" aria-label="차트 확대">＋</button><button type="button" data-zoom="out" aria-label="차트 축소">−</button></div><span>전체 참가자 · 최근 100건</span></div><div class="candle-info" aria-live="off"></div><div class="candle-plot"><div class="chart-empty">종목 체결을 불러오는 중…</div></div><div class="candle-caption"><span><i class="candle-up"></i>양봉 <i class="candle-down"></i>음봉 <i class="candle-ma"></i>MA 5</span><span class="candle-touch-hint">봉을 가볍게 누르면 상세 가격이 표시됩니다.</span><span>한국시간</span></div>`;
  const plot=container.querySelector('.candle-plot'),info=container.querySelector('.candle-info');
  function show(index){
   const b=bars[index];if(!b||selected===index)return;selected=index;
@@ -57,9 +60,9 @@ export function createPriceChart(container){
    const pos=p.matrixTransform(matrix.inverse());let index=0;bars.forEach((b,i)=>{if(Math.abs(g.x(i)-pos.x)<Math.abs(g.x(index)-pos.x))index=i;});
    track(index,Math.max(20,Math.min(320,pos.y)));popup(index,e.clientX,e.clientY);
   }
-  svg.addEventListener('pointerenter',inspect);svg.addEventListener('pointermove',inspect);
+  svg.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')inspect(e);});svg.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')inspect(e);});
   svg.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')inspect(e);});
-  svg.addEventListener('pointerleave',hide);svg.addEventListener('blur',hide);
+  svg.addEventListener('pointercancel',hide);svg.addEventListener('pointerleave',hide);svg.addEventListener('blur',hide);
   svg.addEventListener('keydown',e=>{
    if(e.key==='Escape'){hide();return;}
    if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){

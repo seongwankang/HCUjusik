@@ -1,3 +1,4 @@
+import {batchPaint} from './render-batch.js';
 import {showTransactions} from './transactions.js';
 import {setupRegistration} from './registration.js';
 import {marketSession} from '../client/market-session.js';
@@ -46,7 +47,8 @@ function navigate(page,writeRoute=true) {
 
 const quoteText=c=>Number.isSafeInteger(c.currentPrice)?won(c.currentPrice):c.quoteKind==='error'?'조회 실패':'—';
 let quoteRun=0,stopQuotes=()=>{};
-async function startQuotes(){const run=++quoteRun;stopQuotes();stopQuotes=()=>{};if(!state.user)return;const off=await watchCompanyQuotes(state.companies,(id,quote)=>{if(run!==quoteRun)return;const c=state.companies.find(c=>c.id===id);if(!c)return;Object.assign(c,quote);renderCompanies();if(state.page==='company'&&state.companyId===id){$('#company-current-price').textContent=quoteText(c);renderDayChange(c);$('#company-price-label').textContent=c.quoteKind==='initial'?'첫 거래 전':'현재가';}});if(run!==quoteRun)off();else stopQuotes=off;}
+const paintQuotes=batchPaint(renderCompanies);
+async function startQuotes(){const run=++quoteRun;stopQuotes();stopQuotes=()=>{};if(!state.user)return;const off=await watchCompanyQuotes(state.companies,(id,quote)=>{if(run!==quoteRun)return;const c=state.companies.find(c=>c.id===id);if(!c)return;Object.assign(c,quote);paintQuotes();if(state.page==='company'&&state.companyId===id){$('#company-current-price').textContent=quoteText(c);renderDayChange(c);$('#company-price-label').textContent=c.quoteKind==='initial'?'첫 거래 전':'현재가';}});if(run!==quoteRun)off();else stopQuotes=off;}
 function companyMark(name) {return esc(name.slice(0,1));}
 function companyRow(c) {
   return `<button class="company-mini-row" data-company="${esc(c.id)}"><span class="company-badge">${companyMark(c.name)}</span><span><div class="company-name">${esc(c.name)}</div><div class="company-code">${esc(c.ticker)}</div></span><span class="right"><strong>${quoteText(c)}</strong><small>${c.quoteKind==='initial'?'첫 거래 전':'종목 거래 ↗'}</small></span></button>`;
@@ -143,7 +145,10 @@ async function refreshSession() {
   updateAccountButton();
 }
 async function initialLoad({authenticatedUser=null}={}) {
-  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),authenticatedUser?Promise.resolve():refreshSession()]);
+  const generation=sessionVersion(),read=++newsRead;
+  // News is independent of the first usable screen and must not hold the shell.
+  const newsTask=getJSON('/api/news').then(value=>({value}),error=>({error}));
+  const results=await Promise.allSettled([getJSON('/api/companies'),authenticatedUser?Promise.resolve():refreshSession()]);
   if(results[0].status==='fulfilled') {
     state.companies=results[0].value.companies;
     state.companyError=null;
@@ -153,12 +158,14 @@ async function initialLoad({authenticatedUser=null}={}) {
       ? `기업 정보를 불러오지 못했습니다. ${results[0].reason.message}`
       : '상단 로그인 버튼으로 로그인하면 상장 기업을 조회할 수 있습니다.';
   }
-  if(results[1].status==='fulfilled')state.news=results[1].value.news;
-  else $('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
-  renderCompanies();
-  if(!state.user || results[1].status==='fulfilled')renderNews();
+  renderCompanies();renderNews();
   await startQuotes();
   applyRoute();
+  void newsTask.then(result=>{
+   if(generation!==sessionVersion()||read!==newsRead)return;
+   if(result.value){state.news=result.value.news;renderNews();}
+   else if(state.user)$('#featured-news').textContent='공지 정보를 불러오지 못했습니다.';
+  });
 }
 
 $$('button[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
