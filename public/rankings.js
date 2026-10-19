@@ -16,7 +16,7 @@ export async function showRankings(host,api,user,isCurrent){
  });
  function marketTable(key){
   host.querySelector('#market-ranking-table').dataset.ranking=key;
-  const notes={prices:'현재가 기준 · 첫 거래 전에는 초기 판매가',volume:'오늘 00:00 이후 실제 체결된 주식 수 · 매수·매도 중복 합산 없음',gainers:'전일 종가 대비 상승률 · 상승 종목만 표시',losers:'전일 종가 대비 하락률 · 하락 폭이 큰 종목부터 표시',expectedRevenue:'다음 오전 9시 정산 기준 · 설비·직원·R&D·적용 이벤트 반영',cumulativeRevenue:'완료된 일일 정산 매출 합계 · 지원금·주식 판매대금 제외'};
+  const notes={prices:'현재가 기준 · 첫 거래 전에는 초기 판매가',volume:'오늘 00:00 이후 실제 체결된 주식 수 · 매수·매도 중복 합산 없음',gainers:'전일 종가 대비 상승률 · 상승 종목만 표시',losers:'전일 종가 대비 하락률 · 하락 폭이 큰 종목부터 표시',expectedRevenue:'다음 오전 7시 55분 정산 기준 · 설비·직원·R&D·적용 이벤트 반영',cumulativeRevenue:'완료된 일일 정산 매출 합계 · 지원금·주식 판매대금 제외'};
   host.querySelectorAll('[data-ranking]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ranking===key)));
   host.querySelector('#market-ranking-note').textContent=notes[key]+(['gainers','losers'].includes(key)?' · 전일 거래가 없으면 초기 판매가 기준':'')+(data[key+'Unavailable']?' · '+data[key+'Unavailable']+'개 종목 집계 불가':'');
   const rows=data[key]||[],label={prices:'현재가',volume:'거래량',gainers:'상승률',losers:'하락률',expectedRevenue:'예상 일매출',cumulativeRevenue:'누적 매출'}[key];

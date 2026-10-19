@@ -1,5 +1,5 @@
 import {doc,getDoc,getDocs,collection,query,orderBy,limit,runTransaction,serverTimestamp} from 'firebase/firestore';
-import {investmentDay,koreaDay} from './settlement-time.js';
+import {investmentDay,koreaDay,settlementTime} from './settlement-time.js';
 import {DEFAULT_SPY_POLICY,effectiveSpyPolicy,spyTransfers,spyAgents,MAX_SPIES} from './spy-model.js';
 import {allRows} from './rankings.js';
 const id=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x);
@@ -29,7 +29,7 @@ export async function hireSpy(db,cid,targetId,retry=0){
 // One atomic, final phase after all involved companies finish their ordinary payout.
 // The registry prevents a roster read racing an eligible hire; retries cannot double debit.
 export async function settleSpies(db,now=Date.now(),retry=0){
- const day=koreaDay(now);if(now<day*86400000)return {status:'not-due'};
+ const day=koreaDay(now);if(now<settlementTime(day))return {status:'not-due'};
  const round=doc(db,'spyRounds','d'+day);if((await getDoc(round)).exists())return {status:'complete'};
  const version=(await getDoc(doc(db,'spyRegistry/main'))).data()?.version||0;
  const roster=await allRows(db,'companySpies');

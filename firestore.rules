@@ -563,7 +563,7 @@ service cloud.firestore {
         {'version':4,'factoryCost':2000000,'factoryRevenue':440000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
     }
     function investmentDay(o) {
-      return request.time.toMillis() < dayNumber()*86400000 && o.lastSettledDay < dayNumber() ? dayNumber() : dayNumber()+1;
+      return request.time.toMillis() < dayNumber()*86400000-3900000 && o.lastSettledDay < dayNumber() ? dayNumber() : dayNumber()+1;
     }
     function investment(cid,d,o,asset) {
       let c=economyPolicy();
