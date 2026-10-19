@@ -170,3 +170,74 @@ body .event-builder .event-default-choice input{appearance:auto;accent-color:#25
 body .event-builder .event-default-choice:has(input:checked){outline:2px solid #2563eb;background:#e1edff}
 
 body .admin-student-email{overflow-wrap:anywhere;font-size:12px;color:#475569}body .admin-form>.admin-student-email{grid-column:1/-1;margin:0}
+/* Tablet layouts: the trading area owns the width in both orientations. */
+.candle-touch-hint{display:none}
+@media(max-width:1200px){
+ body .sidebar{height:auto;min-height:104px;padding:12px 20px 8px;gap:6px;flex-wrap:wrap}
+ body .brand{width:100%;margin:0 0 2px}
+ body .sidebar .nav-list{display:contents}
+ body .sidebar .nav{flex:1;justify-content:center;min-height:44px;padding:10px 8px;font-size:14px}
+ body #admin-nav{margin-left:0}
+ body[data-page] .terminal-body{padding:16px 20px 36px}
+ body[data-page="company"] .terminal-body{grid-template-columns:minmax(0,1fr)}
+ body[data-page="company"] .instrument-rail{display:none}
+ body .topbar{padding:0 20px}
+ body .trading-account{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 0}
+ body .trading-account>div{border:0;min-width:0}
+ body .trading-account strong{font-size:18px;overflow-wrap:anywhere}
+ body .rankings-grid,body .admin-workspace{grid-template-columns:minmax(0,1fr)}
+ body #admin-list{display:flex;overflow:auto;max-height:200px;gap:10px}
+ body .admin-item{min-width:190px;flex:0 0 220px}
+ body .investor-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body .trade-section-nav{overflow-x:auto;justify-content:flex-start;gap:8px}
+ body .trade-section-nav button{flex:1;white-space:nowrap;font-size:13px;min-height:44px}
+ body #all-news{max-height:none;overflow:visible}
+ body :is(#market-view,#record-orders,#company-investor,#limit-chart,#limit-form){scroll-margin-top:140px}
+ body .portfolio-table{min-width:740px}
+ body .table-wrap,body .trade-table-wrap,body .portfolio-table-wrap{max-width:100%}
+ body .company-heading>div:first-child{min-width:0}
+ body .company-heading h1{overflow-wrap:anywhere}
+ body .event-effect-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:601px) and (max-width:1000px){
+ body .order-entry form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+ body .order-entry .order-field{margin:0;align-self:start}
+ body .order-entry :is(.order-side,.order-total,#limit-submit,.order-help){grid-column:1/-1;margin:0}
+}
+/* Touch devices include iPad Safari and Samsung Internet; keep pinch zoom enabled. */
+@media(pointer:coarse){
+ body :is(button,[role="tab"],summary){min-height:44px;touch-action:manipulation}
+ body :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea){font-size:16px;min-height:44px}
+ body :is(input[type="checkbox"],input[type="radio"]){width:20px;height:20px;min-height:0;flex-shrink:0}
+ body :is(.row-button,.cancel-order,.text-link,.back-market,.refresh-market,#account-button){min-height:44px;padding:10px 12px;font-size:14px}
+ body .candle-controls button{min-width:44px;min-height:44px;font-size:14px}
+ body .candle-controls{gap:12px}
+ body .candle-info{font-size:13px;min-height:56px}
+ body .candle-svg{touch-action:pan-y pinch-zoom;max-height:none;width:100%}
+ body .candle-touch-hint{display:inline;font-size:12px;color:#64748b}
+ body .candle-caption{gap:10px;flex-wrap:wrap}
+ body .market-quantity small{opacity:1}
+ body .transfer-book-row>button{min-height:52px}
+ body .price-step-buttons button{min-height:44px;font-size:14px}
+ body .transfer-desk>.order-entry{position:static}
+ body .instrument-rail{display:none!important}
+ body[data-page="company"] .terminal-body{grid-template-columns:minmax(0,1fr)}
+ body :is(.table-wrap,.trade-table-wrap,.portfolio-table-wrap,.investor-history-list,.investor-event-list,.event-history-list,.company-event-list,#comment-list,.transfer-book-rows){-webkit-overflow-scrolling:touch;overscroll-behavior:auto}
+ body #all-news{max-height:none;overflow:visible}
+ body dialog{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+ body .sidebar{padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right))}
+ body .terminal-body{padding-bottom:max(36px,env(safe-area-inset-bottom))}
+ body :is(.facility-card,.investor-summary>div,.inventory-tile){min-width:0}
+}
+@media(max-width:600px){
+ body .sidebar{padding-left:12px;padding-right:12px;column-gap:2px}
+ body .sidebar .nav{font-size:12px;padding:10px 4px}
+ body[data-page] .terminal-body{padding:12px 12px 32px}
+ body .trading-account{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body .event-effect-fields{grid-template-columns:minmax(0,1fr)}
+}
+@media(min-width:700px) and (max-width:1000px){
+ body .company-heading{flex-wrap:nowrap;align-items:center;min-height:110px}
+ body .company-heading>div:first-child{max-width:56%;flex:1}
+ body .company-quote{width:auto;min-width:200px;text-align:right;border:0;padding-top:0;grid-template-columns:auto auto}
+}
