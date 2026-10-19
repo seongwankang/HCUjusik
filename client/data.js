@@ -21,12 +21,12 @@ export function createClientApi({db,getUser,viewReads}){
  const freshGet=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
  const freshList=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
  const investmentsFor=(cid,ops)=>immutableRows(db,'companyOperations/'+cid+'/investments',{field:'createdAt',pageSize:30,revision:ops?.lastInvestment||'',persistent:true});
- const eventsFor=async()=>{const head=viewReads?await viewReads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))):null;return immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(head?{revision:head.docs.map(d=>d.id).join(',')}:{})});};
+ const eventsFor=async()=>{const head=viewReads?await viewReads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100)),'events'):null;return immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(head?{revision:head.docs.map(d=>d.id).join(',')}:{})});};
  return async function api(path,options={}){
   const url=new URL(path,'https://local.invalid'),route=url.pathname,method=options.method||'GET';
   const reads=method==='GET'?viewReads:null;
   const get=reads?async path=>{const s=await reads.getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;}:freshGet;
-  const list=reads?async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await reads.getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));}:freshList;
+  const list=reads?async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await reads.getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)),kind)).docs.map(s=>({...plain(s.data()),id:s.id}));}:freshList;
   const user=await getUser();
   if(!user){if(route==='/api/me')return {authenticated:false,user:null};message('로그인이 필요합니다.');}
   const claims=(await user.getIdTokenResult()).claims;

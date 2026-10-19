@@ -144,7 +144,7 @@ export async function sparkView(db,uid,companyId,role,reads){
  let history=initialHistory,matched=false;
  let matchError=settlementLocked?'배당 정산 중입니다. 정산이 완료되면 거래를 재개합니다.':null;try{for(let i=0;i<8&&!settlementLocked;i++){if(i===0&&!crossing(initialBook.data()))break;if(!await matchSpark(db,uid,companyId,{recordPublic:history.available}))break;matched=true;}}catch{matchError='미체결 주문 처리가 보류됐습니다. 호가를 새로고침하거나 관리자에게 대기 주문 확인을 요청하세요.';}
  if(matched){await reads?.refresh?.(['sparkAccounts/'+uid,'sparkBooks/'+companyId]);if(history.available)history=await marketHistory(db,companyId);}
- const [ledger,bookDoc,ordersDoc]=await Promise.all([accountLedger(db,uid,reads),readDoc(doc(db,'sparkBooks',companyId)),readDocs(query(collection(db,'sparkAccounts',uid,'orders'),orderBy('createdAt','desc'),limit(30)))]);
+ const [ledger,bookDoc,ordersDoc]=await Promise.all([accountLedger(db,uid,reads),readDoc(doc(db,'sparkBooks',companyId)),readDocs(query(collection(db,'sparkAccounts',uid,'orders'),orderBy('createdAt','desc'),limit(30)),'sparkAccounts/'+uid+'/orders')]);
  const book=bookDoc.data(),orders=ordersDoc.docs.map(d=>d.data());
  for(const o of book.orders.filter(o=>o.uid===uid))if(!orders.some(x=>x.orderId===o.id))orders.push({companyId,orderId:o.id,...o,filled:o.quantity-o.remaining,cancelled:0,status:'open'});
  const levels=side=>{const m=new Map();for(const o of book.orders.filter(o=>o.side===side))m.set(o.price,(m.get(o.price)||0)+o.remaining);if(side==='sell'&&book.treasuryShares)m.set(book.initialPrice,(m.get(book.initialPrice)||0)+book.treasuryShares);return [...m].sort((a,b)=>side==='buy'?b[0]-a[0]:a[0]-b[0]).map(([price,quantity])=>({price,quantity}));};

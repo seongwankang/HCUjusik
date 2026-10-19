@@ -39,6 +39,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    }catch(e){if(current()&&selected===id)message(e.message);}
   }
   function render(){
+   const focused=document.activeElement,draftForm=focused?.closest?.('form'),draft=draftForm&&host.contains(draftForm)?{id:draftForm.id,values:[...new FormData(draftForm)],name:focused.name}:null;
    const {ops:o,book,config:c,available,days}=view,day=dayNow(),needs=needsProduction(o),costs=Object.fromEntries(Object.keys(choices).map(asset=>[asset,investmentCost(o,c,asset)]));
    const settlement=nextSettlement(o),tomorrow=needs?null:adjustedRevenue(o,settlement.day,[],settlement.at).revenue,settlementLabel=new Date(settlement.at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
    const employees=o.employees||0,capacity=staffCapacity(o),vacancies=Math.max(0,capacity-employees),idle=Math.max(0,employees-capacity);
@@ -77,6 +78,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
      ${user.role==='admin'?`<details class="economy-settings"><summary>설비·채용 가격 및 수익 정책</summary><p>가격·수익 정책은 새 구매부터 적용됩니다. 기존 구매 수익은 유지합니다.</p><form id="economy-config-form" class="admin-form">${Object.keys(DEFAULT_CONFIG).filter(k=>k!=='version').map(k=>`<label>${k==='researchBoostBps'?'R&D 수익 증가율 (%)':choices[k.replace(/Cost|Revenue/,'')]+' '+(k.endsWith('Cost')?'투자 비용':'원장 일수익 (정산 시 ×2)')}<input name="${k}" type="number" min="${k==='researchBoostBps'?0.01:1}" max="${k==='researchBoostBps'?10:100000000}" step="${k==='researchBoostBps'?0.01:1}" value="${k==='researchBoostBps'?c[k]/100:c[k]}" required></label>`).join('')}<button class="account-btn">정책 저장</button></form></details>`:''}
     </section>`;
    setTab(tab);
+   if(draft){const form=host.querySelector('#'+draft.id);if(form){for(const [name,value] of draft.values){const input=form.elements.namedItem(name);if(input&&input.type!=='file')input.value=value;}form.elements.namedItem(draft.name)?.focus({preventScroll:true});}}
   }
   host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};
   host.querySelector('#business-refresh').onclick=async()=>{await api.refresh?.();await load();};

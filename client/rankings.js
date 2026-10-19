@@ -20,7 +20,7 @@ export function priceRankings(companies,books,max=100){
  const map=new Map(books.map(b=>[b.id,b]));
  return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const last=map.get(c.id)?.lastPrice,initial=!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
 }
-export async function allRows(db,path,reads){const readDocs=reads?.getDocs||getDocs;let cursor=null,rows=[];for(;;){const page=await readDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])));rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
+export async function allRows(db,path,reads){const readDocs=reads?.getDocs||getDocs;let cursor=null,rows=[];for(;;){const page=await readDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])),path);rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
 export async function investorSnapshots(users,accounts,companies=[],books=[]){
  const rows=assetRows(users,accounts,companies,books),generation=crypto.randomUUID();
  const profiles=await Promise.all(ranked(rows,'totalValue').slice(0,100).map(async ({uid,portfolio,...row})=>{

@@ -136,7 +136,7 @@ async function loadManagement(){
  await screens.show(host,'management:'+user.id+':'+user.role,(node,current)=>showManagement(node,getJSON,user,current));
 }
 function updateAccountButton() {
-  adminUI.session(state.user);
+  const key=state.user?.id+':'+state.user?.role;if(key!==updateAccountButton.sessionKey){updateAccountButton.sessionKey=key;adminUI.session(state.user);}
   $$('button[data-page="management"]').forEach(b=>b.hidden=!['admin','president'].includes(state.user?.role));
   if(state.page==='admin' && state.user?.role!=='admin')navigate('dashboard');
   const btn=$('#account-button');
@@ -195,8 +195,8 @@ let viewTimer,viewUpdating=false,viewAgain=false;
 window.addEventListener('view-data-changed',e=>{
  const path=e.detail?.path||'*';
  screens.invalidate(key=>{
-  if(path==='*'||path.startsWith('users/'))return true;
-  if(key.startsWith('company:'))return path==='sparkAccounts/'+state.user?.id||path==='companyLeadership/main'||['companies/','sparkBooks/','companyOperations/','companyEffects/'].some(prefix=>path.startsWith(prefix)&&key.endsWith(':'+path.split('/')[1]));
+  if(path==='*'||!path.includes('/')||path.startsWith('users/'))return true;
+  if(key.startsWith('company:'))return path.startsWith('sparkAccounts/'+state.user?.id)||path==='companyLeadership/main'||['companies/','sparkBooks/','companyOperations/','companyEffects/'].some(prefix=>path.startsWith(prefix)&&key.endsWith(':'+path.split('/')[1]));
   if(key.startsWith('portfolio:'))return /^(sparkAccounts|sparkBooks|companies)\//.test(path);
   if(key.startsWith('management:'))return /^(company|sparkBooks|assignments|economyConfig|spyPolicy)/.test(path);
   if(key.startsWith('rankings:'))return /^(sparkAccounts|sparkBooks|companyOperations|companies|leaderboards)/.test(path);
@@ -210,8 +210,9 @@ async function updateVisibleView(){
   await refreshSession();if(state.user?.id!==uid||state.user?.role!==role){screens.clear();closeTrading();applyRoute();return;}
   const [c,n]=await Promise.all([getJSON('/api/companies'),getJSON('/api/news')]);
   if(state.user?.id!==uid)return;
+  const oldIds=state.companies.map(x=>x.id).join(',');
   for(const company of c.companies){const existing=state.companies.find(x=>x.id===company.id);if(existing)Object.assign(existing,company);else state.companies.push(company);}
-  state.companies=state.companies.filter(x=>c.companies.some(y=>y.id===x.id));state.news=n.news;renderCompanies();renderNews();
+  state.companies=state.companies.filter(x=>c.companies.some(y=>y.id===x.id));state.news=n.news;renderCompanies();renderNews();if(oldIds!==state.companies.map(x=>x.id).join(','))await startQuotes();
   if(state.page==='company'&&screens.dirty('company:'+uid+':'+state.companyId))showCompany(state.companyId,false,true);else if(state.page==='portfolio')loadPortfolio();else if(state.page==='management')loadManagement();else if(state.page==='rankings')loadRankings();else if(state.page==='article'){const r=parseRoute(location.hash);openArticle(r.articleId,r.articleKind,true);}
  }catch{/* Retain the last usable screen during a transient connection failure. */}
  finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}

@@ -61,7 +61,7 @@ export async function eventCompanyView(db,cid,reads){
  const readDoc=reads?.getDoc||getDoc,readDocs=reads?.getDocs||getDocs;
  if(!valid(cid))fail('기업을 선택하세요.');
  const opTask=readDoc(doc(db,'companyOperations',cid));
- const eventHead=reads?await reads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100))):null;
+ const eventHead=reads?await reads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100)),'events'):null;
  const [eventRows,effects,os]=await Promise.all([immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(eventHead?{revision:eventHead.docs.map(d=>d.id).join(',')}:{})}),opTask.then(s=>effectRecords(db,cid,{revision:s.data()?.lastEvent||'',persistent:true})),opTask]);
  const events={docs:eventRows.map(r=>({id:r.id,data:()=>r}))};
  const choices=await Promise.all(events.docs.filter(s=>s.data().type==='choice'&&s.data().targets.includes(cid)).map(async s=>{const c=await readDoc(doc(db,'companyChoices',cid,'items',s.id));return {id:s.id,...s.data(),choice:c.exists()?c.data():null};}));
