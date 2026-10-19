@@ -58,3 +58,18 @@ test('student sees actual event results and president investments; records canno
  await env.withSecurityRulesDisabled(async c=>{const term={eventId:'all-discount',percent:-20,startsAt:Date.now()-1000,endsAt:Date.now()+86400000};await updateDoc(doc(c.firestore(),'companyOperations',cid),{costEvents:{factory:term,equipment:term,research:term,employee:term}});});
  await invest(boss,cid,'research');const discounted=await api('/api/company-investor?companyId='+cid);assert.ok(discounted.recentHistory.some(r=>r.title==='R&D센터 1개 건설'&&r.description.includes('400,000원')));
 });
+
+
+test('student history pages past thirty investments and retains the older cash-loss receipt',async()=>{
+ const cid='paged-history',now=Date.now();
+ await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();
+  await setDoc(doc(d,'companies',cid),{name:'Pagination fixture',status:'listed'});
+  await setDoc(doc(d,'companyOperations',cid),initialOperations());
+  await setDoc(doc(d,'events/history-loss'),{title:'실제 손실금',type:'random',startsAt:Timestamp.fromMillis(now-60000)});
+  await setDoc(doc(d,'companyEffects',cid,'items','history-loss'),{effect:{kind:'cash',amount:-1000000},result:{amount:-54246},appliedAt:Timestamp.fromMillis(now-60000)});
+  await Promise.all(Array.from({length:35},(_,n)=>setDoc(doc(d,'companyOperations',cid,'investments','buy-'+n),{asset:'employee',quantity:1,cost:100000,activeFromDay:koreaDay(),createdAt:Timestamp.fromMillis(now-1000)})));
+ });
+ const result=await api('/api/company-investor?companyId='+cid);
+ assert.equal(result.recentHistory.length,36);assert.equal(new Set(result.recentHistory.map(r=>r.id)).size,36);
+ assert.equal(result.recentHistory.at(-1).id,'history-loss');assert.equal(result.recentHistory.at(-1).amount,-54246);assert.match(result.recentHistory.at(-1).description,/-54,246원/);
+});
