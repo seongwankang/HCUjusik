@@ -1,4 +1,4 @@
-import {publishEventNews} from './event-news.js';
+import {publishEventNews,validateEventNews} from './event-news.js';
 import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {revenueEffects,validateEffect,eventMutation,NEW_EFFECTS,currentEffect,remainingSettlements,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 import {effectiveConfig} from './business-policy.js';
@@ -15,6 +15,7 @@ export async function publishEvent(db,b){
  if(!valid(b.id)||!['random','choice'].includes(b.type))fail('이벤트 종류를 확인하세요.');
  const title=String(b.title||'').trim(),content=String(b.content||'').trim();
  if(!title||title.length>120||!content||content.length>5000)fail('제목과 상황 설명을 입력하세요.');
+ const news=validateEventNews(b.news);
  const companies=(await getDocs(query(collection(db,'companies'),limit(100)))).docs;
  const targets=eventTargets(b,companies.map(s=>s.id));
  const deadline=Timestamp.fromDate(new Date(b.deadline));if(!Number.isFinite(deadline.toMillis())||deadline.toMillis()<=Date.now())fail('미래의 선택 마감 시간을 입력하세요.');
@@ -24,7 +25,8 @@ export async function publishEvent(db,b){
  const ref=doc(db,'events',b.id);if((await getDoc(ref)).exists())fail('이미 발행한 이벤트입니다. 적용 상태를 조회하세요.');
  const batch=writeBatch(db);
  batch.set(doc(db,'eventQueue',b.id),{endsAt:b.type==='choice'?deadline:serverTimestamp()});
- batch.set(ref,{autoNews:true,type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
+ if(news)batch.set(doc(db,'eventNewsDrafts',b.id),news);
+ batch.set(ref,{autoNews:!!news,...(news?{newsDraftRequired:true}:{}),type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
  effects.forEach((effect,i)=>batch.set(doc(db,'eventOutcomes',b.id,'options',String(i)),{effect}));
  await batch.commit();return {id:b.id};
 }
