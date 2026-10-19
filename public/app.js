@@ -142,8 +142,8 @@ async function refreshSession() {
   try{const data=await getJSON('/api/me');state.user=data.user;}catch{state.user=null;}
   updateAccountButton();
 }
-async function initialLoad() {
-  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),refreshSession()]);
+async function initialLoad({authenticatedUser=null}={}) {
+  const results=await Promise.allSettled([getJSON('/api/companies'),getJSON('/api/news'),authenticatedUser?Promise.resolve():refreshSession()]);
   if(results[0].status==='fulfilled') {
     state.companies=results[0].value.companies;
     state.companyError=null;
@@ -182,7 +182,7 @@ $('#account-button').addEventListener('click',async()=>{
   if(state.page==='company')showCompany(state.companyId,false);
 });
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
- state.user=user;await initialLoad();updateAccountButton();
+ state.user=user;updateAccountButton();await initialLoad({authenticatedUser:user});
  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
 }});
 const adminUI=setupAdmin(getJSON);

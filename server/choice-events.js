@@ -9,7 +9,7 @@ export async function runDueChoiceEvents(db,now=Date.now()){
   await migration.set({complete:true});
  }
  let processed=0,failed=0;const blocked=new Set();
- // Each completed queue document is removed only after every chosen company succeeds.
+ // Each completed queue document is removed only after every selected/defaulted company succeeds.
  let cursor=null;for(;;){let q=db.collection('eventQueue').where('endsAt','<=',new Date(now)).orderBy('endsAt').limit(100);if(cursor)q=q.startAfter(cursor);const page=await q.get();for(const entry of page.docs){try{const event=(await db.doc('events/'+entry.id).get()).data();const r=event?.type==='random'?await applyRandomEvent(db,entry.id):await closeChoiceEvent(db,entry.id);if(r.failed.length||r.newsPending){failed++;r.failed.forEach(f=>blocked.add(typeof f==='string'?f:f.companyId));}else{await entry.ref.delete();processed++;}}catch{failed++;}}if(page.size<100)break;cursor=page.docs.at(-1);}
  return {processed,failed,blocked};
 }
