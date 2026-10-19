@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {eventNewsId,eventNewsSummary,mergeEventNews} from '../client/event-news.js';import {renderEventResults} from '../public/event-results.js';
+import {eventNewsId,eventNewsSummary,mergeEventNews,validateEventNews} from '../client/event-news.js';import {renderEventResults} from '../public/event-results.js';
 const e={type:'choice',targets:['a','b','c'],options:['유지','확대','중단']},effects=[{kind:'revenue',percent:-20,settlements:2},{kind:'cash',amount:1000},{kind:'none'}];
 test('choice news groups companies and actual outcomes without participant identities or hidden metadata',()=>{
  const summary=eventNewsSummary(e,{a:{name:'기업 A'},b:{name:'기업 B'},c:{name:'기업 C'}},{a:{option:0,uid:'private'},b:{option:1}},{a:{},b:{result:{amount:500,uid:'secret',email:'secret@example.com'}}},effects);
@@ -18,4 +18,11 @@ test('a stale concurrent news retry cannot revert completed companies or confuse
  const old={type:'random',groups:[{companies:[{companyId:'a',name:'같은 이름',status:'applied',result:{amount:100}}]}],unselected:[]};
  const next={type:'random',groups:[{companies:[{companyId:'a',name:'같은 이름',status:'pending',result:null},{companyId:'b',name:'같은 이름',status:'pending',result:null}]}],unselected:[]};
  const rows=mergeEventNews(old,next).groups[0].companies;assert.equal(rows[0].status,'applied');assert.equal(rows[0].result.amount,100);assert.equal(rows[1].status,'pending');
+});
+
+
+test('event news requires separately authored copy; blank or oversized drafts fail before writes',()=>{
+ assert.equal(validateEventNews(null),null);
+ assert.deepEqual(validateEventNews({title:' 직접 쓴 제목 ',content:' 기사 본문 '}),{title:'직접 쓴 제목',content:'기사 본문'});
+ for(const value of [{},{title:'제목',content:' '},{title:'a'.repeat(121),content:'본문'},{title:'제목',content:'a'.repeat(5001)}])assert.throws(()=>validateEventNews(value),/뉴스/);
 });

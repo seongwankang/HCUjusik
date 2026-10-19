@@ -1,6 +1,12 @@
 import {doc,getDoc,runTransaction,serverTimestamp} from 'firebase/firestore';
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 
+export function validateEventNews(value){
+ if(value==null)return null;
+ const title=String(value.title||'').trim(),content=String(value.content||'').trim();
+ if(!title||title.length>120||!content||content.length>5000)throw Error('함께 올릴 뉴스 제목(120자 이내)과 본문(5,000자 이내)을 입력하세요.');
+ return {title,content};
+}
 export async function eventNewsId(eventId){
  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('event-news:'+eventId));
  return [...new Uint8Array(hash)].map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -23,6 +29,9 @@ export async function publishEventNews(db,eid){
  const event=(await getDoc(doc(db,'events',eid))).data();
  if(!event?.autoNews)return;
  if(event.type==='choice'&&event.endsAt.toMillis()>Date.now())throw Error('선택 마감 후 결과 뉴스를 게시할 수 있습니다.');
+ const draft=(await getDoc(doc(db,'eventNewsDrafts',eid))).data();
+ if(event.newsDraftRequired&&!draft)throw Error('저장된 이벤트 뉴스 초안을 찾을 수 없습니다.');
+ const article=draft?validateEventNews(draft):{title:(event.type==='choice'?'[선택 결과] ':'[이벤트] ')+event.title.slice(0,110),content:event.content};
  const companies={},choices={},receipts={};
  const outcomes=await Promise.all(Array.from({length:event.type==='choice'?3:1},async(_,i)=>{
   const effect=(await getDoc(doc(db,'eventOutcomes',eid,'options',String(i)))).data()?.effect;
@@ -40,7 +49,7 @@ export async function publishEventNews(db,eid){
    // A slower concurrent retry must never turn a completed row back to pending.
    const merged=mergeEventNews(old.data().eventSummary,summary);
    if(JSON.stringify(canonical(old.data().eventSummary))!==JSON.stringify(canonical(merged)))t.update(ref,{eventSummary:merged});
-  }else t.set(ref,{title:(event.type==='choice'?'[선택 결과] ':'[이벤트] ')+event.title.slice(0,110),content:event.content,category:'이벤트',companyId:'',companyName:'',publishedAt:serverTimestamp(),eventId:eid,eventSummary:summary});
+  }else t.set(ref,{...article,category:'이벤트',companyId:'',companyName:'',publishedAt:serverTimestamp(),eventId:eid,eventSummary:summary});
  });
  return id;
 }

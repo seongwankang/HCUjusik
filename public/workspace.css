@@ -160,3 +160,8 @@ body :is(.table-wrap,.trade-table-wrap,.portfolio-table-wrap,.investor-history-l
 @media(max-width:780px){body .table-wrap,body .trade-table-wrap,body .portfolio-table-wrap{max-height:min(340px,55vh)}body #limit-fills .trade-table-wrap,body #limit-orders .trade-table-wrap{max-height:min(300px,50vh)}}
 
 body .staff-capacity.staff-capacity-single{grid-template-columns:1fr}
+
+.event-builder .event-news-toggle{display:flex;flex-direction:row;align-items:center;gap:8px;margin-bottom:14px}
+.event-builder .event-news-toggle input{width:18px;height:18px;min-height:0;margin:0;flex:0 0 18px}
+#event-news-fields{display:grid;gap:12px}
+#event-news-fields[hidden]{display:none}

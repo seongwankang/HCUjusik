@@ -89,7 +89,7 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews']) && (!('autoNews' in request.resource.data) || request.resource.data.autoNews == true) &&
+      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired']) && request.resource.data.get('autoNews',false) is bool && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -97,12 +97,19 @@ service cloud.firestore {
         (request.resource.data.type == 'random' || getAfter(/databases/$(database)/documents/eventQueue/$(id)).data.endsAt == request.resource.data.endsAt);
       allow update,delete: if false;
     }
+    function eventNewsDraftData(d) { return d.keys().hasOnly(['title','content']) && str(d.title,120) && d.title.size() > 0 && str(d.content,5000) && d.content.size() > 0; }
+    match /eventNewsDrafts/{eid} {
+      allow get: if admin();
+      allow create: if admin() && !exists(/databases/$(database)/documents/events/$(eid)) &&
+        getAfter(/databases/$(database)/documents/events/$(eid)).data.get('newsDraftRequired',false) == true && eventNewsDraftData(request.resource.data);
+      allow list,update,delete: if false;
+    }
     // Queue contains only a public activation/deadline; the trusted job retries news too.
     match /eventQueue/{eid} {
       allow create: if admin() && request.resource.data.keys().hasOnly(['endsAt']) &&
         (getAfter(/databases/$(database)/documents/events/$(eid)).data.type == 'choice' ?
           request.resource.data.endsAt == getAfter(/databases/$(database)/documents/events/$(eid)).data.endsAt :
-          getAfter(/databases/$(database)/documents/events/$(eid)).data.autoNews == true && request.resource.data.endsAt == request.time);
+          request.resource.data.endsAt == request.time);
       allow read, update, delete: if false;
     }
     function eventData(eid) { return get(/databases/$(database)/documents/events/$(eid)).data; }
