@@ -5,3 +5,5 @@ test('Korean market opens at 08:00 inclusive and closes at 21:00 exclusive every
  assert.equal(new Date(koreaDayStart(Date.parse('2026-10-17T16:00:00+09:00'))).toISOString(),'2026-10-16T15:00:00.000Z');
 });
 test('day change compares current price against previous close with signed percent',()=>{assert.deepEqual(dayChange(11000,10000),{amount:1000,percent:10,direction:'up'});assert.deepEqual(dayChange(9000,10000),{amount:-1000,percent:-10,direction:'down'});assert.equal(dayChange(10000,10000).direction,'flat');assert.equal(dayChange(10000,null),null);});
+
+test('reset pauses Monday and Tuesday and resumes Wednesday at 08:00 KST',()=>{for(const [at,open] of [['2026-10-19T12:00:00+09:00',false],['2026-10-20T12:00:00+09:00',false],['2026-10-21T07:59:59+09:00',false],['2026-10-21T08:00:00+09:00',true],['2026-10-21T21:00:00+09:00',false]])assert.equal(marketSession(Date.parse(at)).open,open);});

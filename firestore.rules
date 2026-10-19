@@ -8,7 +8,7 @@ rules_version = '2';
 // No email, password, key, or private student data in companies/news.
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/systemMaintenance/reset); }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
     function schoolVerified() { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email is string && request.auth.token.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$'); }
     function participant() {
@@ -184,7 +184,7 @@ service cloud.firestore {
       let c=get(/databases/$(database)/documents/companies/$(o.companyId)).data;
       let before=resource.data.positions.get(o.companyId,0);
       let after=d.positions.get(o.companyId,0);
-      return testAccount(d) && d.lastOrderId.matches('^[A-Za-z0-9_-]{1,80}$') &&
+      return marketOpen() && testAccount(d) && d.lastOrderId.matches('^[A-Za-z0-9_-]{1,80}$') &&
         !exists(/databases/$(database)/documents/tradeTests/$(uid)/orders/$(d.lastOrderId)) &&
         d.version == resource.data.version+1 && o.version == d.version &&
         o.keys().hasOnly(['companyId','side','quantity','price','total','version','createdAt']) &&
@@ -338,7 +338,7 @@ service cloud.firestore {
     }
     function marketOpen() {
       let minute=(int(request.time.toMillis() / 60000)+540)%1440;
-      return minute >= 480 && minute < 1260;
+      return request.time >= timestamp.date(2026,10,20)+duration.value(23,'h') && minute >= 480 && minute < 1260;
     }
     match /sparkBooks/{cid} {
       allow get: if sparkId(cid) && participant();
