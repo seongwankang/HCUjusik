@@ -1,3 +1,5 @@
+import {investorSnapshot} from './investor.js';
+import {effectRecords} from './events.js';
 import {tradingPortfolio} from './portfolio.js';
 import {collection,getDoc,getDocs,query,orderBy,limit,startAfter,documentId,doc,writeBatch,serverTimestamp,where,Timestamp} from 'firebase/firestore';
 import {koreaDayStart,dayChange} from './market-session.js';
@@ -39,7 +41,7 @@ export function marketRankingLists(prices,sessions){
  return {prices:rows.slice(0,100),volume:ranked(rows.filter(r=>r.volume!==null),'volume').slice(0,100),gainers:ranked(rows.filter(r=>r.change?.percent>0).map(r=>({...r,percent:r.change.percent})),'percent').slice(0,100),losers:ranked(rows.filter(r=>r.change?.percent<0).map(r=>({...r,percent:r.change.percent})),'percent',true).slice(0,100),unavailable:rows.filter(r=>r.volume===null||r.change===null).length};
 }
 export async function marketRankings(db,companies,books,now=Date.now()){
- const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={};
+ const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=companyRevenueRows(db,prices,now);
  await Promise.all(prices.map(async p=>{try{
   const path=collection(db,'sparkBooks',p.id,'trades');let cursor=null,volume=0;
   for(;;){const page=await getDocs(query(path,where('createdAt','>=',Timestamp.fromMillis(start)),where('createdAt','<',Timestamp.fromMillis(start+86400000)),orderBy('createdAt'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const d of page.docs){const q=d.data().quantity;if(!Number.isSafeInteger(q)||q<=0)throw Error('체결 수량 오류');volume+=q;}if(page.size<100)break;cursor=page.docs.at(-1);}
@@ -47,5 +49,39 @@ export async function marketRankings(db,companies,books,now=Date.now()){
   const close=previous.empty?companies.find(c=>c.id===p.id).referencePrice:previous.docs[0].data().price;
   sessions[p.id]={volume,change:dayChange(p.price,close)};
  }catch{sessions[p.id]={volume:null,change:null};}}));
- return {...marketRankingLists(prices,sessions),asOf:now,day:new Date(start+32400000).toISOString().slice(0,10)};
+ return {...marketRankingLists(prices,sessions),...revenueRankingLists(prices,await revenueTask),asOf:now,day:new Date(start+32400000).toISOString().slice(0,10)};
+}
+
+// Revenue excludes issuer proceeds, grants, spy transfers and dividend movements.
+export function companyRevenueMetrics(ops,days,effects=[],now=Date.now()){
+ let cumulativeRevenue=0;const seen=new Set();
+ for(const d of days){if(!Number.isSafeInteger(d.day)||d.day<0)throw Error('정산 날짜를 확인하세요.');if(d.day>(ops?.lastSettledDay||0))continue;
+  if(seen.has(d.day)||!money(d.revenue))throw Error('정산 매출 기록을 확인하세요.');seen.add(d.day);cumulativeRevenue+=d.revenue;if(!Number.isSafeInteger(cumulativeRevenue))throw Error('누적 매출 범위를 초과했습니다.');
+ }
+ const expectedRevenue=investorSnapshot({ops,effects},now).tomorrowRevenue;
+ return {expectedRevenue,cumulativeRevenue};
+}
+export function revenueRankingLists(prices,revenues){
+ const rows=prices.map(p=>({...p,expectedRevenue:revenues[p.id]?.expectedRevenue??null,cumulativeRevenue:revenues[p.id]?.cumulativeRevenue??null}));
+ return {expectedRevenue:ranked(rows.filter(r=>r.expectedRevenue!==null),'expectedRevenue').slice(0,100),cumulativeRevenue:ranked(rows.filter(r=>r.cumulativeRevenue!==null),'cumulativeRevenue').slice(0,100),expectedRevenueUnavailable:rows.filter(r=>r.expectedRevenue===null).length,cumulativeRevenueUnavailable:rows.filter(r=>r.cumulativeRevenue===null).length};
+}
+const revenueTotals=new WeakMap();
+async function completedRevenueTotal(db,cid,ops){
+ const completed=ops?.lastSettledDay??0;if(!Number.isSafeInteger(completed)||completed<0||completed>1000000)throw Error('정산 완료 날짜를 확인하세요.');if(!completed)return 0;
+ let cache=revenueTotals.get(db);if(!cache){cache=new Map();revenueTotals.set(db,cache);}const previous=cache.get(cid),base=previous&&previous.day<=completed?previous:{day:0,total:0};if(base.day===completed)return base.total;
+ let cursor=null,total=base.total;const seen=new Set();
+ for(;;){const page=await getDocs(query(collection(db,'companyOperations',cid,'days'),where('day','>',base.day),where('day','<=',completed),orderBy('day'),limit(30),...(cursor?[startAfter(cursor)]:[])));
+  for(const doc of page.docs){const d=doc.data();if(!Number.isSafeInteger(d.day)||seen.has(d.day)||!money(d.revenue))throw Error('정산 매출 기록을 확인하세요.');seen.add(d.day);total+=d.revenue;if(!Number.isSafeInteger(total))throw Error('누적 매출 범위를 초과했습니다.');}
+  if(page.size<30)break;cursor=page.docs.at(-1);
+ }
+ cache.set(cid,{day:completed,total});return total;
+}
+async function companyRevenueRows(db,prices,now){
+ return Object.fromEntries(await Promise.all(prices.map(async p=>{try{
+  const ops=(await getDoc(doc(db,'companyOperations',p.id))).data(),[effects,days]=await Promise.allSettled([effectRecords(db,p.id),completedRevenueTotal(db,p.id,ops)]);
+  let expectedRevenue=null,cumulativeRevenue=null;
+  if(effects.status==='fulfilled')try{expectedRevenue=companyRevenueMetrics(ops,[],effects.value,now).expectedRevenue;}catch{}
+  if(days.status==='fulfilled')cumulativeRevenue=days.value;
+  return [p.id,{expectedRevenue,cumulativeRevenue}];
+ }catch{return [p.id,{expectedRevenue:null,cumulativeRevenue:null}];}})));
 }
