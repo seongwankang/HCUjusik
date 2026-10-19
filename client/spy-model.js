@@ -13,7 +13,7 @@ export function spyTransfers(contracts,companies){
  for(const target of [...new Set(contracts.map(s=>s.targetId))].sort()){
   const c=companies[target];if(!c)continue;
   const requests=contracts.filter(s=>s.targetId===target&&s.companyId!==target&&companies[s.companyId]).sort((a,b)=>a.companyId.localeCompare(b.companyId)||(a.hireId||'').localeCompare(b.hireId||'')).map(s=>({...s,requested:Number(BigInt(c.revenue)*BigInt(s.bps)/10000n)}));
-  const total=requests.reduce((n,s)=>n+BigInt(s.requested),0n),budget=BigInt(Math.min(c.cash,Math.floor(c.revenue*SPY_LOSS_BPS/10000))),available=total<budget?total:budget;
+  const total=requests.reduce((n,s)=>n+BigInt(s.requested),0n),budget=BigInt(Math.min(Math.max(0,c.cash),Math.floor(c.revenue*SPY_LOSS_BPS/10000))),available=total<budget?total:budget;
   if(!total){for(const s of requests)transfers.push({companyId:s.companyId,targetId:target,amount:0});continue;}
   const allocated=requests.map(s=>({...s,amount:Number(BigInt(s.requested)*available/total),remainder:BigInt(s.requested)*available%total}));
   let remainder=Number(available)-allocated.reduce((n,s)=>n+s.amount,0);

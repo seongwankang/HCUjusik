@@ -21,7 +21,7 @@ export async function showEventAdmin(editor,list,api,companies,message){
   group.querySelector('[data-percent-label]').textContent=kind==='dividendCap'?'배당률 상한 (%)':'변동률 (%)';
   const count=group.querySelector('input[name$="count"]');count.min=kind==='workforce'?-1000:1;if(kind!=='workforce'&&Number(count.value)<1)count.value=1;
   group.querySelector('[data-count-label]').textContent=kind==='workforce'?'인원 증감 (이탈은 음수)':'수량';
-  const help={cash:'지원금은 회사 자금에 한 번 지급합니다. 손실은 보유 자금까지만 차감합니다.',cost:'선택한 대상의 신규 투자 가격에 적용됩니다. 같은 대상은 마지막 적용 효과가 우선하며, 정해진 정산 횟수를 채우면 원래 가격으로 돌아옵니다.',workforce:'충원은 현재 정원 이내에서 무료로 반영합니다. 이탈은 재직 인원까지만 적용하며 직원 수익도 비례해 줄어듭니다.',grant:'보유 한도까지 무료로 지급하며 즉시 가동됩니다. R&D는 6개·보너스 30% 한도를 유지합니다.',dividendCap:'설정한 정산 횟수 동안 실제 배당률을 제한합니다. 사장이 설정한 배당률은 보존하고 정해진 정산 횟수를 채우면 원래 설정으로 돌아옵니다.'};
+  const help={cash:'회사 자금을 한 번 증감합니다. 손실로 잔액이 음수가 될 수 있습니다.',cost:'선택한 대상의 신규 투자 가격에 적용됩니다. 같은 대상은 마지막 적용 효과가 우선하며, 정해진 정산 횟수를 채우면 원래 가격으로 돌아옵니다.',workforce:'충원은 현재 정원 이내에서 무료로 반영합니다. 이탈은 재직 인원까지만 적용하며 직원 수익도 비례해 줄어듭니다.',grant:'보유 한도까지 무료로 지급하며 즉시 가동됩니다. R&D는 6개·보너스 30% 한도를 유지합니다.',dividendCap:'설정한 정산 횟수 동안 실제 배당률을 제한합니다. 사장이 설정한 배당률은 보존하고 정해진 정산 횟수를 채우면 원래 설정으로 돌아옵니다.'};
   group.querySelector('[data-effect-help]').textContent=help[kind]||'';
   for(const input of group.querySelectorAll('input,select')){
    const key=input.name.split('-').at(-1),show=key==='kind'||key==='asset'&&['efficiency','destroy','cost','grant'].includes(kind)||key==='percent'&&['revenue','efficiency','cost','dividendCap'].includes(kind)||key==='settlements'&&TIMED_EFFECTS.includes(kind)||key==='count'&&['destroy','grant','workforce'].includes(kind)||key==='amount'&&kind==='cash';

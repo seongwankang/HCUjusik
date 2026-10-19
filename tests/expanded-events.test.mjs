@@ -7,9 +7,9 @@ import {investorSnapshot} from '../client/investor.js';
 const now=Date.parse('2026-10-17T03:00:00Z'),day=Math.floor((now+32400000)/86400000);
 const base=()=>({...initialOperations(),cash:100000,receivedIssuerCash:100000,factory:1,equipment:0,research:0,employees:5,staffRevenue:100000,pendingStaffRevenue:50000,revenue:400000,production:{factory:400000,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0},dividendBps:5000});
 const context={config,book:{issuerCash:300000},effectiveAt:now,eventId:'event-one'};
-test('one-time money uses all issuer proceeds once, clamps losses and rejects overflow',()=>{
+test('one-time money uses all issuer proceeds once, allows company debt and rejects overflow',()=>{
  const o=base(),p=eventMutation(o,{kind:'cash',amount:1000000},context);assert.equal(p.cash,1300000);assert.equal(p.receivedIssuerCash,300000);
- assert.equal(eventMutation(o,{kind:'cash',amount:-1000000},context).cash,0);
+ assert.equal(eventMutation(o,{kind:'cash',amount:-1000000},context).cash,-700000);
  assert.throws(()=>eventMutation({...o,cash:1e12},{kind:'cash',amount:100000000},context),/한도/);
  assert.equal(adjustedRevenue({...o,...p},day).revenue,adjustedRevenue(o,day).revenue);
 });
@@ -44,4 +44,14 @@ test('dividend caps preserve configured rate and agree between settlement and ne
 test('new effects reject invalid ranges and mutation during settlement',()=>{
  for(const e of [{kind:'cash',amount:0},{kind:'cash',amount:1.5},{kind:'cash',amount:100000001},{kind:'cost',asset:'employee',percent:-91,hours:1},{kind:'cost',asset:'bad',percent:10,hours:1},{kind:'workforce',count:0},{kind:'workforce',count:-1001},{kind:'grant',asset:'employee',count:1},{kind:'dividendCap',percent:101,hours:1},{kind:'dividendCap',percent:50,hours:0}])assert.throws(()=>validateEffect(e));
  assert.throws(()=>eventMutation({...base(),locked:true},{kind:'cash',amount:1},context),/정산/);
+});
+
+
+test('debt absorbs grants and future retained earnings; only company cash can go negative',()=>{
+ const o={...base(),cash:-1000000,receivedIssuerCash:300000};
+ const grant=eventMutation(o,{kind:'cash',amount:100000},context);assert.equal(grant.cash,-900000);
+ const loss=eventMutation({...o,...grant},{kind:'cash',amount:-500000},context);assert.equal(loss.cash,-1400000);
+ const plan=dayPlan({...o,...loss}, {issuerCash:300000,issuedShares:1000,treasuryShares:0},day,[],now);
+ assert.equal(plan.cash,loss.cash+plan.retained);assert.ok(plan.cash<0);
+ assert.throws(()=>eventMutation({...o,cash:-1e12},{kind:'cash',amount:-1},context),/한도/);
 });

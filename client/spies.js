@@ -48,7 +48,7 @@ export async function settleSpies(db,now=Date.now(),retry=0){
   if(rows.some(r=>eligible(r)&&(!r.day||r.ops.locked||r.ops.lastSettledDay<day)))return {status:'waiting'};
   const snapshots=Object.fromEntries(rows.filter(eligible).map(r=>[r.id,{revenue:r.day.revenue,cash:r.ops.cash+r.book.issuerCash-r.ops.receivedIssuerCash}]));
   const plan=spyTransfers(contracts,snapshots);
-  for(const e of plan.entries){const r=rows.find(r=>r.id===e.companyId),cash=snapshots[e.companyId].cash+e.net;if(!Number.isSafeInteger(cash)||cash<0||cash>1e12)throw Error('산업스파이 정산 자금 한도를 확인하세요.');
+  for(const e of plan.entries){const r=rows.find(r=>r.id===e.companyId),cash=snapshots[e.companyId].cash+e.net;if(!Number.isSafeInteger(cash)||Math.abs(cash)>1e12)throw Error('산업스파이 정산 자금 한도를 확인하세요.');
    t.update(doc(db,'companyOperations',e.companyId),{cash,receivedIssuerCash:r.book.issuerCash});
    t.set(doc(db,'companySpies',e.companyId,'history','d'+day),{day,...e,createdAt:serverTimestamp()});
   }
