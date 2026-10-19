@@ -36,22 +36,22 @@ test('standard IPO finances exact starter plan atomically per purchase; hiring u
  await assertFails(invest(student,cid,'factory'));
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:9700000,receivedIssuerCash:10000000,employees:1,staffRevenue:0,pendingStaffRevenue:18000,activeResearchBps:0,pendingResearchBps:0,pendingDay:koreaDay()+1,production:{factory:0,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}}));
  for(const [asset,count] of [['factory',2],['equipment',2],['employee',5],['research',1]])for(let i=0;i<count;i++)await invest(president,cid,asset);
- const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,3000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,100000);assert.equal(o.pendingRevenue,1200000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
- assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2730000);
+ const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,3000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,100000);assert.equal(o.pendingRevenue,1280000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
+ assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2898000);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:100,staffRevenue:999999,activeResearchBps:3000}));
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:6,pendingStaffRevenue:108000,cash:700000,employee:'unexpected-field'}));
 });
 test('matured staff and R&D pay dividends once from net income, preserving unmultipled base',async()=>{
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
  const result=await settleDay(admin,cid);assert.equal(result.recipients,1);
- const v=await operationsView(admin,cid),o=v.ops;assert.equal(o.revenue,1200000);assert.equal(o.staffRevenue,100000);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingStaffRevenue,0);assert.equal(o.pendingResearchBps,0);assert.equal(v.days[0].revenue,2730000);assert.equal(v.days[0].perShare,1365);assert.equal(v.available,4365000);
- assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,2365000);await assert.rejects(settleDay(admin,cid),/이미 완료/);
- assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2730000);
+ const v=await operationsView(admin,cid),o=v.ops;assert.equal(o.revenue,1280000);assert.equal(o.staffRevenue,100000);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingStaffRevenue,0);assert.equal(o.pendingResearchBps,0);assert.equal(v.days[0].revenue,2898000);assert.equal(v.days[0].perShare,1449);assert.equal(v.available,4449000);
+ assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,2449000);await assert.rejects(settleDay(admin,cid),/이미 완료/);
+ assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2898000);
 });
 test('policy changes preserve purchased staff yield and R&D points; new purchases store new policy',async()=>{
  await setDoc(doc(admin,'economyConfig/main'),{...DEFAULT_CONFIG,employeeRevenue:1,researchBoostBps:100,researchCost:100000});
  await invest(president,cid,'employee');await invest(president,cid,'research');const v=await operationsView(president,cid),o=v.ops;
- assert.equal(o.staffRevenue,100000);assert.equal(o.pendingStaffRevenue,1);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingResearchBps,100);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2756002);
+ assert.equal(o.staffRevenue,100000);assert.equal(o.pendingStaffRevenue,1);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingResearchBps,100);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2925602);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:o.cash+1,pendingResearchBps:3000}));
 });
 test('research choice destruction updates both current and pending bonus without refund or double application',async()=>{
@@ -72,7 +72,7 @@ test('six-center limit and workforce capacity are enforced by rules, including r
  await assertFails(updateDoc(doc(president,'companyOperations/rd-cap'),{research:7,pendingResearchBps:3500,cash:10000000-DEFAULT_CONFIG.researchCost}));
 });
 
-test('president can invest ten million and settle four million exactly with the v4 catalog',async()=>{
+test('president can invest ten million and settle 4.16 million with the v4 catalog',async()=>{
  const id='four-million';
  await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();
   await setDoc(doc(d,'companies',id),{name:id,status:'listed',referencePrice:10000,issuedShares:1000});
@@ -85,9 +85,9 @@ test('president can invest ten million and settle four million exactly with the 
  for(const [asset,count] of [['factory',2],['equipment',4],['employee',20]])for(let i=0;i<count;i++)await invest(president,id,asset);
  let v=await operationsView(president,id);assert.equal(v.available,0);
  assert.equal(dayPlan(v.ops,v.book,koreaDay()).revenue,0);
- assert.equal(dayPlan(v.ops,v.book,koreaDay()+1).revenue,4000000);
+ assert.equal(dayPlan(v.ops,v.book,koreaDay()+1).revenue,4160000);
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',id),{pendingDay:koreaDay()}));
  await settleDay(admin,id);v=await operationsView(admin,id);
- assert.equal(v.days[0].revenue,4000000);assert.equal(v.available,4000000);
+ assert.equal(v.days[0].revenue,4160000);assert.equal(v.available,4160000);
  await assert.rejects(settleDay(admin,id),/이미 완료/);
 });
