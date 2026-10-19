@@ -1,3 +1,4 @@
+import {mountManagementHistory} from './history-feed.js';
 import {PRICE_TICK,orderPrice,validOrderPrice} from '../client/price-tick.js';
 import {renderOrderBook} from './order-book.js';
 import {marketSession,koreaDayStart} from '../client/market-session.js';
@@ -6,9 +7,10 @@ import {renderInvestor} from './investor.js';
 import {createPriceChart} from './price-history.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const won=n=>Number(n||0).toLocaleString('ko-KR')+'원';
-let generation=0;
-export function closeTrading(){generation++;}
+let generation=0,disposeTrading=()=>{};
+export function closeTrading(){generation++;disposeTrading();disposeTrading=()=>{};}
 export async function showTrading(c,request){
+ disposeTrading();let stopHistory=()=>{};disposeTrading=()=>stopHistory();
  const token=++generation,box=document.querySelector('#test-trade');
  box.innerHTML=`<nav class="trade-section-nav" aria-label="종목 화면 바로가기"><button type="button" data-trade-jump="market-view">차트·호가</button><button type="button" data-trade-jump="limit-form">주문하기</button><button type="button" data-trade-jump="record-orders">내 주문</button><button type="button" data-trade-jump="company-investor">기업 현황·배당 ↓</button></nav><div class="trade-statusbar"><p id="limit-status" role="status">주문장을 불러오는 중…</p><button type="button" id="limit-refresh" class="refresh-market">새로고침</button></div><div id="limit-account" class="trading-account"></div><div class="transfer-desk"><div class="market-view" id="market-view"><div class="market-view-tabs" role="tablist" aria-label="거래 화면 선택"><button type="button" role="tab" id="tab-market-chart" aria-controls="market-chart" aria-selected="true" data-market-view="chart">캔들차트</button><button type="button" role="tab" id="tab-market-book" aria-controls="market-book" aria-selected="false" tabindex="-1" data-market-view="book">호가표</button></div><section class="chart-panel panel" id="market-chart" role="tabpanel" aria-labelledby="tab-market-chart"><div class="panel-title"><h2>종목 캔들차트</h2></div><div id="limit-chart"><div class="chart-empty">체결 기록을 불러오는 중…</div></div></section><section class="quote-panel panel" id="market-book" role="tabpanel" aria-labelledby="tab-market-book" hidden><div class="panel-title"><h2>가격별 거래 현황</h2><span>수량 선택 → 주문 가격·방향 입력</span></div><div id="limit-book"><p class="placeholder">호가를 불러오는 중…</p></div></section></div><section class="order-entry panel"><div class="panel-title"><h2>지정가 주문</h2><span>현금 주문</span></div><form id="limit-form" data-side="buy"><fieldset class="order-side"><legend class="sr-only">주문 구분</legend><label><input type="radio" name="side" value="buy" checked><span>매수</span></label><label><input type="radio" name="side" value="sell"><span>매도</span></label></fieldset><label class="order-field">지정가격 <span><input name="price" aria-label="지정가격(원)" type="number" value="${orderPrice(c.currentPrice||c.referencePrice)}" min="10" max="1000000" step="10" inputmode="numeric" required><b>원</b></span><span class="price-step-buttons"><button type="button" data-price-step="-1" aria-label="주문 가격 10원 내리기">−10원</button><button type="button" data-price-step="1" aria-label="주문 가격 10원 올리기">+10원</button></span></label><label class="order-field">주문수량 <span><input name="quantity" aria-label="주문수량(주)" type="number" value="1" min="1" max="1000000" step="1" inputmode="numeric" required><b>주</b></span></label><p id="limit-total" class="order-total"></p><button type="submit" id="limit-submit" disabled>매수 주문 접수</button><p class="order-help">가격은 10원 단위입니다. 주문은 체결되기 전까지 취소할 수 있습니다.</p></form></section></div><div class="execution-layout"><div class="execution-main"><section class="records-dock"><div class="record-tabs" role="tablist" aria-label="거래 내역"><button type="button" role="tab" aria-selected="true" aria-controls="record-orders" id="tab-orders" data-record="orders">미체결 · 주문</button><button type="button" role="tab" aria-selected="false" aria-controls="record-fills" id="tab-fills" data-record="fills" tabindex="-1">체결 내역</button></div><div class="trading-records"><section class="panel" id="record-orders" role="tabpanel" aria-labelledby="tab-orders"><div class="panel-title"><h2>내 주문 · 미체결</h2><span>이 종목의 최근 주문</span></div><div id="limit-orders"></div></section><section class="panel" id="record-fills" role="tabpanel" aria-labelledby="tab-fills" hidden><div class="panel-title"><h2>내 체결 내역</h2><span>최근 체결</span></div><div id="limit-fills"></div></section></div></section></div></div><section id="company-investor" class="panel investor-panel" aria-label="기업 경영과 예상 배당"><p class="placeholder">경영·배당 정보를 불러오는 중…</p></section><section id="limit-admin" class="panel" hidden></section><details class="inline-help"><summary>거래 기준</summary><p>매일 08:00~21:00(한국 시간) · 장외 취소 가능 · 수수료 없음 · 최초 발행 물량은 접수 순서대로, 이후에는 가격·시간 순서대로 체결합니다.</p></details>`;
  box.querySelectorAll('[data-record]').forEach(tab=>{
@@ -37,8 +39,14 @@ export async function showTrading(c,request){
   // A long management history must not keep order controls locked.
   void request('/api/company-investor?companyId='+encodeURIComponent(c.id)).then(info=>{
    if(!alive()||read!==investorRead)return;
-   const host=box.querySelector('#company-investor'),scroll=host.querySelector('.investor-history-list')?.scrollTop||0;
-   renderInvestor(host,info);const list=host.querySelector('.investor-history-list');if(list)list.scrollTop=scroll;
+   const host=box.querySelector('#company-investor'),previous=host.querySelector('.investor-history');
+   const keep=info.historyPending&&previous&&previous.dataset.historyVersion===info.historyVersion;
+   renderInvestor(host,info);
+   if(info.historyPending){
+    const section=host.querySelector('.investor-history');
+    if(keep)section.replaceWith(previous);
+    else{stopHistory();section.dataset.historyVersion=info.historyVersion;stopHistory=mountManagementHistory(section,request,c.id,{isCurrent:alive});}
+   }
   },()=>{if(alive()&&read===investorRead)box.querySelector('#company-investor').innerHTML='<p class="trade-empty">경영·배당 정보를 조회하지 못했습니다. 새로고침으로 다시 조회하세요.</p>';}).finally(()=>{
    investorLoading=false;
    if(investorQueued&&alive()){investorQueued=false;refreshInvestor();}

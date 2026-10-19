@@ -1,3 +1,4 @@
+import {clearImmutableRows,setHistoryOwner} from './immutable-reads.js';
 import {subscribeQuotes} from './quotes.js';
 import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
@@ -23,6 +24,7 @@ async function init() {
   await setPersistence(auth, browserSessionPersistence);
   // Do not query private data until Firebase restores the saved session.
   await auth.authStateReady();
+  await setHistoryOwner(getFirestore(auth.app),auth.currentUser?.uid||null);
   return auth;
 }
 function ensure() {
@@ -35,12 +37,14 @@ export async function idToken() {
 export async function login(email, password) {
   await ensure();
   await signInWithEmailAndPassword(auth, email, password);
+  await setHistoryOwner(getFirestore(auth.app),auth.currentUser.uid);
   generation++;
 }
 export async function signup(email, password, displayName='') {
   if(!/^[^\s@]+@hcu\.hs\.kr$/i.test(email.trim()))throw new Error('학교 이메일(@hcu.hs.kr)로만 가입할 수 있습니다.');
   await ensure();
   await createUserWithEmailAndPassword(auth, email, password);
+  await setHistoryOwner(getFirestore(auth.app),auth.currentUser.uid);
   generation++;
   // Keep the pending student's name with their Auth account across tabs/devices.
   if(displayName.trim())await updateProfile(auth.currentUser,{displayName:displayName.trim().slice(0,80)});
@@ -60,6 +64,7 @@ export async function logout() {
   generation++;
   await ensure();
   await signOut(auth);
+  await clearImmutableRows(getFirestore(auth.app));
 }
 
 export async function dataRequest(path,options){

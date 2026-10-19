@@ -1,3 +1,4 @@
+import {managementHistory} from './management-history.js';
 import {dividendAllocation} from './dividends.js';
 import {revenueEffects,adjustedRevenue,currentEffect,effectiveDividendBps,needsProduction,effectText,ONE_TIME_EFFECTS,TIMED_EFFECTS,remainingSettlements} from './event-model.js';
 import {staffCapacity,researchBps} from './business-policy.js';
@@ -10,20 +11,8 @@ export function investorSnapshot({companyId,ops,book,account,effects=[],events=[
  const sold=book?book.issuedShares-book.treasuryShares:0,rate=effectiveDividendBps(o,tomorrowAt);
  const perShare=tomorrow?dividendAllocation(tomorrow.revenue,rate,book).perShare:0;
  const shares=account?.positions?.[companyId]||0;
+ const {recentEvents,recentHistory}=managementHistory({ops:o,effects,events,investments},now);
  const timestamp=v=>typeof v==='number'?v:v?.toMillis?.()??Date.parse(v);
- const recentEvents=effects.filter(r=>[...ONE_TIME_EFFECTS,...TIMED_EFFECTS,'none'].includes(r.effect?.kind)&&Number.isFinite(timestamp(r.appliedAt))&&timestamp(r.appliedAt)<=now).sort((a,b)=>timestamp(b.appliedAt)-timestamp(a.appliedAt)||String(a.id).localeCompare(String(b.id))).map(r=>({
-  id:r.id,title:events.find(e=>e.id===r.id)?.title||'기업 이벤트',kind:r.effect.kind,appliedAt:timestamp(r.appliedAt),
-  ...(r.effect.kind==='cash'?{amount:Number.isSafeInteger(r.result?.amount)?r.result.amount:r.effect.amount}:{}),
-  status:ONE_TIME_EFFECTS.includes(r.effect.kind)?'applied':r.effect.kind==='none'?'unchanged':currentEffect(o,r,now)?'active':'ended',
-  ...(Number.isInteger(r.effect.settlements)&&r.effect.settlements>0?{remainingSettlements:remainingSettlements(o,r)}:{}),description:effectText(r.effect,r.effect.kind==='cash'&&Number.isSafeInteger(r.result?.amount)?{amount:r.result.amount}:['workforce','grant','destroy'].includes(r.effect.kind)&&Number.isSafeInteger(r.result?.count)?{count:r.result.count}:undefined),
- }));
- const investmentNames={factory:'공장',equipment:'생산 설비',research:'R&D센터',employee:'직원'};
- const investmentHistory=investments.filter(r=>Object.hasOwn(investmentNames,r.asset)&&Number.isSafeInteger(r.quantity)&&r.quantity>0&&r.quantity<=1000&&Number.isSafeInteger(r.cost)&&r.cost>0&&r.cost<=1e12&&Number.isSafeInteger(r.activeFromDay)&&r.activeFromDay>=0&&r.activeFromDay<=1000000&&Number.isFinite(timestamp(r.createdAt))&&timestamp(r.createdAt)<=now).map(r=>({
-  id:r.id,kind:r.asset==='employee'?'hiring':'investment',appliedAt:timestamp(r.createdAt),status:settlementTime(r.activeFromDay)>now?'pending':'applied',
-  title:investmentNames[r.asset]+' '+r.quantity+(r.asset==='employee'?'명 채용':'개 건설'),
-  description:'투자금 '+r.cost.toLocaleString('ko-KR')+'원 · '+new Date(r.activeFromDay*86400000).toISOString().slice(0,10)+' 오전 7시 55분 정산부터 수익 반영',
- }));
- const recentHistory=[...recentEvents,...investmentHistory].sort((a,b)=>b.appliedAt-a.appliedAt||String(a.id).localeCompare(String(b.id)));
  return {initialized:!!ops,asOf:now,settlementAt:tomorrowAt,tomorrowAt,factory:o.factory,equipment:o.equipment,research:o.research,employees:o.employees||0,capacity:staffCapacity(o),researchBps:Math.min(3000,researchBps(o)+(o.pendingResearchBps||0)),
   dividendBps:effectiveDividendBps(o,now),configuredDividendBps:o.dividendBps,tomorrowDividendBps:rate,soldShares:sold,myShares:shares,tomorrowRevenue:tomorrow?.revenue??null,perShare:tomorrow?perShare:null,myDividend:tomorrow?perShare*shares:null,
   revenueEffects:unclassified?[]:revenueEffects(o,effects,tomorrowAt),pendingEvent:!!o.pendingEvent,settling:o.locked,unclassified,recentEvents,recentHistory,

@@ -1,3 +1,5 @@
+import {immutableRows} from './immutable-reads.js';
+import {managementHistory,historyPage} from './management-history.js';
 import {accountLedger} from './account-ledger.js';
 import {spyView,hireSpy} from './spies.js';
 import {spyPolicy} from './spy-model.js';
@@ -18,14 +20,8 @@ function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(A
 export function createClientApi({db,getUser}){
  const get=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
  const list=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
- const investmentsFor=async cid=>{
-  const rows=[];let cursor;
-  for(;;){
-   const page=await getDocs(query(collection(db,'companyOperations',cid,'investments'),orderBy('createdAt','desc'),limit(30),...(cursor?[startAfter(cursor)]:[])));
-   rows.push(...page.docs.map(s=>({...plain(s.data()),id:s.id})));
-   if(page.size<30)return rows;cursor=page.docs.at(-1);
-  }
- };
+ const investmentsFor=(cid,ops)=>immutableRows(db,'companyOperations/'+cid+'/investments',{field:'createdAt',pageSize:30,revision:ops?.lastInvestment||'',persistent:true});
+ const eventsFor=()=>immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true});
  return async function api(path,options={}){
   const url=new URL(path,'https://local.invalid'),route=url.pathname,method=options.method||'GET';
   const user=await getUser();
@@ -61,9 +57,18 @@ export function createClientApi({db,getUser}){
   }
   if(route==='/api/company-investor'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
-   const [company,ops,book,account,effects,events,investments]=await Promise.all([get('companies/'+cid),get('companyOperations/'+cid),get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),effectRecords(db,cid),list('events',100,'startsAt desc'),investmentsFor(cid)]);
+   const opTask=get('companyOperations/'+cid);
+   const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),opTask,get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),opTask.then(o=>effectRecords(db,cid,{revision:o?.lastEvent||'',persistent:true})),eventsFor()]);
    if(!company)message('기업을 찾을 수 없습니다.');
-   return investorSnapshot({companyId:cid,ops,book,account,effects,events,investments});
+   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount,Math.floor(Date.now()/60000)])};
+  }
+  if(route==='/api/company-history'&&method==='GET'){
+   const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
+   const cursorText=url.searchParams.get('cursor');if(cursorText?.length>500)message('경영이력 조회 위치를 확인하세요.');
+   const cursor=cursorText?JSON.parse(cursorText):null;historyPage([],cursor);
+   const ops=await get('companyOperations/'+cid);
+   const [effects,events,investments]=await Promise.all([effectRecords(db,cid,{revision:ops?.lastEvent||'',persistent:true}),eventsFor(),investmentsFor(cid,ops)]);
+   return historyPage(managementHistory({ops,effects,events,investments}).recentHistory,cursor);
   }
   if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId')));
   if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-close','/api/event-choose','/api/event-apply'].includes(route)){
@@ -167,7 +172,7 @@ export function createClientApi({db,getUser}){
    const portfolio=tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
    return {...portfolio,holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
   }
-  if(route==='/api/dividends'&&method==='GET')return {dividends:await list('sparkAccounts/'+user.uid+'/dividends',30,'createdAt desc')};
+  if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true}))};
   if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
   if(route==='/api/my-company'&&method==='GET'){const ids=(await get(`assignments/${user.uid}`))?.companyIds||[];if(ids.length>5||ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(x)))message('담당 기업 설정을 확인하세요.');return {companies:(await Promise.all(ids.map(id=>get(`companies/${id}`)))).filter(Boolean)};}
   message('지원하지 않는 요청입니다.');
