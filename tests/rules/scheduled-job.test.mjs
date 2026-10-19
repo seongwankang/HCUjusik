@@ -9,7 +9,7 @@ if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Err
 let app,db,job;
 before(async()=>{
  await writeFile('.generated-scheduled-test-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {runDueChoiceEvents} from './server/choice-events.js';export {beginDay,payHolder} from './client/economy.js';");
- await buildJob('.generated-scheduled-test-entry.mjs','.generated-scheduled-test.mjs');job=await import('../../.generated-scheduled-test.mjs?test='+Date.now());
+ await buildJob('.generated-scheduled-test-entry.mjs','.generated-scheduled-test.mjs');const loaded=await import('../../.generated-scheduled-test.mjs?test='+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,...options})};
  app=initializeApp({projectId:'demo-scheduled-economy'},'scheduled-test');db=getFirestore(app);
  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-scheduled-economy/databases/(default)/documents',{method:'DELETE'});
  await db.doc('users/student').set({displayName:'테스트',role:'student',active:true});await db.doc('users/operator').set({displayName:'관리자',role:'admin',active:true});

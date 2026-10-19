@@ -1,7 +1,7 @@
 import {mountManagementHistory} from './history-feed.js';
 import {PRICE_TICK,orderPrice,validOrderPrice} from '../client/price-tick.js';
 import {renderOrderBook} from './order-book.js';
-import {marketSession,koreaDayStart} from '../client/market-session.js';
+import {marketSession,koreaDayStart,marketPaused} from '../client/market-session.js';
 import {renderDayChange} from './quote-change.js';
 import {renderInvestor} from './investor.js';
 import {createPriceChart} from './price-history.js';
@@ -30,7 +30,7 @@ export async function showTrading(c,request,container){
  const form=box.querySelector('form'),status=box.querySelector('#limit-status'),button=box.querySelector('#limit-submit');
  const controls=[...form.querySelectorAll('input,select,[data-price-step]')];let pending=null,busy=false,connected=false,lastMatchError=null,settlementLocked=false,matchingPending=false,investorRead=0,investorLoading=false,investorQueued=false;
  const alive=()=>token===generation;
- const lock=()=>{const open=marketSession().open;button.disabled=busy||!connected||!open;controls.forEach(e=>e.disabled=busy||!!pending||settlementLocked||!open);if(!open&&!busy){status.textContent='장 마감 · 매일 08:00~21:00(한국 시간) 거래 가능 · 미체결 취소 가능';}box.querySelector('#limit-refresh').disabled=busy;box.querySelectorAll('[data-cancel-order]').forEach(e=>e.disabled=busy||settlementLocked);};
+ const lock=()=>{const open=marketSession().open;button.disabled=busy||!connected||!open;controls.forEach(e=>e.disabled=busy||!!pending||settlementLocked||!open);if(!open&&!busy){status.textContent=marketPaused(Date.now())?'시장 준비 중 · 10월 21일(수) 오전 8시 거래 재개':'장 마감 · 매일 08:00~21:00(한국 시간) 거래 가능 · 미체결 취소 가능';}box.querySelector('#limit-refresh').disabled=busy;box.querySelectorAll('[data-cancel-order]').forEach(e=>e.disabled=busy||settlementLocked);};
  const total=()=>{const price=Number(form.elements.price.value);form.elements.price.setCustomValidity(validOrderPrice(price)?'':'가격은 10원 단위로 입력하세요.');box.querySelectorAll('.transfer-book-row').forEach(row=>row.dataset.selected=String(Number(row.dataset.price)===price));form.dataset.side=form.elements.side.value;box.querySelector('#limit-total').innerHTML=`<span>예상 주문금액</span><strong>${won(Number(form.elements.price.value)*Number(form.elements.quantity.value))}</strong>`;if(!pending)button.textContent=form.elements.side.value==='buy'?'매수 주문 접수':'매도 주문 접수';};controls.forEach(e=>e.addEventListener('input',total));total();
  function refreshInvestor(){
   ++investorRead;
