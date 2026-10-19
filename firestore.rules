@@ -533,7 +533,7 @@ service cloud.firestore {
     function staffCapacity(o) { let n=10+o.factory*25+o.equipment*10; return n < 1000 ? n : 1000; }
     function economyPolicy() {
       return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 4 ? get(/databases/$(database)/documents/economyConfig/main).data :
-        {'version':4,'factoryCost':1000000,'factoryRevenue':400000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
+        {'version':4,'factoryCost':2000000,'factoryRevenue':440000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
     }
     function investmentDay(o) {
       return request.time.toMillis() < dayNumber()*86400000 && o.lastSettledDay < dayNumber() ? dayNumber() : dayNumber()+1;
