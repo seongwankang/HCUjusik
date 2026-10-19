@@ -1,15 +1,28 @@
 import {settleSpies} from '../client/spies.js';
+import {detectDailySpy} from './spy-detection.js';
+import {migrateSingleSpies} from './spy-policy-migration.js';
 import {runDueChoiceEvents} from './choice-events.js';
 import {publishLeadership} from '../client/leadership.js';
 import {settleDay,koreaDay} from '../client/economy.js';
 import {publishCashRankings,allRows} from '../client/rankings.js';
 import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
-export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,mode='full'}={}){
+export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full'}={}){
  if(mode==='rankings-only'){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants};}
+ if(mode==='spies-policy-only'){const migration=await migrateSingleSpies(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
  if(mode!=='full')throw Error('Unknown economy job mode');
+ await migrateSingleSpies(db);
  const choiceEvents=await runDueChoiceEvents(db,now);
  const day=koreaDay(now),companies=await allRows(db,'companies'),result={settled:0,resumed:0,skipped:0,failed:[...choiceEvents.blocked],choiceEvents:{processed:choiceEvents.processed,failed:choiceEvents.failed}};
+ try{
+  result.spyDetection=await detect(db,{now,blocked:choiceEvents.blocked});
+  if(result.spyDetection.status==='waiting'&&result.spyDetection.reason==='previous-payout'){
+   // Finish an interrupted older payout before drawing for the new day.
+   for(const c of companies){const o=(await db.doc('companyOperations/'+c.id).get()).data();if(o?.locked){try{await settle(db,c.id);result.resumed++;}catch{result.failed.push(c.id);}}}
+   result.spyDetection=await detect(db,{now,blocked:choiceEvents.blocked});
+  }
+  if(result.spyDetection.status==='waiting'){result.failed.push('spy-detection');return result;}
+ }catch(error){result.spyDetection={status:'failed',message:error.message};result.failed.push('spy-detection');return result;}
  for(const c of companies.filter(c=>['listed','paused'].includes(c.status))){
   try{
    // Resuming yesterday's interrupted payout must not mint today's revenue twice.

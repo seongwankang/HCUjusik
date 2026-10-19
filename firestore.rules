@@ -609,7 +609,7 @@ service cloud.firestore {
       allow list,delete: if false;
     }
     function spyPolicy() {
-      return {'cost':1000000,'bps':50,'settlements':0};
+      return {'cost':1000000,'bps':500,'settlements':0};
     }
     function spyHireOperation(cid,d,o) {
       let s=getAfter(/databases/$(database)/documents/companySpies/$(cid)).data;
@@ -626,11 +626,12 @@ service cloud.firestore {
       let agents=old.get('agents',old.size() > 0 ? {'0':old} : {});
       return manager(cid) && sparkId(cid) && sparkId(d.targetId) && cid != d.targetId && sparkId(d.hireId) &&
         d.keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt','agents','slot']) &&
-        d.slot in ['0','1','2','3','4','5','6','7','8','9'] && d.agents is map && d.agents.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9']) &&
+        d.slot == '0' && d.agents is map && d.agents.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9']) &&
         d.agents.diff(agents).affectedKeys().hasOnly([d.slot]) && agents.get(d.slot,{'remaining':0}).remaining == 0 &&
+        agents.get('1',{'remaining':0}).remaining == 0 && agents.get('2',{'remaining':0}).remaining == 0 && agents.get('3',{'remaining':0}).remaining == 0 && agents.get('4',{'remaining':0}).remaining == 0 && agents.get('5',{'remaining':0}).remaining == 0 && agents.get('6',{'remaining':0}).remaining == 0 && agents.get('7',{'remaining':0}).remaining == 0 && agents.get('8',{'remaining':0}).remaining == 0 && agents.get('9',{'remaining':0}).remaining == 0 &&
         d.agents[d.slot].keys().hasOnly(['companyId','targetId','hireId','cost','bps','settlements','remaining','activeFromDay','lastRoundDay','createdAt']) &&
         d.diff(d.agents[d.slot]).affectedKeys().hasOnly(['agents','slot']) &&
-        d.companyId == cid && d.cost == 1000000 && d.bps == 50 && d.settlements == p.settlements && d.remaining == 1 && d.lastRoundDay == 0 &&
+        d.companyId == cid && d.cost == 1000000 && d.bps == 500 && d.settlements == p.settlements && d.remaining == 1 && d.lastRoundDay == 0 &&
         d.hireId != operations(cid).get('lastSpyHire','') && d.activeFromDay == investmentDay(operations(cid)) && d.createdAt == request.time &&
         get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && get(/databases/$(database)/documents/companies/$(d.targetId)).data.status == 'listed' &&
         exists(/databases/$(database)/documents/sparkBooks/$(d.targetId)) &&
@@ -639,7 +640,7 @@ service cloud.firestore {
     match /spyPolicy/{id} {
       allow get: if id == 'main' && participant();
       allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['cost','bps','settlements']) &&
-        request.resource.data.cost == 1000000 && request.resource.data.bps == 50 &&
+        request.resource.data.cost == 1000000 && request.resource.data.bps == 500 &&
         request.resource.data.settlements is int && request.resource.data.settlements == 0;
       allow list,delete: if false;
     }

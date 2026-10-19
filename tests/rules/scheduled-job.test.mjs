@@ -71,6 +71,6 @@ test('trusted deadline worker applies new cash, grant, discount and dividend-cap
 test('scheduled IAM job integrates final spy transfers after ordinary dividends exactly once',async()=>{
  const prefix='spy-job-',today=koreaDay();for(const cid of [prefix+'a',prefix+'b']){await seed(cid);await db.doc('sparkBooks/'+cid).update({treasuryShares:10});await db.doc('companyOperations/'+cid).update({cash:1000000});}
  await db.doc('companySpies/'+prefix+'a').set({companyId:prefix+'a',targetId:prefix+'b',hireId:'fixture',cost:2000000,bps:200,settlements:3,remaining:3,activeFromDay:today,lastRoundDay:0});await db.doc('spyRegistry/main').set({version:1,companyId:prefix+'a',hireId:'fixture'});
- const first=await job.runScheduledEconomy(db);assert.equal(first.spies.status,'settled');assert.equal((await db.doc('companyOperations/'+prefix+'a').get()).data().cash,1002010);assert.equal((await db.doc('companyOperations/'+prefix+'b').get()).data().cash,1001990);
+ const first=await job.runScheduledEconomy(db);assert.equal(first.spies.status,'settled');assert.equal((await db.doc('companyOperations/'+prefix+'a').get()).data().cash,1002100);assert.equal((await db.doc('companyOperations/'+prefix+'b').get()).data().cash,1001900);
  const again=await job.runScheduledEconomy(db);assert.equal(again.spies.status,'complete');assert.equal((await db.doc('companySpies/'+prefix+'a').get()).data().remaining,3);
 });
