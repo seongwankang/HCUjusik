@@ -6,7 +6,7 @@ import {getFirestore} from 'firebase-admin/firestore';
 import {buildJob} from '../../scripts/build-jobs.mjs';
 import {initialOperations,koreaDay} from '../../client/economy.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
-test('IAM adapter caps legacy roster to one 5 percent agent atomically and keeps them active beyond three rounds',async()=>{
+test('IAM adapter caps legacy roster to two 2.5 percent agents atomically and keeps them active beyond three rounds',async()=>{
  const projectId='demo-spy-team-iam',app=initializeApp({projectId},'spy-team-iam'),db=getFirestore(app);
  try{
  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/'+projectId+'/databases/(default)/documents',{method:'DELETE'});
