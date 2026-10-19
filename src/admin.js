@@ -9,7 +9,7 @@ export function validateAdmin(kind,b){
   let data;
   if(kind==='companies'){
     if(!['draft','listed','paused'].includes(b.status))fail();
-    data={name:text(b.name,80),ticker:text(b.ticker,20),description:text(b.description,2000),category:text(b.category,40),status:b.status};
+    data={name:text(b.name,80),ticker:text(b.ticker,20),description:b.description===undefined?'':typeof b.description==='string'&&b.description.length<=2000?b.description.trim():fail(),category:text(b.category,40),status:b.status};
     if(!/^[A-Z0-9_-]{1,20}$/.test(data.ticker))fail();
     // Economic fields are only initial demonstration values; existing values cannot be edited.
     if(b.initial===true){for(const k of ['referencePrice','issuedShares'])if(!Number.isSafeInteger(b[k])||b[k]<1||b[k]>1000000)fail();Object.assign(data,{referencePrice:b.referencePrice,issuedShares:b.issuedShares,companyCash:0,dailyRevenue:0});}
