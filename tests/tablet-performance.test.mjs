@@ -30,15 +30,15 @@ test('a deferred news result cannot reappear after account changes; network fail
  const g=fixture();await g.context.load();g.rejectNews(Error('offline'));await new Promise(r=>setImmediate(r));assert.equal(g.routes(),1);assert.match(g.notice.textContent,/불러오지 못했습니다/);
 });
 const exchangeSource=readFileSync(new URL('../public/exchange.js',import.meta.url),'utf8');
-const refreshSource=exchangeSource.slice(exchangeSource.indexOf(' async function refresh(){'),exchangeSource.indexOf(" form.addEventListener('submit'"));
+const refreshSource=exchangeSource.slice(exchangeSource.indexOf(' function refreshInvestor(){'),exchangeSource.indexOf(" form.addEventListener('submit'"));
 test('order refresh finishes before management history and ignores an older history response',async()=>{
  const pending=[];let rendered=0,lastInfo;
  const elements=new Map(),node=key=>{if(!elements.has(key))elements.set(key,{innerHTML:'',textContent:'',querySelector:()=>null});return elements.get(key);};
  const data={account:{cash:1000,reservedCash:0,positions:{},reservedPositions:{}},orders:[],fills:[],market:{lastPrice:10000},book:{},costBasis:{}};
  const context={c:{id:'one',referencePrice:10000},box:{querySelector:node},document:{querySelector:node},form:{elements:{price:{value:10000}}},alive:()=>true,request:path=>path.startsWith('/api/company-investor')?new Promise(resolve=>pending.push(resolve)):Promise.resolve(data),won:String,renderDayChange:()=>{},renderOrderBook:()=>'',priceChart:{update:()=>{}},lock:()=>{},renderInvestor:(host,info)=>{rendered++;lastInfo=info;}};
- runInNewContext('let investorRead=0;'+refreshSource+';this.refresh=refresh;',context);
+ runInNewContext('let investorRead=0,investorLoading=false,investorQueued=false;'+refreshSource+';this.refresh=refresh;',context);
  await context.refresh();assert.equal(pending.length,1);assert.equal(rendered,0);assert.equal(context.connected,true);
- await context.refresh();pending[0]({version:1});await new Promise(r=>setImmediate(r));assert.equal(rendered,0);
+ await context.refresh();await context.refresh();assert.equal(pending.length,1);pending[0]({version:1});await new Promise(r=>setImmediate(r));assert.equal(rendered,0);assert.equal(pending.length,2);
  pending[1]({version:2});await new Promise(r=>setImmediate(r));assert.equal(rendered,1);assert.equal(lastInfo.version,2);
 });
 

@@ -26,10 +26,24 @@ export async function showTrading(c,request){
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?marketTabs[0]:event.key==='End'?marketTabs.at(-1):marketTabs.find(t=>t!==tab);selectMarketView(next);next.focus();});
  });
  const form=box.querySelector('form'),status=box.querySelector('#limit-status'),button=box.querySelector('#limit-submit');
- const controls=[...form.querySelectorAll('input,select,[data-price-step]')];let pending=null,busy=false,connected=false,lastMatchError=null,settlementLocked=false,matchingPending=false,investorRead=0;
+ const controls=[...form.querySelectorAll('input,select,[data-price-step]')];let pending=null,busy=false,connected=false,lastMatchError=null,settlementLocked=false,matchingPending=false,investorRead=0,investorLoading=false,investorQueued=false;
  const alive=()=>token===generation;
  const lock=()=>{const open=marketSession().open;button.disabled=busy||!connected||!open;controls.forEach(e=>e.disabled=busy||!!pending||settlementLocked||!open);if(!open&&!busy){status.textContent='장 마감 · 매일 08:00~21:00(한국 시간) 거래 가능 · 미체결 취소 가능';}box.querySelector('#limit-refresh').disabled=busy;box.querySelectorAll('[data-cancel-order]').forEach(e=>e.disabled=busy||settlementLocked);};
  const total=()=>{const price=Number(form.elements.price.value);form.elements.price.setCustomValidity(validOrderPrice(price)?'':'가격은 10원 단위로 입력하세요.');box.querySelectorAll('.transfer-book-row').forEach(row=>row.dataset.selected=String(Number(row.dataset.price)===price));form.dataset.side=form.elements.side.value;box.querySelector('#limit-total').innerHTML=`<span>예상 주문금액</span><strong>${won(Number(form.elements.price.value)*Number(form.elements.quantity.value))}</strong>`;if(!pending)button.textContent=form.elements.side.value==='buy'?'매수 주문 접수':'매도 주문 접수';};controls.forEach(e=>e.addEventListener('input',total));total();
+ function refreshInvestor(){
+  ++investorRead;
+  if(investorLoading){investorQueued=true;return;}
+  const read=investorRead;investorLoading=true;
+  // A long management history must not keep order controls locked.
+  void request('/api/company-investor?companyId='+encodeURIComponent(c.id)).then(info=>{
+   if(!alive()||read!==investorRead)return;
+   const host=box.querySelector('#company-investor'),scroll=host.querySelector('.investor-history-list')?.scrollTop||0;
+   renderInvestor(host,info);const list=host.querySelector('.investor-history-list');if(list)list.scrollTop=scroll;
+  },()=>{if(alive()&&read===investorRead)box.querySelector('#company-investor').innerHTML='<p class="trade-empty">경영·배당 정보를 조회하지 못했습니다. 새로고침으로 다시 조회하세요.</p>';}).finally(()=>{
+   investorLoading=false;
+   if(investorQueued&&alive()){investorQueued=false;refreshInvestor();}
+  });
+ }
  async function refresh(){
   const data=await request('/api/exchange?companyId='+c.id);if(!alive())return;
   const a=data.account;lastMatchError=data.matchError;settlementLocked=!!data.settlementLocked;matchingPending=!!data.matchPending;
@@ -44,13 +58,7 @@ export async function showTrading(c,request){
   box.querySelector('#limit-fills').innerHTML=fills.length?`<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table class="trade-table"><thead><tr><th>구분</th><th>체결가격</th><th>수량</th><th>체결금액</th></tr></thead><tbody>${fills.map(f=>`<tr><td class="side-${f.side}">${f.side==='buy'?'매수':'매도'}</td><td>${won(f.price)}</td><td>${f.quantity}주</td><td>${won(f.price*f.quantity)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">아직 체결된 주문이 없습니다.</p>';
   const admin=box.querySelector('#limit-admin');admin.hidden=!data.adminOrders?.length;if(!admin.hidden)admin.innerHTML=`<div class="panel-title"><h2>관리자 · 전체 대기 주문</h2></div><div class="admin-book">${data.adminOrders.map(o=>`<div class="asset-row"><span>${o.side==='buy'?'매수':'매도'} ${won(o.price)} · ${o.remaining}주</span><button type="button" data-cancel-order="${esc(o.id)}" data-owner-uid="${esc(o.uid)}" data-company-id="${esc(c.id)}">관리자 취소</button></div>`).join('')}</div>`;
   connected=!settlementLocked;lock();
-  const read=++investorRead;
-  // A long management history must not keep order controls locked.
-  void request('/api/company-investor?companyId='+encodeURIComponent(c.id)).then(info=>{
-   if(!alive()||read!==investorRead)return;
-   const host=box.querySelector('#company-investor'),scroll=host.querySelector('.investor-history-list')?.scrollTop||0;
-   renderInvestor(host,info);const list=host.querySelector('.investor-history-list');if(list)list.scrollTop=scroll;
-  },()=>{if(alive()&&read===investorRead)box.querySelector('#company-investor').innerHTML='<p class="trade-empty">경영·배당 정보를 조회하지 못했습니다. 새로고침으로 다시 조회하세요.</p>';});
+  refreshInvestor();
  }
  form.addEventListener('submit',async e=>{
   e.preventDefault();if(busy||!connected||!marketSession().open){lock();return;}
