@@ -6,11 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'full: 정산·이벤트·순위 / rankings-only: 자산 순위만 갱신'
+        description: 'full: 정산·발각·이벤트·순위 / rankings-only: 순위 / spies-policy-only: 스파이 1명 정책 전환만'
         type: choice
         options:
           - full
           - rankings-only
+          - spies-policy-only
         default: full
 permissions:
   contents: read
