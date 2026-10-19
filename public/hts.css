@@ -63,3 +63,6 @@ body[data-page="rankings"] .instrument-rail{display:none}body[data-page="ranking
 /* Current price, daily change and trading status occupy separate grid cells. */
 .company-quote #company-change{grid-column:1;grid-row:3;background:transparent;padding:2px 0 0;border-radius:0;font-size:13px;line-height:1.5;white-space:nowrap}
 .company-quote #company-listing{grid-column:2;grid-row:1 / 4;align-self:center;justify-self:start}
+
+/* Keep the sector beside the company name, with wrapping on tablets. */
+.company-list-name{display:inline-flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px}.company-list-name .company-sector{font-size:11px;font-weight:400;color:#737889;white-space:nowrap}
