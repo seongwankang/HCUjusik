@@ -169,3 +169,5 @@ body .staff-capacity.staff-capacity-single{grid-template-columns:1fr}
 body .event-builder .event-default-choice{display:flex;flex-direction:row;align-items:center;gap:8px;padding:12px;margin-bottom:16px;background:#eef4ff;border-radius:8px;color:#2458a8;font-weight:600}
 body .event-builder .event-default-choice input{appearance:auto;accent-color:#2563eb;padding:0;width:18px;height:18px;min-height:0;margin:0;flex:0 0 18px}
 body .event-builder .event-default-choice:has(input:checked){outline:2px solid #2563eb;background:#e1edff}
+
+body .admin-student-email{overflow-wrap:anywhere;font-size:12px;color:#475569}body .admin-form>.admin-student-email{grid-column:1/-1;margin:0}

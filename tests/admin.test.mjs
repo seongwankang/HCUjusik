@@ -25,3 +25,10 @@ test('school verification gates registration and reads; only existing active adm
  }
  for(const active of [true,false]){const worker=createWorker({verify:async()=>({sub:'root',email:'admin@example.test',email_verified:false}),firestore:()=>({get:async()=>({role:'admin',active,displayName:'Admin'})})});assert.equal((await worker.fetch(new Request('https://school.test/api/me',{headers:{authorization:'Bearer valid.token.signature'}}),env)).status,active?200:403);}
 });
+
+
+test('company descriptions are optional while invalid types and oversized text remain rejected',async()=>{
+ const base={id:'test-a',name:'A',ticker:'TESTA',category:'Test',status:'listed'};
+ for(const description of [undefined,'','   ']){const f=fixture();assert.equal((await f.request('companies',{...base,description})).status,200);assert.equal(f.writes[0][0].data.description,'');}
+ for(const description of [null,{},'x'.repeat(2001)]){const f=fixture();assert.equal((await f.request('companies',{...base,description})).status,400);assert.equal(f.writes.length,0);}
+});

@@ -9,7 +9,7 @@ import {accountAssets,allRows,marketRankings,publishCashRankings} from './rankin
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
-import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,Timestamp,serverTimestamp} from 'firebase/firestore';
+import {getDoc,getDocs,doc,collection,query,orderBy,limit,runTransaction,updateDoc,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
 import {initializeSpark,placeSpark,matchSpark,cancelSpark,sparkView,marketHistory} from './spark-exchange.js';
 const school=c=>c.email_verified===true&&typeof c.email==='string'&&/^[^\s@]+@hcu\.hs\.kr$/i.test(c.email);
@@ -27,7 +27,7 @@ export function createClientApi({db,getUser}){
   if(!(profile?.role==='admin'&&profile.active===true)&&!school(claims))message('학교 이메일(@hcu.hs.kr)의 이메일 인증을 완료하세요.');
   if(route==='/api/register'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');if(typeof b.displayName!=='string'||!b.displayName.trim()||b.displayName.length>80)message('학생 이름은 1~80자로 입력하세요.');
-   await runTransaction(db,async t=>{const u=doc(db,'users',user.uid),p=doc(db,'portfolios',user.uid);const old=await t.get(u);if(old.exists())return;t.set(u,{displayName:b.displayName.trim(),role:'student',active:true});t.set(p,{cash:1000000,holdings:[],version:0});});
+   await runTransaction(db,async t=>{const u=doc(db,'users',user.uid),p=doc(db,'portfolios',user.uid);const old=await t.get(u);if(old.exists())return;t.set(u,{displayName:b.displayName.trim(),role:'student',active:true,email:claims.email.toLowerCase()});t.set(p,{cash:1000000,holdings:[],version:0});});
    return {ok:true,registered:true};
   }
   if(!profile){const error=new Error('학생 가입을 마무리해 주세요.');error.code='registration-required';throw error;}
@@ -115,7 +115,14 @@ export function createClientApi({db,getUser}){
    if(!b.companyId)b.companyId=(await get(`sparkAccounts/${user.uid}/orders/${b.orderId}`))?.companyId;
    return cancelSpark(db,user.uid,b);
   }
-  if(route==='/api/me'&&method==='GET')return {authenticated:true,user:{id:user.uid,displayName:profile.displayName,role:profile.role}};
+  if(route==='/api/me'&&method==='GET'){
+   // Populate legacy profiles from this account's verified Auth identity only.
+   // A delayed contact update must not prevent a successful sign-in.
+   if(profile.role!=='admin'&&school(claims)&&profile.email!==claims.email.toLowerCase()){
+    try{await updateDoc(doc(db,'users',user.uid),{email:claims.email.toLowerCase()});}catch{}
+   }
+   return {authenticated:true,user:{id:user.uid,displayName:profile.displayName,role:profile.role}};
+  }
   if(['/api/test-portfolio','/api/test-orders'].includes(route))message('기준가격 즉시 매매는 종료됐습니다. 지정가 주문장을 사용하세요.');
   if(route==='/api/orders')message('공식 주문은 아직 비활성화 상태입니다. 테스트 주문을 사용하세요.');
   const kinds={companies:['ticker',100],news:['publishedAt desc',30],events:['startsAt desc',100]};

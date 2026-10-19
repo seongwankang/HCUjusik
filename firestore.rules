@@ -21,17 +21,18 @@ service cloud.firestore {
     function ids(v) { return v is list && v.size() <= 5 &&
       (v.size() < 1 || v[0] is string) && (v.size() < 2 || v[1] is string) &&
       (v.size() < 3 || v[2] is string) && (v.size() < 4 || v[3] is string) && (v.size() < 5 || v[4] is string); }
-    function userData() { let d=request.resource.data; return d.keys().hasOnly(['displayName','role','active']) && str(d.displayName,80) && d.role in ['student','president'] && d.active is bool; }
-    function companyData() { let d=request.resource.data; return d.keys().hasOnly(['name','ticker','description','category','status','referencePrice','issuedShares','companyCash','dailyRevenue']) && str(d.name,80) && str(d.ticker,20) && str(d.description,2000) && str(d.category,40) && d.status in ['draft','listed','paused']; }
+    function userData() { let d=request.resource.data; return d.keys().hasOnly(['displayName','role','active','email']) && (!('email' in d) || str(d.email,254) && d.email.matches('^[^ @]+@hcu[.]hs[.]kr$')) && str(d.displayName,80) && d.role in ['student','president'] && d.active is bool; }
+    function companyData() { let d=request.resource.data; return d.keys().hasOnly(['name','ticker','description','category','status','referencePrice','issuedShares','companyCash','dailyRevenue']) && str(d.name,80) && str(d.ticker,20) && d.description is string && d.description.size() <= 2000 && str(d.category,40) && d.status in ['draft','listed','paused']; }
     match /users/{uid} {
       // Inactive students can read their own registration status only.
       allow get: if owner(uid) || admin();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if owner(uid) && schoolVerified() && userData() && request.resource.data.role == 'student' && request.resource.data.active == true &&
+      allow create: if owner(uid) && schoolVerified() && userData() && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.email.lower()) && request.resource.data.role == 'student' && request.resource.data.active == true &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 1000000 &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.holdings == [] &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.version == 0;
-      allow update: if admin() && resource.data.role != 'admin' && userData();
+      allow update: if (admin() && resource.data.role != 'admin' && userData() && request.resource.data.get('email','') == resource.data.get('email','')) ||
+        (owner(uid) && schoolVerified() && resource.data.active == true && userData() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email']) && request.resource.data.email == request.auth.token.email.lower());
       allow delete: if false;
     }
     match /portfolios/{uid} {
