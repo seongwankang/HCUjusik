@@ -63,7 +63,7 @@ export async function ensureOrderIndexes(db,uid,cid){
 }
 export async function placeSpark(db,uid,b){
  assertMarketOpen();
- if(!validOrderPrice(b.price))throw new Error('주문 가격은 10원부터 1,000,000원까지 10원 단위로 입력하세요.');
+ if(!validOrderPrice(b.price))throw new Error('주문 가격은 100원부터 1,000,000원까지 100원 단위로 입력하세요.');
  if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!validCompany(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
  const bookRef=doc(db,'sparkBooks',b.companyId),orderRef=doc(db,'sparkAccounts',uid,'orders',b.orderId);
  return transact(db,bookRef,async(t,bookDoc)=>{
