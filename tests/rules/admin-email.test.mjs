@@ -2,7 +2,7 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,getDocs,collection,query,limit,updateDoc} from 'firebase/firestore';
+import {doc,setDoc,getDoc,getDocs,collection,query,limit,updateDoc,waitForPendingWrites} from 'firebase/firestore';
 import {createClientApi} from '../../client/data.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let env,admin,student,other,api,adminApi;
@@ -15,7 +15,7 @@ before(async()=>{
 });after(async()=>env?.cleanup());
 
 test('verified email sync is private, cannot forge identity or elevate role and survives administrator edits',async()=>{
- await api('/api/me');let profile=(await getDoc(doc(admin,'users/student'))).data();assert.equal(profile.email,'student@hcu.hs.kr');assert.equal(profile.role,'student');
+ await api('/api/me');await waitForPendingWrites(student);let profile=(await getDoc(doc(admin,'users/student'))).data();assert.equal(profile.email,'student@hcu.hs.kr');assert.equal(profile.role,'student');
  await assertFails(getDoc(doc(other,'users/student')));await assertFails(getDocs(query(collection(other,'users'),limit(100))));await assert.rejects(api('/api/admin/users'),/관리자/);
  await assertFails(updateDoc(doc(student,'users/student'),{email:'someone@hcu.hs.kr'}));await assertFails(updateDoc(doc(student,'users/student'),{email:'student@hcu.hs.kr',role:'admin'}));await assertFails(updateDoc(doc(admin,'users/student'),{email:'someone@hcu.hs.kr'}));
  const users=(await adminApi('/api/admin/users')).users;assert.equal(users.find(x=>x.id==='student').email,'student@hcu.hs.kr');

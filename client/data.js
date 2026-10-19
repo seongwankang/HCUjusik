@@ -119,7 +119,7 @@ export function createClientApi({db,getUser}){
    // Populate legacy profiles from this account's verified Auth identity only.
    // A delayed contact update must not prevent a successful sign-in.
    if(profile.role!=='admin'&&school(claims)&&profile.email!==claims.email.toLowerCase()){
-    try{await updateDoc(doc(db,'users',user.uid),{email:claims.email.toLowerCase()});}catch{}
+    void updateDoc(doc(db,'users',user.uid),{email:claims.email.toLowerCase()}).catch(()=>{});
    }
    return {authenticated:true,user:{id:user.uid,displayName:profile.displayName,role:profile.role}};
   }
