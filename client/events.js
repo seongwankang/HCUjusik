@@ -21,12 +21,13 @@ export async function publishEvent(db,b){
  const deadline=Timestamp.fromDate(new Date(b.deadline));if(!Number.isFinite(deadline.toMillis())||deadline.toMillis()<=Date.now())fail('미래의 선택 마감 시간을 입력하세요.');
  const labels=b.type==='choice'?b.options?.map(o=>String(o.label||'').trim()):[];
  if(b.type==='choice'&&(labels?.length!==3||labels.some(l=>!l||l.length>200)))fail('선택지 3개를 각각 200자 이내로 입력하세요.');
+ if(b.defaultOption!==undefined&&(b.type!=='choice'||!Number.isInteger(b.defaultOption)||b.defaultOption<0||b.defaultOption>2))fail('미선택 기본 선택지를 1~3번 중 하나로 지정하세요.');
  const effects=b.type==='choice'?b.options.map(o=>validateEffect(o.effect)):[validateEffect(b.effect)];
  const ref=doc(db,'events',b.id);if((await getDoc(ref)).exists())fail('이미 발행한 이벤트입니다. 적용 상태를 조회하세요.');
  const batch=writeBatch(db);
  batch.set(doc(db,'eventQueue',b.id),{endsAt:b.type==='choice'?deadline:serverTimestamp()});
  if(news)batch.set(doc(db,'eventNewsDrafts',b.id),news);
- batch.set(ref,{autoNews:!!news,...(news?{newsDraftRequired:true}:{}),type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
+ batch.set(ref,{...(b.type==='choice'&&b.defaultOption!==undefined?{defaultOption:b.defaultOption}:{}),autoNews:!!news,...(news?{newsDraftRequired:true}:{}),type:b.type,title,content,companyId:b.type==='random'&&targets.length===1?targets[0]:'',targets,options:labels,startsAt:serverTimestamp(),endsAt:deadline});
  effects.forEach((effect,i)=>batch.set(doc(db,'eventOutcomes',b.id,'options',String(i)),{effect}));
  await batch.commit();return {id:b.id};
 }
@@ -43,6 +44,7 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
   if(old.exists())return {applied:true};if(!event.exists())fail('이벤트가 없습니다.');
   const n=event.data();if(n.type==='choice'&&n.endsAt.toMillis()>Date.now())fail('선택 마감 후 결과가 공개되고 적용됩니다.');if(!n.targets.includes(cid))fail('대상 기업이 아닙니다.');
   const selected=n.type==='choice'?await t.get(doc(db,'companyChoices',cid,'items',eid)):null;
+  if(n.type==='choice'&&(!selected.exists()||selected.data().option!==option))fail('저장된 선택지와 일치하지 않습니다.');
   const outcome=await t.get(doc(db,'eventOutcomes',eid,'options',String(option)));const effect=outcome.data()?.effect;if(!effect)fail('이벤트 결과가 없습니다.');
   if(NEW_EFFECTS.includes(effect.kind)&&!operator)return {queued:true};
   const [config,book]=NEW_EFFECTS.includes(effect.kind)?await Promise.all([t.get(doc(db,'economyConfig','main')),t.get(doc(db,'sparkBooks',cid))]):[null,null];
@@ -70,13 +72,27 @@ export async function applyRandomEvent(db,eid){
  return {applied,failed};
 }
 
+// Only administrators/the trusted job may persist a default after the deadline.
+// Existing selections win transaction conflicts; retries reuse the stored choice.
+export async function ensureDefaultChoice(db,cid,eid){
+ return runTransaction(db,async t=>{
+  const ref=doc(db,'companyChoices',cid,'items',eid),old=await t.get(ref);
+  if(old.exists())return old.data();
+  const event=(await t.get(doc(db,'events',eid))).data();
+  if(event?.type!=='choice'||!event.targets.includes(cid))fail('대상 선택형 이벤트가 아닙니다.');
+  if(!Number.isInteger(event.defaultOption))return null; // Preserve historical events without a default.
+  if(event.defaultOption<0||event.defaultOption>2)fail('기본 선택지 설정을 확인하세요.');
+  if(event.endsAt.toMillis()>Date.now())fail('선택 마감 후 처리할 수 있습니다.');
+  const choice={option:event.defaultOption,automatic:true,chosenAt:serverTimestamp()};t.set(ref,choice);return choice;
+ });
+}
 // Apply due selections before manual settlement as well as the scheduled job.
-export async function applyDueCompanyChoices(db,cid){let cursor=null;for(;;){const page=await getDocs(query(collection(db,'events'),orderBy('__name__'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const e of page.docs){const n=e.data();if(n.type!=='choice'||!n.targets.includes(cid)||n.endsAt.toMillis()>Date.now())continue;const selected=await getDoc(doc(db,'companyChoices',cid,'items',e.id));if(selected.exists())await applyEvent(db,cid,e.id,selected.data().option);}if(page.size<100)break;cursor=page.docs.at(-1);}}
+export async function applyDueCompanyChoices(db,cid){let cursor=null;for(;;){const page=await getDocs(query(collection(db,'events'),orderBy('__name__'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const e of page.docs){const n=e.data();if(n.type!=='choice'||!n.targets.includes(cid)||n.endsAt.toMillis()>Date.now())continue;const selected=await ensureDefaultChoice(db,cid,e.id);if(selected)await applyEvent(db,cid,e.id,selected.option);}if(page.size<100)break;cursor=page.docs.at(-1);}}
 export async function closeChoiceEvent(db,eid){
  const event=await getDoc(doc(db,'events',eid)),n=event.data();
  if(n?.type!=='choice'||n.endsAt.toMillis()>Date.now())fail('선택 마감 후 처리할 수 있습니다.');
  let applied=0;const failed=[];
- for(const cid of n.targets){try{const c=await getDoc(doc(db,'companyChoices',cid,'items',eid));if(c.exists()){await applyEvent(db,cid,eid,c.data().option);applied++;}}catch{failed.push(cid);}}
+ for(const cid of n.targets){try{const c=await ensureDefaultChoice(db,cid,eid);if(c){if(c.automatic)await initializeOperations(db,cid);await applyEvent(db,cid,eid,c.option);applied++;}}catch{failed.push(cid);}}
  try{await publishEventNews(db,eid);}catch(error){return {applied,failed,newsPending:true,newsError:error.message};}
  return {applied,failed};
 }

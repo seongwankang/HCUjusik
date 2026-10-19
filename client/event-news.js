@@ -17,7 +17,7 @@ export function eventNewsSummary(event,companies,choices,receipts,outcomes){
   const name=companies[id]?.name||id,option=event.type==='choice'?choices[id]?.option:0;
   if(!Number.isInteger(option)||!groups[option]){unselected.push(name);continue;}
   const receipt=receipts[id],result=receipt?.result;
-  groups[option].companies.push({companyId:id,name,status:receipt?'applied':'pending',result:Number.isSafeInteger(result?.amount)?{amount:result.amount}:Number.isSafeInteger(result?.count)?{count:result.count}:null});
+  groups[option].companies.push({companyId:id,name,...(choices[id]?.automatic?{automatic:true}:{}),status:receipt?'applied':'pending',result:Number.isSafeInteger(result?.amount)?{amount:result.amount}:Number.isSafeInteger(result?.count)?{count:result.count}:null});
  }
  return {type:event.type,groups,unselected};
 }

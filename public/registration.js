@@ -1,5 +1,5 @@
 const school=status=>/^[^\s@]+@hcu\.hs\.kr$/i.test(status?.email||'');
-export function setupRegistration({root=document,api,login,signup,logout,verificationStatus,sendVerification,onSignedIn,schedule=setTimeout}){
+export function setupRegistration({root=document,api,login,signup,logout,verificationStatus,sendVerification,onSignedIn,onRefreshError=()=>{},schedule=setTimeout}){
  const $=s=>root.querySelector(s),dialog=$('#login-dialog');
  let signupMode=false,pending=false,busy=false,resendUntil=0;
  function mode(signingUp=false){
@@ -45,7 +45,9 @@ export function setupRegistration({root=document,api,login,signup,logout,verific
    data=await api('/api/me');
   }
   if(!data.user)throw new Error('같은 이메일과 비밀번호로 다시 로그인해 주세요.');
-  await onSignedIn(data.user);reset();dialog.close();
+  // Authentication is complete before market/news requests begin.
+  reset();dialog.close();
+  try{await onSignedIn(data.user);}catch(error){onRefreshError(error);}
  }
  async function resume(){
   const status=await verificationStatus(true);
@@ -65,7 +67,7 @@ export function setupRegistration({root=document,api,login,signup,logout,verific
    const status=await verificationStatus(true);
    if(!status){reset();$('#login-error').textContent='로그인이 만료됐습니다. 가입했던 이메일로 다시 로그인해 주세요.';return;}
    if(!status.verified){show(status,'아직 인증되지 않았습니다. 메일의 인증 링크를 눌러 주세요. 스팸메일함도 확인하세요.');return;}
-   show(status);await complete(status);
+   show(status);$('#verification-message').textContent='이메일 인증이 확인됐습니다. 가입과 로그인을 완료하는 중입니다…';await complete(status);
   }catch(error){$('#verification-message').textContent=error.message;}
   finally{busy=false;$('#verification-check').disabled=false;}
  }

@@ -89,7 +89,7 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired']) && request.resource.data.get('autoNews',false) is bool && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
+      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption']) && request.resource.data.get('autoNews',false) is bool && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -145,8 +145,9 @@ service cloud.firestore {
     }
     match /companyChoices/{cid}/items/{eid} {
       allow get: if manager(cid);
-      allow create: if manager(cid) && eventData(eid).type == 'choice' && cid in eventData(eid).targets && request.time < eventData(eid).endsAt &&
-        request.resource.data.keys().hasOnly(['option','chosenAt']) && request.resource.data.option is int && request.resource.data.option in [0,1,2] && request.resource.data.chosenAt == request.time && !operations(cid).locked;
+      allow create: if eventData(eid).type == 'choice' && cid in eventData(eid).targets && request.resource.data.option is int && request.resource.data.option in [0,1,2] && request.resource.data.chosenAt == request.time &&
+        ((manager(cid) && request.time < eventData(eid).endsAt && !operations(cid).locked && request.resource.data.keys().hasOnly(['option','chosenAt'])) ||
+         (admin() && request.time >= eventData(eid).endsAt && request.resource.data.keys().hasOnly(['option','chosenAt','automatic']) && request.resource.data.automatic == true && request.resource.data.option == eventData(eid).defaultOption));
       allow list,update,delete: if false;
     }
     function eventReceipt(cid,eid,d) {

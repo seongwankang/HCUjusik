@@ -3,7 +3,7 @@ import {test,before,after} from 'node:test';import assert from 'node:assert/stri
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
 import {doc,setDoc,getDoc,updateDoc,getDocs,collection,query,limit,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {initializeApp,deleteApp} from 'firebase-admin/app';import {getFirestore} from 'firebase-admin/firestore';
-import {publishEvent,applyRandomEvent,chooseEvent} from '../../client/events.js';import {eventNewsId,publishEventNews} from '../../client/event-news.js';import {initialOperations} from '../../client/economy.js';import {buildJob} from '../../scripts/build-jobs.mjs';
+import {publishEvent,applyRandomEvent,chooseEvent,ensureDefaultChoice,closeChoiceEvent} from '../../client/events.js';import {eventNewsId,publishEventNews} from '../../client/event-news.js';import {initialOperations} from '../../client/economy.js';import {buildJob} from '../../scripts/build-jobs.mjs';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let env,admin,president,other,student,app,trusted,job;const projectId='demo-event-news';
 const effect={kind:'revenue',percent:-20,settlements:2},body=(id,type='random')=>({id,type,title:'뉴스 '+id,content:'에뮬레이터 전용 본문',news:{title:'직접 작성한 기사 '+id,content:'관리자가 별도로 작성한 뉴스 본문'},companyId:'',deadline:new Date(Date.now()+60000).toISOString(),effect,options:[{label:'유지',effect},{label:'지원',effect:{kind:'cash',amount:1000000,settlements:0}},{label:'대기',effect:{kind:'none',settlements:0}}]});
@@ -45,4 +45,32 @@ test('drafts are immutable and never readable to participants; disabling linked 
  assert.equal((await getDoc(doc(student,'news',await eventNewsId('no-linked-news')))).exists(),false);
  await setDoc(doc(admin,'news/standalone'),{title:'별도 기사',content:'기존 뉴스 등록',category:'공지',companyId:'',companyName:'',publishedAt:serverTimestamp()});
  assert.equal((await getDoc(doc(student,'news/standalone'))).data().content,'기존 뉴스 등록');
+});
+
+
+test('default option applies only after deadline, preserves explicit choices and retries without duplicate cash or news',async()=>{
+ const eid='default-result';
+ await assert.rejects(publishEvent(admin,{...body('invalid-default','choice'),defaultOption:3}),/기본 선택지/);
+ await publishEvent(admin,{...body(eid,'choice'),defaultOption:2,options:[{label:'직접',effect:{kind:'cash',amount:100,settlements:0}},{label:'없음',effect:{kind:'none',settlements:0}},{label:'기본',effect:{kind:'cash',amount:300,settlements:0}}]});
+ await chooseEvent(president,'one',eid,0);
+ await assert.rejects(ensureDefaultChoice(admin,'two',eid),/마감/);
+ const deadline=Timestamp.fromMillis(Date.now()-1000);
+ await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await updateDoc(doc(db,'events',eid),{endsAt:deadline});await updateDoc(doc(db,'eventQueue',eid),{endsAt:deadline});await updateDoc(doc(db,'companyOperations/two'),{locked:true});});
+ const choiceRef=doc(admin,'companyChoices/two/items',eid);
+ await assertFails(setDoc(doc(other,'companyChoices/two/items',eid),{option:2,automatic:true,chosenAt:serverTimestamp()}));
+ await assertFails(setDoc(choiceRef,{option:1,automatic:true,chosenAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(admin,'events',eid),{defaultOption:0}));
+ const before=Object.fromEntries(await Promise.all(['one','two','three'].map(async cid=>[cid,(await getDoc(doc(admin,'companyOperations',cid))).data().cash])));
+ const first=await closeChoiceEvent(admin,eid);assert.deepEqual(first.failed,['two']);
+ const saved=(await getDoc(choiceRef)).data();assert.equal(saved.option,2);assert.equal(saved.automatic,true);
+ assert.equal((await getDoc(doc(admin,'companyChoices/one/items',eid))).data().option,0);
+ await assertFails(updateDoc(choiceRef,{option:0}));
+ await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'companyOperations/two'),{locked:false}));
+ const run=await job.runDueChoiceEvents(trusted);assert.equal(run.failed,0);
+ const summary=(await getDoc(doc(student,'news',await eventNewsId(eid)))).data().eventSummary;
+ assert.deepEqual(summary.unselected,[]);assert.equal(summary.groups[2].companies.length,2);assert.equal(summary.groups[2].companies.every(c=>c.automatic&&c.status==='applied'),true);
+ for(const [cid,amount]of [['one',100],['two',300],['three',300]])assert.equal((await getDoc(doc(admin,'companyOperations',cid))).data().cash,before[cid]+amount);
+ await closeChoiceEvent(admin,eid);await job.runDueChoiceEvents(trusted);
+ assert.equal((await getDoc(choiceRef)).data().chosenAt.toMillis(),saved.chosenAt.toMillis());
+ assert.equal((await getDoc(doc(admin,'companyOperations/two'))).data().cash,before.two+300);
 });

@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {setupRegistration} from '../public/registration.js';
 
-function fixture({status=null,profile=false,meError=null,mailError=false,duplicate=false}={}){
- const elements=new Map(),timers=[],calls={mail:0,register:0,login:0,signup:0,logout:0,signedIn:0};
+function fixture({status=null,profile=false,meError=null,mailError=false,duplicate=false,afterSignIn=async()=>{}}={}){
+ const elements=new Map(),timers=[],calls={mail:0,register:0,login:0,signup:0,logout:0,signedIn:0,refreshErrors:0};
  function el(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',hidden:false,disabled:false,open:false,handlers:{},addEventListener(e,f){this.handlers[e]=f;},showModal(){this.open=true;},close(){this.open=false;}});return elements.get(id);}
  const state={status,profile,meError,mailError,duplicate};
  const flow=setupRegistration({root:{querySelector:el},schedule:fn=>timers.push(fn),
@@ -18,7 +18,7 @@ function fixture({status=null,profile=false,meError=null,mailError=false,duplica
    if(!state.status?.verified)throw Error('이메일 인증을 완료하세요.');
    if(!state.profile)throw Object.assign(Error('가입 마무리'),{code:'registration-required'});
    return {user:{id:'student',displayName:'학생',role:'student'}};
-  },onSignedIn:async()=>{calls.signedIn++;},
+  },onSignedIn:async()=>{calls.signedIn++;await afterSignIn();},onRefreshError:()=>{calls.refreshErrors++;},
  });
  return {flow,el,state,calls,timers,click:async id=>el(id).handlers.click(),submit:async()=>el('#login-form').handlers.submit({preventDefault(){}})};
 }
@@ -62,4 +62,20 @@ test('check works after external email verification and expired sessions return 
  const f=fixture({status:{email:'student@hcu.hs.kr',verified:false,displayName:'학생'}});await f.flow.resume();await f.click('#verification-check');assert.equal(f.calls.register,0);
  f.state.status.verified=true;await f.click('#verification-check');assert.equal(f.calls.register,1);assert.equal(f.calls.signedIn,1);
  const expired=fixture({status:{email:'student@hcu.hs.kr',verified:false}});await expired.flow.resume();expired.state.status=null;await expired.click('#verification-check');assert.equal(expired.el('#verification-panel').hidden,true);assert.match(expired.el('#login-error').textContent,/ログイン|로그인/);
+});
+
+
+test('verification dialog closes immediately after profile success while dashboard refresh remains pending',async()=>{
+ let release;const refresh=new Promise(resolve=>{release=resolve;});
+ const f=fixture({status:{email:'student@hcu.hs.kr',verified:false,displayName:'학생'},afterSignIn:()=>refresh});
+ await f.flow.resume();assert.equal(f.el('#login-dialog').open,true);f.state.status.verified=true;
+ const checking=f.click('#verification-check');
+ for(let i=0;i<20&&f.calls.signedIn===0;i++)await Promise.resolve();
+ assert.equal(f.calls.signedIn,1);assert.equal(f.el('#login-dialog').open,false);assert.equal(f.el('#verification-panel').hidden,true);
+ release();await checking;assert.equal(f.calls.register,1);
+});
+
+test('a post-login refresh failure does not reopen verification or register twice',async()=>{
+ const f=fixture({status:{email:'student@hcu.hs.kr',verified:true,displayName:'학생'},afterSignIn:async()=>{throw Error('market unavailable');}});
+ await f.flow.open();assert.equal(f.el('#login-dialog').open,false);assert.equal(f.el('#verification-panel').hidden,true);assert.equal(f.calls.register,1);assert.equal(f.calls.signedIn,1);assert.equal(f.calls.refreshErrors,1);assert.equal(f.calls.logout,0);
 });
