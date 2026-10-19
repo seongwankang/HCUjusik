@@ -118,14 +118,14 @@ test('ordinary student uses the same direct Firebase trade API without backend c
  const {createClientApi}=await import('../../client/data.js');
  const api=createClientApi({db:a,getUser:async()=>({uid:'a',getIdTokenResult:async()=>({claims})})});
  const view=await api('/api/exchange?companyId=test-b');assert.equal(view.mode,'spark-limit-v1');
- await assert.rejects(api('/api/limit-order',{method:'POST',body:JSON.stringify(order('invalid-tick-api',{companyId:'test-b',price:9999}))}),/10원 단위/);
+ await assert.rejects(api('/api/limit-order',{method:'POST',body:JSON.stringify(order('invalid-tick-api',{companyId:'test-b',price:9999}))}),/100원 단위/);
  await initializeSpark(c,'c','test-b');const bookRef=doc(c,'sparkBooks/test-b'),book=(await getDoc(bookRef)).data(),seq=book.version+1,id='invalid-tick-raw';
  const entry={uid:'c',id,side:'buy',price:9999,quantity:1,remaining:1,sequence:seq},raw=writeBatch(c);
  raw.update(bookRef,{orders:[...book.orders,entry],version:seq,lastAction:{kind:'place',actor:'c',entry},updatedAt:serverTimestamp()});
  raw.update(doc(c,'sparkAccounts/c'),{reservedCash:increment(9999),version:increment(1),lastMarket:'test-b'});
  raw.set(doc(c,'sparkAccounts/c/orders',id),{companyId:'test-b',orderId:id,uid:'c',side:'buy',price:9999,quantity:1,sequence:seq,remaining:1,filled:0,cancelled:0,status:'open',createdAt:serverTimestamp(),marketVersion:seq});
  await assertFails(raw.commit());
- const placed=await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('student-api-order',{companyId:'test-b',price:9990}))});
+ const placed=await api('/api/limit-order',{method:'POST',body:JSON.stringify(order('student-api-order',{companyId:'test-b',price:9900}))});
  assert.equal(placed.order.status,'open');
  await api('/api/cancel-order',{method:'POST',body:JSON.stringify({companyId:'test-b',orderId:'student-api-order'})});
  assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/student-api-order'))).data().status,'cancelled');
@@ -208,9 +208,9 @@ test('two ordinary accounts match in both directions with an initialized operati
 
 test('initialized company with four entries can settle as an ordinary counterparty',async()=>{
  const cid='two-account-company';
- await placeSpark(a,'a',{companyId:cid,orderId:'ops-depth-ask-one',side:'sell',price:13010,quantity:1});
+ await placeSpark(a,'a',{companyId:cid,orderId:'ops-depth-ask-one',side:'sell',price:13100,quantity:1});
  await placeSpark(a,'a',{companyId:cid,orderId:'ops-depth-ask-two',side:'sell',price:14000,quantity:1});
- await placeSpark(b,'b',{companyId:cid,orderId:'ops-depth-take-ask',side:'buy',price:13010,quantity:1});
+ await placeSpark(b,'b',{companyId:cid,orderId:'ops-depth-take-ask',side:'buy',price:13100,quantity:1});
  assert.equal((await getDoc(doc(a,'sparkBooks',cid))).data().orders.length,4);
  assert.equal(await matchSpark(b,'b',cid),true);
 });
@@ -220,7 +220,7 @@ test('more than four resting orders accept both crossing and non-crossing orders
  await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await setDoc(doc(db,'companies',cid),{status:'listed',referencePrice:10000,issuedShares:10});await setDoc(doc(db,'companyOperations',cid),{locked:false});});
  await initializeSpark(a,'a',cid);await initializeSpark(b,'b',cid);
  await placeSpark(a,'a',{companyId:cid,orderId:'slot-issuance-buy',side:'buy',price:10000,quantity:10});await matchSpark(a,'a',cid);
- for(let i=0;i<4;i++)await placeSpark(a,'a',{companyId:cid,orderId:'slot-sell-'+i,side:'sell',price:11000+i*10,quantity:1});
+ for(let i=0;i<4;i++)await placeSpark(a,'a',{companyId:cid,orderId:'slot-sell-'+i,side:'sell',price:11000+i*100,quantity:1});
  await placeSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing',side:'buy',price:10000,quantity:1});assert.equal((await getDoc(doc(b,'sparkBooks',cid))).data().orders.length,5);await cancelSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing'});
  const rawPlace=async(id,price)=>{
   const ref=doc(b,'sparkBooks',cid),old=(await getDoc(ref)).data(),v=old.version+1;
@@ -239,7 +239,7 @@ test('more than four resting orders accept both crossing and non-crossing orders
  assert.equal((await getDoc(doc(b,'sparkAccounts/b/orders/slot-crossing-buy'))).data().filled,1);
  // Mirror case: four bids must also accept a crossing seller.
  let book=(await getDoc(doc(admin,'sparkBooks',cid))).data();for(const o of book.orders)await cancelSpark(admin,'operator',{companyId:cid,ownerUid:o.uid,orderId:o.id});
- for(let i=0;i<4;i++)await placeSpark(b,'b',{companyId:cid,orderId:'slot-bid-'+i,side:'buy',price:9000+i*10,quantity:1});
+ for(let i=0;i<4;i++)await placeSpark(b,'b',{companyId:cid,orderId:'slot-bid-'+i,side:'buy',price:9000+i*100,quantity:1});
  await placeSpark(a,'a',{companyId:cid,orderId:'slot-crossing-sell',side:'sell',price:9000,quantity:1});
  assert.equal(await matchSpark(a,'a',cid),true);
  assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/slot-crossing-sell'))).data().filled,1);
