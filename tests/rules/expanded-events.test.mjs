@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
 import {doc,getDoc,setDoc,updateDoc,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {publishEvent,applyEvent,applyRandomEvent,chooseEvent,closeChoiceEvent} from '../../client/events.js';
-import {initialOperations,invest,operationsView,beginDay,koreaDay} from '../../client/economy.js';
+import {initialOperations,invest,operationsView,beginDay,koreaDay,settleDay} from '../../client/economy.js';
 import {validateEffect,effectiveDividendBps} from '../../client/event-model.js';
 import {createClientApi} from '../../client/data.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
@@ -21,24 +21,27 @@ before(async()=>{
  admin=env.authenticatedContext('admin',claims).firestore();president=env.authenticatedContext('president',claims).firestore();student=env.authenticatedContext('student',claims).firestore();await reset();
 });
 after(async()=>env?.cleanup());
-test('new money effects are operator-only, atomic, idempotent and record actual clamped losses',async()=>{
+test('new money effects are operator-only, atomic, idempotent and record full losses including company debt',async()=>{
  await publish('support',{kind:'cash',amount:1000000});
  await assertFails(applyEvent(president,'one','support'));await assertFails(applyEvent(student,'one','support'));
  await applyRandomEvent(admin,'support');await applyRandomEvent(admin,'support');assert.equal((await op()).cash,11000000);
- await publish('loss',{kind:'cash',amount:-100000000});await applyRandomEvent(admin,'loss');assert.equal((await op()).cash,0);
- const receipt=(await getDoc(doc(student,'companyEffects/one/items/loss'))).data();assert.equal(receipt.result.amount,-11000000);
- const before=(await op()).receivedIssuerCash;await applyRandomEvent(admin,'loss');assert.equal((await op()).receivedIssuerCash,before);
+ await publish('loss',{kind:'cash',amount:-100000000});await applyRandomEvent(admin,'loss');assert.equal((await op()).cash,-89000000);
+ await assert.rejects(invest(president,'one','factory'),/자금/);
+ await assertFails(updateDoc(doc(president,'companyOperations/one'),{cash:-1}));
+ const receipt=(await getDoc(doc(student,'companyEffects/one/items/loss'))).data();assert.equal(receipt.result.amount,-100000000);
+ const before=(await op()).receivedIssuerCash;await applyRandomEvent(admin,'loss');assert.equal((await op()).receivedIssuerCash,before);assert.equal((await op()).cash,-89000000);
+ await publish('debt-support',{kind:'cash',amount:1000000});await applyRandomEvent(admin,'debt-support');assert.equal((await op()).cash,-88000000);
 });
 test('free recruitment, departure and equipment grants honor caps and store real deltas',async()=>{
  await reset();await publish('recruit',{kind:'workforce',count:1000});await applyRandomEvent(admin,'recruit');assert.equal((await op()).employees,10);assert.equal((await op()).staffRevenue,200000);
  assert.equal((await getDoc(doc(admin,'companyEffects/one/items/recruit'))).data().result.count,10);
  await publish('depart',{kind:'workforce',count:-1000});await applyRandomEvent(admin,'depart');assert.equal((await op()).employees,0);assert.equal((await op()).staffRevenue,0);
- await publish('grant',{kind:'grant',asset:'factory',count:2});await applyRandomEvent(admin,'grant');await applyRandomEvent(admin,'grant');assert.equal((await op()).factory,2);assert.equal((await op()).revenue,800000);assert.equal((await op()).cash,0);
+ await publish('grant',{kind:'grant',asset:'factory',count:2});await applyRandomEvent(admin,'grant');await applyRandomEvent(admin,'grant');assert.equal((await op()).factory,2);assert.equal((await op()).revenue,880000);assert.equal((await op()).cash,0);
  await publish('rd',{kind:'grant',asset:'research',count:100});await applyRandomEvent(admin,'rd');assert.equal((await op()).research,6);assert.equal((await op()).activeResearchBps,3000);
 });
 test('discounted president purchases use exact rules-verified price and cannot edit event terms',async()=>{
  await reset();await publish('discount',{kind:'cost',asset:'factory',percent:-20,hours:24});await applyRandomEvent(admin,'discount');
- await invest(president,'one','factory');let o=await op();assert.equal(o.cash,8400000);assert.equal(o.pendingRevenue,400000);
+ await invest(president,'one','factory');let o=await op();assert.equal(o.cash,8400000);assert.equal(o.pendingRevenue,440000);
  await assertFails(updateDoc(doc(president,'companyOperations/one'),{costEvents:{}}));
  await assertFails(updateDoc(doc(president,'companyOperations/one'),{cash:o.cash+1}));
  const term={...o.costEvents.factory,startsAt:Date.now()-3600001,endsAt:Date.now()-1};await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations/one'),{costEvents:{factory:term}}));
@@ -66,4 +69,13 @@ test('random new effect initializes missing company operations and malformed out
  await publishEvent(admin,{id:'fresh-support',type:'random',companyId:'fresh',title:'지원',content:'초기 지원',deadline:new Date(Date.now()+86400000).toISOString(),effect:{kind:'cash',amount:1000000}});
  const r=await applyRandomEvent(admin,'fresh-support');assert.deepEqual(r.failed,[]);assert.equal((await getDoc(doc(admin,'companyOperations/fresh'))).data().cash,11000000);
  await assert.rejects(publish('bad',{kind:'cost',asset:'all',percent:-100,hours:1}));
+});
+
+
+test('negative company cash survives ordinary settlement; assets and student cash remain nonnegative',async()=>{
+ const cid='debt-settlement';await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'companies',cid),{name:cid,status:'listed'});await setDoc(doc(db,'sparkBooks',cid),{issuerCash:0,issuedShares:1000,treasuryShares:1000});await setDoc(doc(db,'companyOperations',cid),{...initialOperations(),cash:-1000000,factory:1,revenue:100000,production:{factory:100000,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}});});
+ await settleDay(admin,cid);const o=(await getDoc(doc(admin,'companyOperations',cid))).data();assert.equal(o.cash,-800000);assert.equal(o.locked,false);
+ await assertFails(updateDoc(doc(admin,'companyOperations',cid),{factory:-1}));
+ await assertFails(updateDoc(doc(admin,'companyOperations',cid),{employees:-1}));
+ await assertFails(setDoc(doc(student,'sparkAccounts/student'),{cash:-1,reservedCash:0,positions:{},reservedPositions:{},version:0,lastMarket:''}));
 });

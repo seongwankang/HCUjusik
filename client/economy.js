@@ -14,7 +14,7 @@ export function availableFunds(ops,book){return ops.cash+(book?.issuerCash||0)-o
 export function dayPlan(ops,book,day,records=[],now=Date.now()){
  if(ops.locked)fail('진행 중인 정산을 먼저 완료하세요.');if(day<=ops.lastSettledDay)fail('오늘 정산은 이미 완료했습니다.');
  const {base,revenue}=adjustedRevenue(ops,day,records,now),allocation=dividendAllocation(revenue,effectiveDividendBps(ops,now),book),{dividend}=allocation;
- const cash=availableFunds(ops,book)+revenue-dividend;if(!Number.isSafeInteger(cash)||cash>MAX)fail('회사 자금 한도를 초과합니다.');
+ const cash=availableFunds(ops,book)+revenue-dividend;if(!Number.isSafeInteger(cash)||Math.abs(cash)>MAX)fail('회사 자금 한도를 초과합니다.');
  return {base,revenue,...allocation,retained:revenue-dividend,cash,rateBps:effectiveDividendBps(ops,now)};
 }
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);

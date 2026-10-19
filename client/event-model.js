@@ -100,9 +100,9 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
  if(e.kind==='destroy')return destruction(o,e);
  if(e.kind==='cash'){
   const funds=o.cash+(book?.issuerCash||0)-o.receivedIssuerCash;
-  if(!Number.isSafeInteger(funds)||funds<0)fail('회사 자금과 최초 주식 판매 내역을 확인하세요.');
-  const cash=Math.max(0,funds+e.amount);
-  if(!Number.isSafeInteger(cash)||cash>1e12)fail('회사 자금 한도를 초과합니다.');
+  if(!Number.isSafeInteger(funds))fail('회사 자금과 최초 주식 판매 내역을 확인하세요.');
+  const cash=funds+e.amount;
+  if(!Number.isSafeInteger(cash)||Math.abs(cash)>1e12)fail('회사 자금 한도를 초과합니다.');
   return {cash,receivedIssuerCash:book?.issuerCash||0};
  }
  if(e.kind==='cost'||e.kind==='dividendCap'){
