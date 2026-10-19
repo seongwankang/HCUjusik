@@ -3,7 +3,8 @@ import {runDueChoiceEvents} from './choice-events.js';
 import {publishLeadership} from '../client/leadership.js';
 import {settleDay,koreaDay} from '../client/economy.js';
 import {publishCashRankings,allRows} from '../client/rankings.js';
-export const settlementDue=now=>now>=koreaDay(now)*86400000; // 09:00 KST = 00:00 UTC.
+import {settlementTime} from '../client/settlement-time.js';
+export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,mode='full'}={}){
  if(mode==='rankings-only'){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants};}
  if(mode!=='full')throw Error('Unknown economy job mode');

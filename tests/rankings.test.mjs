@@ -13,9 +13,9 @@ test('price ranks use actual fills, honest initial price fallback and exclude un
  const companies=[{id:'a',name:'가',ticker:'A',status:'listed',referencePrice:10000},{id:'b',name:'나',ticker:'B',status:'paused',referencePrice:10000},{id:'c',name:'다',status:'draft',referencePrice:99999}];
  const r=priceRankings(companies,[{id:'a',lastPrice:12000}]);assert.deepEqual(r.map(x=>[x.id,x.price,x.initial,x.rank]),[['a',12000,false,1],['b',10000,true,2]]);
 });
-test('daily settlement becomes due at exactly 09:00 Korean time',()=>{
- assert.equal(settlementDue(Date.parse('2026-10-16T23:59:59.999Z')),false);
- assert.equal(settlementDue(Date.parse('2026-10-17T00:00:00.000Z')),true);
+test('daily settlement becomes due at exactly 07:55 Korean time',()=>{
+ assert.equal(settlementDue(Date.parse('2026-10-16T22:54:59.999Z')),false);
+ assert.equal(settlementDue(Date.parse('2026-10-16T22:55:00.000Z')),true);
  assert.equal(settlementDue(Date.parse('2026-10-17T14:59:59Z')),true);
  assert.equal(settlementDue(Date.parse('2026-10-17T15:00:00Z')),false);
 });

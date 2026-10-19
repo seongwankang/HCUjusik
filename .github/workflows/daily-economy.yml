@@ -1,6 +1,7 @@
 name: Daily settlement and rankings
 on:
   schedule:
+    - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
