@@ -1,7 +1,7 @@
 import {immutableRows} from './immutable-reads.js';
 import {doc,getDoc,getDocs,collection,query,orderBy,limit,runTransaction,serverTimestamp} from 'firebase/firestore';
 import {investmentDay,koreaDay,settlementTime} from './settlement-time.js';
-import {DEFAULT_SPY_POLICY,effectiveSpyPolicy,spyTransfers,spyAgents,activeSpies,oldestActiveSpy,MAX_SPIES} from './spy-model.js';
+import {DEFAULT_SPY_POLICY,effectiveSpyPolicy,spyTransfers,spyAgents,activeSpies,activeSpyEntries,MAX_SPIES} from './spy-model.js';
 import {allRows} from './rankings.js';
 const id=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x);
 export async function spyView(db,cid,reads){
@@ -17,9 +17,9 @@ export async function hireSpy(db,cid,targetId,retry=0){
   attemptedVersion=r.data()?.version||0;const ops=o.data(),policy=effectiveSpyPolicy(p.data());
   if(!ops||!b.exists()||c.data()?.status!=='listed'||target.data()?.status!=='listed'||!targetOps.exists()||!targetBook.exists())throw Error('회사 계좌가 준비된 상장 기업만 고용·대상 지정이 가능합니다.');
   if(ops.locked||ops.pendingEvent)throw Error('정산·이벤트 처리가 끝난 뒤 고용하세요.');
-  if(activeSpies(old.data()).length>=MAX_SPIES)throw Error('산업스파이는 최대 1명까지 고용할 수 있습니다.');
+  if(activeSpies(old.data()).length>=MAX_SPIES)throw Error('산업스파이는 최대 2명까지 고용할 수 있습니다.');
   const agents=spyAgents(old.data()),slotIndex=Array.from({length:MAX_SPIES},(_,i)=>String(i)).find(i=>!agents[i]||agents[i].remaining===0);
-  if(slotIndex===undefined)throw Error('산업스파이는 최대 1명까지 고용할 수 있습니다.');
+  if(slotIndex===undefined)throw Error('산업스파이는 최대 2명까지 고용할 수 있습니다.');
   const cash=ops.cash+b.data().issuerCash-ops.receivedIssuerCash-policy.cost;
   if(cash<0)throw Error('회사 자금이 부족합니다.');
   const contract={companyId:cid,targetId,hireId,...policy,remaining:1,activeFromDay:investmentDay(ops),lastRoundDay:0,createdAt:serverTimestamp()};
@@ -36,7 +36,7 @@ export async function settleSpies(db,now=Date.now(),retry=0){
  const round=doc(db,'spyRounds','d'+day);if((await getDoc(round)).exists())return {status:'complete'};
  const version=(await getDoc(doc(db,'spyRegistry/main'))).data()?.version||0;
  const roster=await allRows(db,'companySpies');
- const contracts=roster.flatMap(s=>{const selected=oldestActiveSpy(s);return selected?[{...selected[1],slot:selected[0],bps:500}]:[];}).filter(s=>s.remaining>0&&s.activeFromDay<=day&&s.lastRoundDay<day);
+ const contracts=roster.flatMap(s=>activeSpyEntries(s).slice(0,MAX_SPIES).map(([slot,a])=>({...a,slot,bps:250}))).filter(s=>s.remaining>0&&s.activeFromDay<=day&&s.lastRoundDay<day);
  const owners=[...new Set(contracts.map(s=>s.companyId))];
  if(!contracts.length)return {status:'empty'};
  const ids=[...new Set(contracts.flatMap(s=>[s.companyId,s.targetId]))].sort();

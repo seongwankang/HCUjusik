@@ -1,6 +1,6 @@
 import {settleSpies} from '../client/spies.js';
 import {detectDailySpy} from './spy-detection.js';
-import {migrateSingleSpies} from './spy-policy-migration.js';
+import {migrateSpyPolicy} from './spy-policy-migration.js';
 import {runDueChoiceEvents} from './choice-events.js';
 import {publishLeadership} from '../client/leadership.js';
 import {settleDay,koreaDay} from '../client/economy.js';
@@ -9,9 +9,9 @@ import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full'}={}){
  if(mode==='rankings-only'){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants};}
- if(mode==='spies-policy-only'){const migration=await migrateSingleSpies(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
+ if(mode==='spies-policy-only'){const migration=await migrateSpyPolicy(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
  if(mode!=='full')throw Error('Unknown economy job mode');
- await migrateSingleSpies(db);
+ await migrateSpyPolicy(db);
  const choiceEvents=await runDueChoiceEvents(db,now);
  const day=koreaDay(now),companies=await allRows(db,'companies'),result={settled:0,resumed:0,skipped:0,failed:[...choiceEvents.blocked],choiceEvents:{processed:choiceEvents.processed,failed:choiceEvents.failed}};
  try{

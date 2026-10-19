@@ -1,5 +1,5 @@
 import {randomInt} from 'node:crypto';
-import {migrateSingleSpies} from './spy-policy-migration.js';
+import {migrateSpyPolicy} from './spy-policy-migration.js';
 import {FieldValue} from 'firebase-admin/firestore';
 import {koreaDay} from '../client/economy.js';
 import {settlementTime} from '../client/settlement-time.js';
@@ -11,7 +11,7 @@ const checkCash=value=>{if(!Number.isSafeInteger(value)||Math.abs(value)>1e12)th
 // IAM job only. No browser endpoint or client-selected random draw is exposed.
 export async function detectDailySpy(db,{now=Date.now(),pick=randomInt,blocked=new Set()}={}){
  const day=koreaDay(now);if(now<settlementTime(day))return {status:'not-due'};
- await migrateSingleSpies(db);
+ await migrateSpyPolicy(db);
  const ref=db.doc('spyRounds/preflight-d'+day);
  return db.runTransaction(async t=>{
   const previous=await t.get(ref);if(previous.exists)return {...previous.data(),repeated:true};
