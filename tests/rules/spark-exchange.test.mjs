@@ -1,3 +1,4 @@
+import {removeIndexes} from '../../client/order-index.js';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -54,7 +55,7 @@ async function forgeFill(db,buy,sell,{price=sell.price,quantity=Math.min(buy.rem
  const ref=doc(db,'sparkBooks/test-a'),book=(await getDoc(ref)).data(),version=book.version+1,id=crypto.randomUUID();
  const orders=book.orders.filter(o=>!(o.uid===buy.uid&&o.id===buy.id)&&!(o.uid===sell.uid&&o.id===sell.id));
  for(const o of [buy,sell])if(o.remaining>quantity)orders.push({...o,remaining:o.remaining-quantity});
- const batch=writeBatch(db);if(!skipPublic)batch.set(doc(db,'sparkBooks/test-a/trades',id),{companyId:'test-a',price,quantity,marketVersion:version,createdAt:serverTimestamp(),...publicPatch});batch.update(ref,{orders,version,updatedAt:serverTimestamp(),lastPrice:price,lastAction:{kind:'fill',actor:'c',buy,sell,fillId:id}});
+ const batch=writeBatch(db);if(!skipPublic)batch.set(doc(db,'sparkBooks/test-a/trades',id),{companyId:'test-a',price,quantity,marketVersion:version,createdAt:serverTimestamp(),...publicPatch});batch.update(ref,{...removeIndexes(book,[buy,sell].filter(o=>o.id!=='issuer'&&o.remaining===quantity)),orders,version,updatedAt:serverTimestamp(),lastPrice:price,lastAction:{kind:'fill',actor:'c',buy,sell,fillId:id}});
  batch.update(doc(db,'sparkAccounts',buy.uid),{cash:increment(-price*quantity+bonus),reservedCash:increment(-buy.price*quantity),['positions.test-a']:increment(quantity),version:increment(1),lastMarket:'test-a'});
  if(!skipSeller)batch.update(doc(db,'sparkAccounts',sell.uid),{cash:increment(price*quantity),['positions.test-a']:increment(-quantity),['reservedPositions.test-a']:increment(-quantity),version:increment(1),lastMarket:'test-a'});
  for(const [o,side]of [[buy,'buy'],[sell,'sell']]){
@@ -214,13 +215,13 @@ test('initialized company with four entries can settle as an ordinary counterpar
  assert.equal(await matchSpark(b,'b',cid),true);
 });
 
-test('full resting book accepts a crossing fifth order but rejects another non-crossing order',async()=>{
+test('more than four resting orders accept both crossing and non-crossing orders',async()=>{
  const cid='full-taker-slot';
  await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await setDoc(doc(db,'companies',cid),{status:'listed',referencePrice:10000,issuedShares:10});await setDoc(doc(db,'companyOperations',cid),{locked:false});});
  await initializeSpark(a,'a',cid);await initializeSpark(b,'b',cid);
  await placeSpark(a,'a',{companyId:cid,orderId:'slot-issuance-buy',side:'buy',price:10000,quantity:10});await matchSpark(a,'a',cid);
  for(let i=0;i<4;i++)await placeSpark(a,'a',{companyId:cid,orderId:'slot-sell-'+i,side:'sell',price:11000+i*10,quantity:1});
- await assert.rejects(placeSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing',side:'buy',price:10000,quantity:1}),/가득/);
+ await placeSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing',side:'buy',price:10000,quantity:1});assert.equal((await getDoc(doc(b,'sparkBooks',cid))).data().orders.length,5);await cancelSpark(b,'b',{companyId:cid,orderId:'slot-non-crossing'});
  const rawPlace=async(id,price)=>{
   const ref=doc(b,'sparkBooks',cid),old=(await getDoc(ref)).data(),v=old.version+1;
   const entry={uid:'b',id,side:'buy',price,quantity:1,remaining:1,sequence:v},batch=writeBatch(b);
@@ -229,7 +230,7 @@ test('full resting book accepts a crossing fifth order but rejects another non-c
   batch.set(doc(b,'sparkAccounts/b/orders',id),{companyId:cid,orderId:id,uid:'b',side:'buy',price,quantity:1,sequence:v,remaining:1,filled:0,cancelled:0,status:'open',createdAt:serverTimestamp(),marketVersion:v});
   return batch.commit();
  };
- // The additional slot cannot become a fifth non-executable resting order.
+ // Raw writes without their priority-index update are rejected at any depth.
  await assertFails(rawPlace('slot-forged-resting',10000));
  await placeSpark(b,'b',{companyId:cid,orderId:'slot-crossing-buy',side:'buy',price:11000,quantity:1});
  assert.equal((await getDoc(doc(b,'sparkBooks',cid))).data().orders.length,5);

@@ -214,7 +214,7 @@ service cloud.firestore {
     }
     // Spark-only two-symbol limit exchange. Books contain pseudonymous order
     // entries, not names/email/balances. Private accounts/orders/fills stay owner-only.
-    // Four resting orders plus one executable taker; validate all five at settlement.
+    // Sorted immutable indexes prove price/time priority without a fixed order-count cap.
     function sparkId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$'); }
     function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
     function number(v,n) { return v is int && v >= 0 && v <= n; }
@@ -236,27 +236,54 @@ service cloud.firestore {
       let d=getAfter(/databases/$(database)/documents/sparkAccounts/$(e.uid)/orders/$(e.id)).data;
       return d.marketVersion == v && d.companyId == cid;
     }
-    function noBetter(orders,side,score,i) {
-      return orders.size() <= i || orders[i].side != side ||
-        (side == 'buy' ? -orders[i].price : orders[i].price)*1000000001+orders[i].sequence >= score;
+    function priorityEntry(e) { return {'uid':e.uid,'id':e.id,'side':e.side,'price':e.price,'quantity':e.quantity,'sequence':e.sequence}; }
+    function ordered(a,b,side) { return side == 'initial' ? a.sequence < b.sequence : a.price == b.price ? a.sequence < b.sequence : side == 'buy' ? a.price > b.price : a.price < b.price; }
+    function inserted(old,next,prefix,suffix,e,side) {
+      return old == prefix.concat(suffix) && next == prefix.concat([e]).concat(suffix) &&
+        (prefix.size() == 0 || ordered(prefix[prefix.size()-1],e,side)) && (suffix.size() == 0 || ordered(e,suffix[0],side));
     }
-    function best(orders,c) {
-      let score=(c.side == 'buy' ? -c.price : c.price)*1000000001+c.sequence;
-      return noBetter(orders,c.side,score,0) && noBetter(orders,c.side,score,1) && noBetter(orders,c.side,score,2) && noBetter(orders,c.side,score,3) && noBetter(orders,c.side,score,4);
+    function insertIndex(d,o,entry,a) {
+      let e=priorityEntry(entry);
+      let buy=e.side == 'buy';
+      let own=buy ? 'ownerBids' : 'ownerAsks';
+      let opposite=buy ? 'ownerAsks' : 'ownerBids';
+      let side=buy ? 'bidIndex' : 'askIndex';
+      let other=buy ? 'askIndex' : 'bidIndex';
+      return d[other] == o[other] && d[opposite] == o[opposite] && d[own].diff(o[own]).affectedKeys().hasOnly([e.uid]) &&
+        inserted(o[side],d[side],a.prefix,a.suffix,e,e.side) && inserted(o[own].get(e.uid,[]),d[own][e.uid],a.ownPrefix,a.ownSuffix,e,e.side) &&
+        (buy && e.price >= o.initialPrice ? inserted(o.initialIndex,d.initialIndex,a.initialPrefix,a.initialSuffix,e,'initial') : d.initialIndex == o.initialIndex);
     }
-    function notSelf(orders,e,i) {
-      return orders.size() <= i || orders[i].uid != e.uid || orders[i].side == e.side ||
-        (e.side == 'buy' ? e.price < orders[i].price : e.price > orders[i].price);
+    function noSelfCross(o,e) {
+      let opposite=e.side == 'buy' ? o.ownerAsks.get(e.uid,[]) : o.ownerBids.get(e.uid,[]);
+      return opposite.size() == 0 || (e.side == 'buy' ? e.price < opposite[0].price : e.price > opposite[0].price);
     }
-    function noEarlierInitial(orders,b,price,i) {
-      return orders.size() <= i || orders[i].side != 'buy' || orders[i].price < price || orders[i].sequence >= b.sequence;
+    function removedIndex(d,o,entry,remove) {
+      let e=priorityEntry(entry);
+      let buy=e.side == 'buy';
+      let key=buy ? 'bidIndex' : 'askIndex';
+      let own=buy ? 'ownerBids' : 'ownerAsks';
+      return d[key] == (remove ? o[key].removeAll([e]) : o[key]) &&
+        d[own].get(e.uid,[]) == (remove ? o[own].get(e.uid,[]).removeAll([e]) : o[own].get(e.uid,[]));
     }
-    function firstInitial(orders,b,price) {
-      return noEarlierInitial(orders,b,price,0) && noEarlierInitial(orders,b,price,1) &&
-        noEarlierInitial(orders,b,price,2) && noEarlierInitial(orders,b,price,3) && noEarlierInitial(orders,b,price,4);
+    function cancelIndexes(d,o,e) {
+      let buy=e.side == 'buy';
+      return removedIndex(d,o,e,true) && d[buy ? 'askIndex' : 'bidIndex'] == o[buy ? 'askIndex' : 'bidIndex'] &&
+        d[buy ? 'ownerAsks' : 'ownerBids'] == o[buy ? 'ownerAsks' : 'ownerBids'] && d[buy ? 'ownerBids' : 'ownerAsks'].diff(o[buy ? 'ownerBids' : 'ownerAsks']).affectedKeys().hasOnly([e.uid]) &&
+        d.initialIndex == o.initialIndex.removeAll([priorityEntry(e)]);
     }
-    function noSelfCross(orders,e) {
-      return notSelf(orders,e,0) && notSelf(orders,e,1) && notSelf(orders,e,2) && notSelf(orders,e,3);
+    function fillIndexes(d,o,b,s,q) {
+      let gone=b.remaining == q;
+      let issuer=s.id == 'issuer';
+      return removedIndex(d,o,b,gone) && d.ownerBids.diff(o.ownerBids).affectedKeys().hasOnly([b.uid]) &&
+        d.initialIndex == (gone ? o.initialIndex.removeAll([priorityEntry(b)]) : o.initialIndex) &&
+        (issuer ? d.askIndex == o.askIndex && d.ownerAsks == o.ownerAsks : removedIndex(d,o,s,s.remaining == q) && d.ownerAsks.diff(o.ownerAsks).affectedKeys().hasOnly([s.uid]));
+    }
+    function migrateIndexes(d,o) {
+      let a=d.lastAction;
+      return d.diff(o).affectedKeys().hasOnly(['indexVersion','indexCursor','bidIndex','askIndex','initialIndex','ownerBids','ownerAsks','version','lastAction','updatedAt']) &&
+        (a.kind == 'indexStart' ? o.get('indexVersion',0) == 0 && a.keys().hasOnly(['kind','actor']) && d.indexVersion == (o.orders.size() == 0 ? 2 : 1) && d.indexCursor == 0 && d.bidIndex == [] && d.askIndex == [] && d.initialIndex == [] && d.ownerBids == {} && d.ownerAsks == {} :
+          o.indexVersion == 1 && o.indexCursor < o.orders.size() && a.entry == o.orders[o.indexCursor] && d.indexCursor == o.indexCursor+1 && d.indexVersion == (d.indexCursor == o.orders.size() ? 2 : 1) &&
+          a.keys().hasOnly(['kind','actor','entry','prefix','suffix','ownPrefix','ownSuffix','initialPrefix','initialSuffix']) && insertIndex(d,o,a.entry,a));
     }
     function entryValid(e,v) {
       return e.keys().hasOnly(['uid','id','side','price','quantity','remaining','sequence']) &&
@@ -267,25 +294,16 @@ service cloud.firestore {
     function unchangedTreasury(d,o) {
       return d.treasuryShares == o.treasuryShares && d.issuerCash == o.issuerCash && d.lastPrice == o.lastPrice;
     }
-    function crossesAt(orders,e,i) {
-      return orders.size() > i && orders[i].uid != e.uid && orders[i].side != e.side &&
-        (e.side == 'buy' ? e.price >= orders[i].price : e.price <= orders[i].price);
-    }
-    function takerSlot(o,e) {
-      return o.orders.size() == 4 &&
-        ((e.side == 'buy' && o.treasuryShares > 0 && e.price >= o.initialPrice) ||
-          crossesAt(o.orders,e,0) || crossesAt(o.orders,e,1) || crossesAt(o.orders,e,2) || crossesAt(o.orders,e,3));
-    }
     function placeBook(cid,d,o) {
       let e=d.lastAction.entry;
-      return d.lastAction.keys().hasOnly(['kind','actor','entry']) && entryValid(e,d.version) &&
-        (o.orders.size() < 4 || takerSlot(o,e)) && d.orders == o.orders.concat([e]) && noSelfCross(o.orders,e) &&
+      return d.lastAction.keys().hasOnly(['kind','actor','entry','prefix','suffix','ownPrefix','ownSuffix','initialPrefix','initialSuffix']) && entryValid(e,d.version) &&
+        d.orders == o.orders.concat([e]) && noSelfCross(o,e) && insertIndex(d,o,e,d.lastAction) &&
         unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
     }
     function cancelBook(cid,d,o) {
       let e=d.lastAction.entry;
       return d.lastAction.keys().hasOnly(['kind','actor','entry']) && o.orders.hasAny([e]) &&
-        (e.uid == request.auth.uid || admin()) && d.orders == o.orders.removeAll([e]) &&
+        (e.uid == request.auth.uid || admin()) && d.orders == o.orders.removeAll([e]) && cancelIndexes(d,o,e) &&
         unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
     }
     function fillQuantity(a) { return a.buy.remaining < a.sell.remaining ? a.buy.remaining : a.sell.remaining; }
@@ -306,7 +324,8 @@ service cloud.firestore {
       let left=o.orders.removeAll([b,s]).concat(remainder(b,q)).concat(issuer ? [] : remainder(s,q));
       return a.keys().hasOnly(['kind','actor','buy','sell','fillId']) && orderId(a.fillId) &&
         b.side == 'buy' && s.side == 'sell' && b.uid != s.uid && b.price >= s.price &&
-        o.orders.hasAny([b]) && (issuer ? firstInitial(o.orders,b,o.initialPrice) : best(o.orders,b)) && best(o.orders,s) &&
+        o.orders.hasAny([b]) && priorityEntry(b) == (issuer ? o.initialIndex[0] : o.bidIndex[0]) &&
+        (issuer ? (o.askIndex.size() == 0 || o.askIndex[0].price >= o.initialPrice) : priorityEntry(s) == o.askIndex[0]) && fillIndexes(d,o,b,s,q) &&
         (issuer ? (o.treasuryShares > 0 && s == issuerEntry(o)) :
           (o.orders.hasAny([s]) && (o.treasuryShares == 0 || s.price < o.initialPrice))) &&
         d.orders == left && d.treasuryShares == o.treasuryShares-(issuer ? q : 0) &&
@@ -325,17 +344,18 @@ service cloud.firestore {
         'initialPrice':get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice,
         'issuedShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
         'treasuryShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
-        'issuerCash':0,'lastPrice':0,'orders':[],'version':0,'lastAction':{'kind':'init','actor':request.auth.uid},'updatedAt':request.time} &&
+        'issuerCash':0,'lastPrice':0,'orders':[],'indexVersion':2,'indexCursor':0,'bidIndex':[],'askIndex':[],'initialIndex':[],'ownerBids':{},'ownerAsks':{},'version':0,'lastAction':{'kind':'init','actor':request.auth.uid},'updatedAt':request.time} &&
         get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
         number(request.resource.data.initialPrice,1000000) && request.resource.data.initialPrice > 0 &&
         number(request.resource.data.issuedShares,1000000) && request.resource.data.issuedShares > 0;
-      allow update: if sparkId(cid) && participant() && tradingUnlocked(cid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders','version','lastAction','updatedAt','treasuryShares','issuerCash','lastPrice']) &&
+      allow update: if sparkId(cid) && participant() && (request.resource.data.lastAction.kind in ['indexStart','index'] || tradingUnlocked(cid)) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders','version','lastAction','updatedAt','treasuryShares','issuerCash','lastPrice','indexVersion','indexCursor','bidIndex','askIndex','initialIndex','ownerBids','ownerAsks']) &&
         request.resource.data.version == resource.data.version+1 && request.resource.data.version <= 1000000000 &&
         request.resource.data.updatedAt == request.time && request.resource.data.lastAction.actor == request.auth.uid &&
+        (request.resource.data.lastAction.kind in ['indexStart','index'] ? migrateIndexes(request.resource.data,resource.data) : resource.data.get('indexVersion',0) == 2 && request.resource.data.indexVersion == 2 && request.resource.data.indexCursor == resource.data.indexCursor &&
         ((request.resource.data.lastAction.kind == 'place' && marketOpen() && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && placeBook(cid,request.resource.data,resource.data)) ||
          (request.resource.data.lastAction.kind == 'cancel' && cancelBook(cid,request.resource.data,resource.data)) ||
-         (request.resource.data.lastAction.kind == 'fill' && marketOpen() && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && fillBook(cid,request.resource.data,resource.data)));
+         (request.resource.data.lastAction.kind == 'fill' && marketOpen() && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' && fillBook(cid,request.resource.data,resource.data))));
       allow list,delete: if false;
     }
     function reserveChange(uid,cid,d,o,a) {
