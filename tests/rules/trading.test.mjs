@@ -49,9 +49,9 @@ test('two sessions cannot spend the same balance twice',async()=>{
  const claims={email:'b@hcu.hs.kr',email_verified:true};
  const left=env.authenticatedContext('b',claims).firestore(),right=env.authenticatedContext('b',claims).firestore();
  await testPortfolio(left,'b');
- const results=await Promise.allSettled([testOrder(left,'b',order('double-left',{quantity:60})),testOrder(right,'b',order('double-right',{quantity:60}))]);
+ const results=await Promise.allSettled([testOrder(left,'b',order('double-left',{quantity:120})),testOrder(right,'b',order('double-right',{quantity:120}))]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
- const a=await testPortfolio(left,'b');assert.equal(a.cash,400000);assert.equal(a.positions['test-a'],60);assert.equal(a.orders.length,1);
+ const a=await testPortfolio(left,'b');assert.equal(a.cash,800000);assert.equal(a.positions['test-a'],120);assert.equal(a.orders.length,1);
 });
 test('forged atomic batches cannot bypass price, balances, quantity, schema or timestamps',async()=>{
  const current=(await getDoc(doc(db,'tradeTests/a'))).data();
