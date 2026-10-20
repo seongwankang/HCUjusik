@@ -243,3 +243,5 @@ body .admin-student-email{overflow-wrap:anywhere;font-size:12px;color:#475569}bo
 }
 body .history-sentinel{padding:16px 0;text-align:center;color:#64748b;font-size:12px;list-style:none}
 body .history-sentinel button{min-height:44px;border:1px solid var(--edge);border-radius:8px;padding:8px 16px;background:white;color:#2563eb}
+
+#password-dialog{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;box-sizing:border-box}#password-dialog .modal{width:100%;box-sizing:border-box}#password-message{font-size:13px;line-height:1.6;overflow-wrap:anywhere}#password-change{white-space:nowrap;min-height:40px;font-size:12px}@media(max-width:700px){.topbar .top-right{flex-wrap:wrap;justify-content:flex-end}#password-change{padding:8px;font-size:11px}}

@@ -18,6 +18,8 @@ test('restoration finishes before private reads; reload retains login and logout
      export function getAuth(){f.currentUser=null;return {app:{},get currentUser(){return f.currentUser},authStateReady:()=>new Promise(resolve=>{f.restore=()=>{f.currentUser=f.saved;resolve()}})}}
      export async function setPersistence(auth,p){if(p.type!=='SESSION')throw Error('Wrong persistence')}
      export async function signInWithEmailAndPassword(auth,email){f.currentUser=f.saved={uid:'synthetic-student',email,emailVerified:false,displayName:'',getIdToken:async()=>'fixture-token'}}
+     export const EmailAuthProvider={credential:(email,password)=>({email,password})};
+     export async function reauthenticateWithCredential(){} export async function updatePassword(){}
      export async function updateProfile(user,profile){Object.assign(user,profile)}
      export async function signOut(){f.currentUser=f.saved=null}
      export const createUserWithEmailAndPassword=signInWithEmailAndPassword;
