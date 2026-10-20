@@ -1,3 +1,4 @@
+import {automaticRankings} from './automatic-rankings.js';
 import {createRetainedViews} from './retained-views.js';
 import {batchPaint} from './render-batch.js';
 import {showTransactions} from './transactions.js';
@@ -217,10 +218,12 @@ async function updateVisibleView(){
  }catch{/* Retain the last usable screen during a transient connection failure. */}
  finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}
 }
+const rankingAutomation=automaticRankings({api:getJSON,getUser:()=>state.user,isVisible:()=>!document.hidden});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void rankingAutomation.run();});
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
- screens.clear();state.user=user;state.companyId=null;history.replaceState(null,'','#/market');updateAccountButton();await initialLoad({authenticatedUser:user});
+ screens.clear();state.user=user;state.companyId=null;history.replaceState(null,'','#/market');updateAccountButton();await initialLoad({authenticatedUser:user});void rankingAutomation.run();
  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
 }});
 const adminUI=setupAdmin(getJSON);
 installUpdateNotice(typeof __APP_BUILD__==='string'?__APP_BUILD__:'dev');
-initialLoad().then(async()=>{if(!state.user)await registration.resume().catch(()=>{});window.dispatchEvent(new Event('app-ready'));}).catch(()=>window.dispatchEvent(new Event('app-startup-error')));
+initialLoad().then(async()=>{void rankingAutomation.run();if(!state.user)await registration.resume().catch(()=>{});window.dispatchEvent(new Event('app-ready'));}).catch(()=>window.dispatchEvent(new Event('app-startup-error')));

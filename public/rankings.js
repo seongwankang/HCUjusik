@@ -2,7 +2,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const won=v=>Number(v||0).toLocaleString('ko-KR')+'원';
 const time=v=>new Date(v).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
 const percent=v=>(v>0?'+':'')+v.toFixed(2)+'%';
-export async function showRankings(host,api,user,isCurrent){
+export async function showRankings(host,api,user,isCurrent,{preserveOnError=false}={}){
  const selected=host.querySelector('[data-ranking][aria-pressed="true"]')?.dataset.ranking||'prices';
  if(!host.hasChildNodes())host.innerHTML='<p class="placeholder">순위를 불러오는 중…</p>';
  try{const data=await api('/api/rankings');if(!isCurrent())return;
@@ -24,7 +24,18 @@ export async function showRankings(host,api,user,isCurrent){
   host.querySelector('#market-ranking-table').innerHTML='<table><thead><tr><th>순위</th><th>종목</th><th>'+label+'</th><th></th></tr></thead><tbody>'+ (rows.map(r=>`<tr><td><b>${r.rank}</b></td><td><strong>${esc(r.name)}</strong><small>${esc(r.ticker)}${r.paused?' · 거래 정지':''}</small></td><td class="${r.change?.direction==='up'?'quote-up':r.change?.direction==='down'?'quote-down':''}">${['expectedRevenue','cumulativeRevenue'].includes(key)?won(r[key]):key==='prices'?won(r.price):key==='volume'?r.volume.toLocaleString('ko-KR')+'주':percent(r.change.percent)}${key!=='prices'?'<small>'+won(r.price)+'</small>':''}</td><td><button class="row-button" data-company="${esc(r.id)}">종목 보기</button></td></tr>`).join('')||'<tr><td colspan="4" class="table-empty">해당 순위에 표시할 종목이 없습니다.</td></tr>')+'</tbody></table>';
  }
  host.querySelectorAll('[data-ranking]').forEach(b=>b.onclick=()=>marketTable(b.dataset.ranking));marketTable(selected);
- host.querySelector('#rankings-refresh').onclick=async()=>{await api.refresh?.();return showRankings(host,api,user,isCurrent);};
- const publish=host.querySelector('#rankings-publish');if(publish)publish.onclick=async()=>{publish.disabled=true;try{await api('/api/rankings-publish',{method:'POST'});if(isCurrent())await showRankings(host,api,user,isCurrent);}catch(e){if(isCurrent()){host.querySelector('#rankings-message').textContent=e.message;publish.disabled=false;}}};
- }catch(e){if(isCurrent())host.innerHTML='<p class="placeholder">'+esc(e.message)+'</p>';}
+ host.querySelector('#rankings-refresh').onclick=async()=>{
+  const button=host.querySelector('#rankings-refresh');if(button.disabled)return;
+  button.disabled=true;button.textContent='갱신 중…';host.setAttribute('aria-busy','true');host.querySelector('#rankings-message').textContent='최신 순위를 불러오는 중…';
+  try{await api.refresh?.(['leaderboards','investorSnapshots','sparkAccounts','companies','sparkBooks','companyOperations','companyEffects']);await showRankings(host,api,user,isCurrent,{preserveOnError:true});if(isCurrent())host.querySelector('#rankings-message').textContent='새로고침 완료 · '+new Date().toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul'});}
+  catch(e){if(isCurrent())host.querySelector('#rankings-message').textContent='새로고침 실패 · '+e.message;}
+  finally{host.removeAttribute('aria-busy');const currentButton=host.querySelector('#rankings-refresh');if(currentButton){currentButton.disabled=false;currentButton.textContent='새로고침';}}
+ };
+ const publish=host.querySelector('#rankings-publish');if(publish)publish.onclick=async()=>{
+  if(publish.disabled)return;publish.disabled=true;publish.textContent='집계 중…';host.setAttribute('aria-busy','true');host.querySelector('#rankings-message').textContent='자산 순위를 집계하는 중…';
+  try{await api('/api/rankings-publish',{method:'POST'});if(isCurrent()){await showRankings(host,api,user,isCurrent,{preserveOnError:true});host.querySelector('#rankings-message').textContent='자산 순위 갱신 완료';}}
+  catch(e){if(isCurrent())host.querySelector('#rankings-message').textContent='집계 실패 · '+e.message;}
+  finally{host.removeAttribute('aria-busy');const button=host.querySelector('#rankings-publish');if(button){button.disabled=false;button.textContent='자산 순위 갱신';}}
+ };
+ }catch(e){if(preserveOnError)throw e;if(isCurrent())host.innerHTML='<p class="placeholder">'+esc(e.message)+'</p>';}
 }
