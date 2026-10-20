@@ -1,3 +1,4 @@
+import {setupPasswordChange} from './password-change.js';
 import {automaticRankings} from './automatic-rankings.js';
 import {createRetainedViews} from './retained-views.js';
 import {batchPaint} from './render-batch.js';
@@ -13,7 +14,7 @@ import {parseRoute,companyRoute,articleRoute} from './routes.js';
 import {installUpdateNotice} from './updates.js';
 import {showTrading,closeTrading} from './exchange.js';
 import {setupAdmin} from './admin.js';
-import {dataRequest, login, signup, logout, sessionVersion, refreshViewData, watchCompanyQuotes, verificationStatus, sendVerification} from './auth.bundle.js';
+import {changePassword, dataRequest, login, signup, logout, sessionVersion, refreshViewData, watchCompanyQuotes, verificationStatus, sendVerification} from './auth.bundle.js';
 const screens=createRetainedViews();
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
@@ -140,6 +141,8 @@ function updateAccountButton() {
   const key=state.user?.id+':'+state.user?.role;if(key!==updateAccountButton.sessionKey){updateAccountButton.sessionKey=key;adminUI.session(state.user);}
   $$('button[data-page="management"]').forEach(b=>b.hidden=!['admin','president'].includes(state.user?.role));
   if(state.page==='admin' && state.user?.role!=='admin')navigate('dashboard');
+  $('#password-change').hidden=!state.user;
+  if(passwordUI.owner!==state.user?.id){passwordUI.owner=state.user?.id;passwordUI.sessionChanged();}
   const btn=$('#account-button');
   btn.textContent=state.user?`${state.user.displayName} · 로그아웃`:'로그인';
   btn.title=state.user?'로그아웃':'로그인';
@@ -218,6 +221,7 @@ async function updateVisibleView(){
  }catch{/* Retain the last usable screen during a transient connection failure. */}
  finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}
 }
+const passwordUI=setupPasswordChange({changePassword,getUser:()=>state.user});
 const rankingAutomation=automaticRankings({api:getJSON,getUser:()=>state.user,isVisible:()=>!document.hidden});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void rankingAutomation.run();});
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{

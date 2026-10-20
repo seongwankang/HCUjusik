@@ -4,9 +4,11 @@ import {subscribeQuotes} from './quotes.js';
 import {getFirestore} from 'firebase/firestore';
 import {createClientApi} from './data.js';
 import {initializeApp} from 'firebase/app';
+import {passwordChanger} from './password.js';
 import {
   getAuth, setPersistence, browserSessionPersistence,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut, updateProfile
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, reload, signOut, updateProfile,
+  EmailAuthProvider, reauthenticateWithCredential, updatePassword
 } from 'firebase/auth';
 
 let auth;
@@ -71,6 +73,12 @@ export async function logout() {
   await signOut(auth);
   viewReads.clear();
   await clearImmutableRows(getFirestore(auth.app));
+}
+
+export async function changePassword(current,next,confirmation){
+ await ensure();
+ await passwordChanger({getUser:()=>auth.currentUser,credential:EmailAuthProvider.credential,
+  reauthenticate:reauthenticateWithCredential,update:updatePassword})(current,next,confirmation);
 }
 
 export async function dataRequest(path,options){

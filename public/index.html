@@ -62,7 +62,7 @@
     <div class="main-shell">
       <header class="topbar">
         <div class="top-left"><strong class="terminal-brand">청운증권<span>HTS</span></strong><span class="top-separator">/</span><b id="current-title">홈</b></div>
-        <div class="top-right"><span class="event-date"><span class="live-dot"></span>모의투자</span><button id="account-button" class="account-btn">로그인</button></div>
+        <div class="top-right"><span class="event-date"><span class="live-dot"></span>모의투자</span><button id="password-change" class="ghost" type="button" hidden>비밀번호 변경</button><button id="account-button" class="account-btn">로그인</button></div>
       </header>
       <aside id="app-update" class="app-update" role="status" hidden>새 버전이 준비됐습니다. 입력 중인 주문을 확인한 뒤 새로고침하세요. <button id="app-update-reload">새 버전 열기</button></aside><div class="terminal-body"><aside class="instrument-rail" aria-label="종목 탐색"><div class="rail-heading"><span class="eyebrow">MARKET WATCH</span><h2>종목 탐색 <span id="desk-company-count">—</span></h2><small>거래 가능 <b id="desk-listed-count">—</b></small></div><label class="rail-search">⌕ <input id="watch-search" placeholder="종목명 · 코드 검색" aria-label="거래 종목 검색"></label><div class="rail-columns"><span>종목</span><span>현재가</span></div><div id="featured-companies" class="company-mini"><div class="placeholder">종목을 불러오는 중…</div></div><div class="rail-news"><div class="rail-news-heading"><h3>시장 소식</h3><button data-goto="news">전체 ↗</button></div><div id="featured-news"></div></div></aside><main id="page" tabindex="-1">
         <section class="page active" id="page-dashboard"><div class="terminal-welcome"><span class="eyebrow">CHUNG UN SECURITIES</span><h1>청운증권 모의투자</h1><p>학교 이메일로 로그인해 모의투자를 시작하세요.</p><button class="login-prompt" data-open-login>로그인하기 →</button></div></section>
@@ -76,6 +76,14 @@
       <footer>청운증권HTS · 학생 교육용 모의투자 <span id="app-version" hidden></span></footer>
     </div>
   </div>
+  <dialog id="password-dialog" aria-labelledby="password-title"><form class="modal" id="password-form">
+    <div class="modal-heading"><h2 id="password-title">비밀번호 변경</h2></div>
+    <label for="password-current">현재 비밀번호</label><input id="password-current" type="password" autocomplete="current-password" required>
+    <label for="password-new">새 비밀번호</label><input id="password-new" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상">
+    <label for="password-confirm">새 비밀번호 확인</label><input id="password-confirm" type="password" autocomplete="new-password" minlength="6" required>
+    <div id="password-message" role="status" aria-live="polite"></div>
+    <button id="password-submit" class="login-submit" type="submit">비밀번호 변경</button><button id="password-close" class="text-link" type="button">취소</button>
+  </form></dialog>
   <dialog id="login-dialog"><form method="dialog" class="modal" id="login-form"><div class="modal-heading"><div><span class="eyebrow">CHUNG UN ACCOUNT</span><h2 id="auth-title">로그인</h2></div><button class="close" id="close-login" type="button" aria-label="닫기">×</button></div><p><span id="auth-description">이메일과 비밀번호로 로그인하세요.</span></p><label id="signup-name-label" hidden>학생 이름<input id="signup-name" maxlength="80" autocomplete="name" disabled></label><label for="username">이메일</label><input id="username" name="username" type="email" autocomplete="username" required maxlength="254"><div id="signup-warning" class="verification-warning" hidden><strong>학교 이메일 @hcu.hs.kr로만 가입할 수 있습니다.</strong><p>인증 메일이 보이지 않으면 <b>스팸메일함을 꼭 확인해 주세요.</b> 메일의 인증 링크를 눌러야 가입이 완료됩니다.</p></div><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" required><section id="verification-panel" hidden><h3>학교 이메일 인증</h3><p id="verification-address"></p><div id="verification-warning" class="verification-warning"><strong>스팸메일함을 꼭 확인해 주세요!</strong><p>인증 메일이 스팸메일함으로 분류될 수 있습니다. 메일의 인증 링크를 누른 뒤 아래 확인 버튼을 눌러 주세요.</p></div><label>학생 이름<input id="verification-name" maxlength="80" autocomplete="name"></label><p class="muted">나중에 같은 이메일로 로그인해 인증을 이어갈 수 있습니다.</p><div role="status" id="verification-message"></div><button type="button" class="ghost" id="verification-resend">인증 메일 재발송</button><button type="button" class="account-btn" id="verification-check">인증 완료 확인</button><button type="button" class="text-link" id="verification-change">다른 계정으로 로그인</button></section><div id="login-error" role="alert" class="login-error"></div><button class="login-submit" id="auth-submit" type="submit">로그인</button><button type="button" class="text-link" id="auth-toggle">처음 오셨나요? 회원가입</button><small>공용 기기에서는 사용 후 로그아웃하세요.</small></form></dialog>
 </body>
 </html>
