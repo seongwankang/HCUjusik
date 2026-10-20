@@ -8,7 +8,7 @@ const place=(s,uid,side,price,q)=>submit(s,uid,body(side,price,q),company,'2026-
 function conservation(s){
  const accounts=Object.values(s.accounts),m=s.markets['test-a'];if(!m)return;
  assert.equal(accounts.reduce((n,a)=>n+(a.positions['test-a']||0),0)+m.treasuryShares,10);
- assert.equal(accounts.reduce((n,a)=>n+a.cash,0)+m.issuerCash,accounts.length*1000000);
+ assert.equal(accounts.reduce((n,a)=>n+a.cash,0)+m.issuerCash,accounts.length*2000000);
  for(const a of accounts){assert.ok(a.cash>=a.reservedCash&&a.reservedCash>=0);assert.ok((a.positions['test-a']||0)>=(a.reservedPositions['test-a']||0));}
  for(const [uid,a]of Object.entries(s.accounts)){
   const orders=Object.values(s.orders).filter(o=>o.uid===uid&&o.status==='open');
@@ -17,7 +17,7 @@ function conservation(s){
  }
 }
 test('initial supply first accepted buyer, partial fill, limit refund and no synthetic seller',()=>{
- const s=newExchange();let r=place(s,'a','buy',120,7);assert.equal(r.order.filled,7);assert.equal(s.accounts.a.cash,999300);assert.equal(s.accounts.a.reservedCash,0);
+ const s=newExchange();let r=place(s,'a','buy',120,7);assert.equal(r.order.filled,7);assert.equal(s.accounts.a.cash,1999300);assert.equal(s.accounts.a.reservedCash,0);
  r=place(s,'b','buy',100,5);assert.equal(r.order.filled,3);assert.equal(r.order.remaining,2);assert.equal(s.accounts.b.reservedCash,200);assert.equal(s.markets['test-a'].treasuryShares,0);
  assert.equal(s.fills[0].price,100);assert.equal(s.fills[1].buyer,'b');conservation(s);
 });
@@ -40,7 +40,7 @@ test('idempotent replay, altered IDs, oversell and insufficient cash reject',()=
  const s=newExchange(),b=body('buy',100,3);submit(s,'a',b,company,'now');
  assert.equal(submit(s,'a',b,company,'later').duplicate,true);assert.equal(s.accounts.a.positions['test-a'],3);
  assert.throws(()=>submit(s,'a',{...b,quantity:4},company,'now'),/번호/);
- assert.throws(()=>place(s,'a','sell',100,4),/보유/);assert.throws(()=>place(s,'b','buy',1000000,2),/현금/);
+ assert.throws(()=>place(s,'a','sell',100,4),/보유/);assert.throws(()=>place(s,'b','buy',1000000,3),/현금/);
  assert.throws(()=>cancel(s,'b',b.orderId),/본인/);conservation(s);
 });
 test('no self matches; paused symbols reject new orders while cancellation works',()=>{

@@ -4,8 +4,8 @@ import {cashRankings,priceRankings,investorSnapshots,marketRankingLists} from '.
 import {settlementDue} from '../server/scheduled-economy.js';
 test('cash ranks exclude admins/inactive users, include untraded starting cash, ties and no identities',()=>{
  const users=[['a','가','student',true],['b','나','president',true],['c','다','student',true],['admin','관리자','admin',true],['off','중지','student',false]].map(([id,displayName,role,active])=>({id,displayName,role,active}));
- const r=cashRankings(users,[{id:'a',cash:2000000,reservedCash:500000},{id:'b',cash:2000000},{id:'admin',cash:1e12},{id:'off',cash:1e12}]);
- assert.deepEqual(r.entries.map(x=>x.rank),[1,1,3]);assert.equal(r.participants,3);assert.equal(r.entries[2].cash,1000000);assert.equal(r.entries[0].cash,2000000);assert.equal('id' in r.entries[0],false);
+ const r=cashRankings(users,[{id:'a',cash:3000000,reservedCash:500000},{id:'b',cash:3000000},{id:'admin',cash:1e12},{id:'off',cash:1e12}]);
+ assert.deepEqual(r.entries.map(x=>x.rank),[1,1,3]);assert.equal(r.participants,3);assert.equal(r.entries[2].cash,2000000);assert.equal(r.entries[0].cash,3000000);assert.equal('id' in r.entries[0],false);
  assert.throws(()=>cashRankings(users,[{id:'a',cash:-1}]));
  const many=cashRankings(Array.from({length:105},(_,i)=>({id:String(i),displayName:'참가자',role:'student',active:true})),[]);assert.equal(many.entries.length,100);assert.equal(many.participants,105);
 });

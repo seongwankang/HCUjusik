@@ -28,7 +28,7 @@ service cloud.firestore {
       allow get: if owner(uid) || admin();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow create: if owner(uid) && schoolVerified() && userData() && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.email.lower()) && request.resource.data.role == 'student' && request.resource.data.active == true &&
-        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 1000000 &&
+        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 2000000 &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.holdings == [] &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.version == 0;
       allow update: if (admin() && resource.data.role != 'admin' && userData() && request.resource.data.get('email','') == resource.data.get('email','')) ||
@@ -40,8 +40,8 @@ service cloud.firestore {
       allow create: if owner(uid) && schoolVerified() && !exists(/databases/$(database)/documents/users/$(uid)) &&
         getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'student' &&
         getAfter(/databases/$(database)/documents/users/$(uid)).data.active == true &&
-        request.resource.data.keys().hasOnly(['cash','holdings','version']) &&
-        request.resource.data.cash is int && request.resource.data.cash == 1000000 &&
+        request.resource.data.keys().hasOnly(['cash','holdings','version','initialCapital']) &&
+        request.resource.data.initialCapital == 2000000 && request.resource.data.cash is int && request.resource.data.cash == 2000000 &&
         request.resource.data.holdings == [] && request.resource.data.version is int && request.resource.data.version == 0;
       allow list, update, delete: if false;
     }
@@ -200,7 +200,7 @@ service cloud.firestore {
     match /tradeTests/{uid} {
       allow get: if owner(uid) && participant();
       allow create: if owner(uid) && participant() && testAccount(request.resource.data) &&
-        request.resource.data.cash == 1000000 && request.resource.data.positions == {} &&
+        request.resource.data.cash == 2000000 && request.resource.data.positions == {} &&
         request.resource.data.version == 0 && request.resource.data.lastOrderId == '';
       allow update: if owner(uid) && participant() && testChange(uid);
       allow list,delete: if false;
@@ -437,7 +437,7 @@ service cloud.firestore {
     }
     match /sparkAccounts/{uid} {
       allow get: if (owner(uid) && participant()) || admin();
-      allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
+      allow create: if owner(uid) && participant() && request.resource.data == {'cash':2000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
       allow update: if (admin() && exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked && dividendAccount(uid)) || (participant() && accountChange(uid));
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow delete: if false;

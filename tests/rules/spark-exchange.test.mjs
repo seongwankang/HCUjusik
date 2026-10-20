@@ -18,9 +18,9 @@ before(async()=>{
 after(async()=>env?.cleanup());
 test('first-come issuance, partial fill and immutable initial supply',async()=>{
  await placeSpark(a,'a',order('primary-first',{quantity:70,price:11000}));await matchSpark(a,'a','test-a');
- let asset=(await getDoc(doc(a,'sparkAccounts/a'))).data();assert.equal(asset.cash,300000);assert.equal(asset.positions['test-a'],70);assert.equal(asset.reservedCash,0);
+ let asset=(await getDoc(doc(a,'sparkAccounts/a'))).data();assert.equal(asset.cash,1300000);assert.equal(asset.positions['test-a'],70);assert.equal(asset.reservedCash,0);
  await placeSpark(b,'b',order('primary-second',{quantity:40}));await matchSpark(b,'b','test-a');
- asset=(await getDoc(doc(b,'sparkAccounts/b'))).data();assert.equal(asset.cash,700000);assert.equal(asset.positions['test-a'],30);assert.equal(asset.reservedCash,100000);
+ asset=(await getDoc(doc(b,'sparkAccounts/b'))).data();assert.equal(asset.cash,1700000);assert.equal(asset.positions['test-a'],30);assert.equal(asset.reservedCash,100000);
  assert.equal((await getDoc(doc(a,'sparkBooks/test-a'))).data().treasuryShares,0);
  await cancelSpark(b,'b',{companyId:'test-a',orderId:'primary-second'});
  await assertFails(updateDoc(doc(a,'sparkBooks/test-a'),{treasuryShares:100}));
@@ -47,7 +47,7 @@ test('secondary price/time matching and private counterparty assets',async()=>{
  await placeSpark(c,'c',order('buy-third',{price:13000,quantity:2}));
  assert.equal(await matchSpark(admin,'operator','test-a'),true);
  const buyer=(await getDoc(doc(c,'sparkAccounts/c'))).data(),seller=(await getDoc(doc(a,'sparkAccounts/a'))).data();
- assert.equal(buyer.cash,976000);assert.equal(buyer.reservedCash,0);assert.equal(buyer.positions['test-a'],2);assert.equal(seller.positions['test-a'],68);assert.equal(seller.reservedPositions['test-a'],3);
+ assert.equal(buyer.cash,1976000);assert.equal(buyer.reservedCash,0);assert.equal(buyer.positions['test-a'],2);assert.equal(seller.positions['test-a'],68);assert.equal(seller.reservedPositions['test-a'],3);
  await cancelSpark(a,'a',{companyId:'test-a',orderId:'sell-first'});assert.equal((await getDoc(doc(a,'sparkAccounts/a'))).data().reservedPositions['test-a'],0);
  await assertFails(getDocs(collection(a,'sparkAccounts/c/fills')));
 });
@@ -80,9 +80,9 @@ test('idempotent orders, concurrent reservations and cancellation',async()=>{
  const x=order('replay-order',{price:9000,quantity:2});await placeSpark(c,'c',x);assert.equal((await placeSpark(c,'c',x)).duplicate,true);
  await assert.rejects(placeSpark(c,'c',{...x,quantity:3}),/내용/);
  await cancelSpark(c,'c',{companyId:'test-a',orderId:x.orderId});await cancelSpark(c,'c',{companyId:'test-a',orderId:x.orderId});
- const results=await Promise.allSettled([placeSpark(c,'c',order('parallel-one',{price:9000,quantity:60})),placeSpark(c,'c',order('parallel-two',{price:9000,quantity:60}))]);
+ const results=await Promise.allSettled([placeSpark(c,'c',order('parallel-one',{price:9000,quantity:120})),placeSpark(c,'c',order('parallel-two',{price:9000,quantity:120}))]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
- const asset=(await getDoc(doc(c,'sparkAccounts/c'))).data();assert.equal(asset.reservedCash,540000);assert.ok(asset.reservedCash<=asset.cash);
+ const asset=(await getDoc(doc(c,'sparkAccounts/c'))).data();assert.equal(asset.reservedCash,1080000);assert.ok(asset.reservedCash<=asset.cash);
  const id=results[0].status==='fulfilled'?'parallel-one':'parallel-two';await cancelSpark(c,'c',{companyId:'test-a',orderId:id});
 });
 test('direct asset fabrication, forged book-only orders, foreign cancellation and unauthorized reads fail',async()=>{
