@@ -33,7 +33,7 @@ getJSON.refresh=refreshViewData;
 function navigate(page,writeRoute=true) {
   if (!['dashboard','market','news','portfolio','management','admin','company','article','rankings'].includes(page)) return;
   if(page==='admin' && state.user?.role!=='admin')page='dashboard';
-  if(page==='dashboard'&&state.companies.length){showCompany(state.companyId||state.companies[0].id,writeRoute);return;}
+  if(page==='dashboard'&&state.user)page='market';
   closeTrading();screens.pause();
   state.page = page;document.body.dataset.page=page;
   if(writeRoute&&location.hash!=='#/'+page)history.pushState(null,'','#/'+page);
@@ -218,7 +218,7 @@ async function updateVisibleView(){
  finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}
 }
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
- screens.clear();state.user=user;updateAccountButton();await initialLoad({authenticatedUser:user});
+ screens.clear();state.user=user;state.companyId=null;history.replaceState(null,'','#/market');updateAccountButton();await initialLoad({authenticatedUser:user});
  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
 }});
 const adminUI=setupAdmin(getJSON);
