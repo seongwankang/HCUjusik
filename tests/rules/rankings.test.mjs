@@ -13,6 +13,17 @@ before(async()=>{
  const claims={email:'school@hcu.hs.kr',email_verified:true},make=(uid)=>createClientApi({db:env.authenticatedContext(uid,claims).firestore(),getUser:async()=>({uid,getIdTokenResult:async()=>({claims})})});admin=env.authenticatedContext('admin',claims).firestore();student=env.authenticatedContext('student',claims).firestore();studentApi=make('student');adminApi=make('admin');
 });
 after(async()=>env?.cleanup());
+
+test('admin automation is throttled and cannot be invoked by ordinary participants',async()=>{
+ await adminApi('/api/rankings-publish',{method:'POST'});
+ const before=(await getDoc(doc(student,'sparkAccounts/student'))).data();
+ const result=await adminApi('/api/rankings-auto',{method:'POST'});assert.equal(result.updated,false);assert.ok(result.nextAt>Date.now());
+ assert.deepEqual((await getDoc(doc(student,'sparkAccounts/student'))).data(),before);
+ await assert.rejects(studentApi('/api/rankings-auto',{method:'POST'}),/관리자/);
+ await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'leaderboards/cash'),{updatedAt:Timestamp.fromMillis(Date.now()-16*60000)},{merge:true});});
+ assert.equal((await adminApi('/api/rankings-auto',{method:'POST'})).updated,true);
+ assert.deepEqual((await getDoc(doc(student,'sparkAccounts/student'))).data(),before);
+});
 test('only admin publishes projected ranks; student reads snapshot and own cash but cannot access source accounts',async()=>{
  await adminApi('/api/rankings-publish',{method:'POST'});const r=await studentApi('/api/rankings?uid=other');assert.equal(r.myCash,900000);assert.equal(r.myTotalValue,2100000);assert.equal(r.cash.entries[0].totalValue,2100000);assert.equal(r.cash.participants,2);assert.deepEqual(r.cash.entries.map(e=>[e.name,e.cash,e.rank]),[['student',900000,1],['other',2000000,2]]);assert.equal(r.prices[0].price,12000);assert.equal('id' in r.cash.entries[0],false);
  await assert.rejects(studentApi('/api/rankings-publish',{method:'POST'}),/관리자/);await assertFails(getDoc(doc(student,'sparkAccounts/other')));await assertFails(getDocs(collection(student,'sparkAccounts')));

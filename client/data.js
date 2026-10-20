@@ -8,6 +8,7 @@ import {effectiveConfig} from './business-policy.js';
 import {publishEvent,chooseEvent,applyEvent,closeChoiceEvent,applyRandomEvent,eventCompanyView,effectRecords} from './events.js';
 import {investorSnapshot} from './investor.js';
 import {accountAssets,allRows,marketRankings,publishCashRankings} from './rankings.js';
+import {RANKING_INTERVAL,rankingRefreshDue,rankingUpdatedAt} from './ranking-schedule.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
 import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -39,6 +40,12 @@ export function createClientApi({db,getUser,viewReads}){
   }
   if(!profile){const error=new Error('학생 가입을 마무리해 주세요.');error.code='registration-required';throw error;}
   if(profile.active!==true)message('비활성화된 참가 계정입니다. 관리자에게 문의하세요.');
+  if(route==='/api/rankings-auto'&&method==='POST'){
+   if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');
+   const board=await freshGet('leaderboards/cash'),now=Date.now();
+   if(!rankingRefreshDue(board,now))return {updated:false,nextAt:rankingUpdatedAt(board)+RANKING_INTERVAL};
+   await publishCashRankings(db);return {updated:true,nextAt:Date.now()+RANKING_INTERVAL};
+  }
   if(route==='/api/rankings-publish'&&method==='POST'){if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');await publishCashRankings(db);return {ok:true};}
   if(route==='/api/rankings'&&method==='GET'){
    const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies',reads)]);

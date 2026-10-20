@@ -1,4 +1,5 @@
 import {marketPaused} from '../client/market-session.js';
+import {rankingRefreshDue} from '../client/ranking-schedule.js';
 import {settleSpies} from '../client/spies.js';
 import {detectDailySpy} from './spy-detection.js';
 import {migrateSpyPolicy} from './spy-policy-migration.js';
@@ -10,7 +11,11 @@ import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=marketPaused}={}){
  if((await db.doc('systemMaintenance/reset').get()).exists)return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
- if(mode==='rankings-only'||mode==='full'&&isPaused(now)){const board=await publish(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:true,participants:board.participants,maintenance:isPaused(now)};}
+ if(mode==='rankings-only'||mode==='full'&&isPaused(now)){
+  const previous=(await db.doc('leaderboards/cash').get()).data(),updated=mode==='rankings-only'||rankingRefreshDue(previous,now);
+  const board=updated?await publish(db):previous;
+  return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:updated,participants:board?.participants||0,maintenance:isPaused(now)};
+ }
  if(mode==='spies-policy-only'){const migration=await migrateSpyPolicy(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
  if(mode!=='full')throw Error('Unknown economy job mode');
  await migrateSpyPolicy(db);
@@ -41,8 +46,8 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
  }
  try{result.spies=await settleSpies(db,now);}catch(error){result.spies={status:'failed',message:error.message};result.failed.push('industrial-spies');}
  const leadership=(await db.doc('companyLeadership/main').get()).data();
- const board=(await db.doc('leaderboards/cash').get()).data(),last=board?.updatedAt?.toMillis?.()||0;
+ const board=(await db.doc('leaderboards/cash').get()).data();
  // Avoid rereading every participant on each settlement retry (Spark quota).
- result.rankingsUpdated=!!(result.settled||result.resumed||!leadership||!board?.generation||board?.entries?.some(r=>!Number.isSafeInteger(r.totalValue))||!last||now-last>=3600000);
+ result.rankingsUpdated=!!(result.settled||result.resumed||!leadership||rankingRefreshDue(board,now));
  if(result.rankingsUpdated){await publish(db);await publishLeadership(db);}return result;
 }

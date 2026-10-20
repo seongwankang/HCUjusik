@@ -75,6 +75,10 @@ export async function logout() {
 
 export async function dataRequest(path,options){
  await ensure();try{const result=await api(path,options);
+  if(path==='/api/rankings-auto'){
+   if(result.updated)await viewReads.refresh(['leaderboards','investorSnapshots']).catch(()=>{});
+   return result;
+  }
   if(options?.method==='POST'){
    let b={};try{b=JSON.parse(options.body||'{}');}catch{}
    // Transactions still read authoritative documents. Confirm only affected views.
@@ -92,4 +96,4 @@ export async function dataRequest(path,options){
 }
 
 export async function watchCompanyQuotes(companies,update){await ensure();if(!auth.currentUser)return ()=>{};return subscribeQuotes(getFirestore(auth.app),companies,update,viewReads);}
-export async function refreshViewData(){await ensure();await viewReads.refresh(['*']);}
+export async function refreshViewData(paths=['*']){await ensure();await viewReads.refresh(paths);}
