@@ -25,11 +25,11 @@ test('concurrent primary orders cannot oversell issuance; replay survives store 
  const data=await store.read('a',claims,'test-a');assert.equal(data.orders.length,1);assert.ok(!JSON.stringify(data).includes('primary-bbbb'));
 });
 test('parallel orders against one balance cannot double spend and cancellation restores reservation',async()=>{
- const results=await Promise.allSettled([store.mutate('c',claims,'order',order('spend-aaaa',{price:9999})),store.mutate('c',claims,'order',order('spend-bbbb',{price:9999}))]);
+ const results=await Promise.allSettled([store.mutate('c',claims,'order',order('spend-aaaa',{price:9999,quantity:120})),store.mutate('c',claims,'order',order('spend-bbbb',{price:9999,quantity:120}))]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
  const r=results.find(r=>r.status==='fulfilled').value;
- let a=(await store.read('c',claims,'test-a')).account;assert.equal(a.reservedCash,599940);
- await store.mutate('c',claims,'cancel',{orderId:r.order.orderId});a=(await store.read('c',claims,'test-a')).account;assert.equal(a.reservedCash,0);assert.equal(a.cash,1000000);
+ let a=(await store.read('c',claims,'test-a')).account;assert.equal(a.reservedCash,1199880);
+ await store.mutate('c',claims,'cancel',{orderId:r.order.orderId});a=(await store.read('c',claims,'test-a')).account;assert.equal(a.reservedCash,0);assert.equal(a.cash,2000000);
  await assert.rejects(store.mutate('b',claims,'cancel',{orderId:r.order.orderId}),/본인/);
 });
 test('deactivated participants and uncertified identities cannot submit; queued inactive orders release',async()=>{

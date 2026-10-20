@@ -1,3 +1,4 @@
+import {INITIAL_CASH} from './initial-capital.js';
 import {immutableRows} from './immutable-reads.js';
 import {emptyIndexes,insertIndexes,removeIndexes} from './order-index.js';
 import {accountLedger} from './account-ledger.js';
@@ -5,7 +6,7 @@ import {marketSession,assertMarketOpen,koreaDayStart} from './market-session.js'
 import {validOrderPrice} from './price-tick.js';
 import {doc,collection,getDoc,getDocs,query,where,Timestamp,orderBy,limit,runTransaction,increment,serverTimestamp} from 'firebase/firestore';
 const validCompany=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
-const empty=()=>({cash:1000000,reservedCash:0,positions:{},reservedPositions:{},version:0,lastMarket:''});
+const empty=()=>({cash:INITIAL_CASH,reservedCash:0,positions:{},reservedPositions:{},version:0,lastMarket:''});
 const sorted=(orders,side)=>orders.filter(o=>o.side===side).sort((a,b)=>(side==='buy'?b.price-a.price:a.price-b.price)||a.sequence-b.sequence);
 async function transact(db,bookRef,callback){
  for(let attempt=0;attempt<5;attempt++){

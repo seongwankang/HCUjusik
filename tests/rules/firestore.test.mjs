@@ -121,8 +121,8 @@ test('self signup is atomic, one-time and cannot choose roles or cash',async()=>
  const user=doc(db,'users/signup-student'),asset=doc(db,'portfolios/signup-student');
  await assertFails(setDoc(user,{displayName:'Student',role:'student',active:true}));
  const forged=writeBatch(db);forged.set(user,{displayName:'Student',role:'admin',active:true});forged.set(asset,{cash:1000000,holdings:[],version:0});await assertFails(forged.commit());
- const rich=writeBatch(db);rich.set(user,{displayName:'Student',role:'student',active:true});rich.set(asset,{cash:2000000,holdings:[],version:0});await assertFails(rich.commit());
- const batch=writeBatch(db);batch.set(user,{displayName:'Student',role:'student',active:true});batch.set(asset,{cash:1000000,holdings:[],version:0});await assertSucceeds(batch.commit());
+ const rich=writeBatch(db);rich.set(user,{displayName:'Student',role:'student',active:true});rich.set(asset,{cash:3000000,holdings:[],version:0,initialCapital:2000000});await assertFails(rich.commit());
+ const batch=writeBatch(db);batch.set(user,{displayName:'Student',role:'student',active:true});batch.set(asset,{cash:2000000,holdings:[],version:0,initialCapital:2000000});await assertSucceeds(batch.commit());
  await assertFails(updateDoc(user,{role:'president'}));
  await assertFails(setDoc(asset,{cash:1000000,holdings:[],version:0}));
 });
@@ -139,7 +139,7 @@ test('direct Firebase client uses transactions and preserves authorization',asyn
  const make=(uid,role='student')=>createClientApi({db:environment.authenticatedContext(uid,{email:role==='admin'?'admin@gmail.com':'student@hcu.hs.kr',email_verified:role!=='admin'}).firestore(),getUser:async()=>({uid,getIdTokenResult:async()=>({claims:{email:role==='admin'?'admin@gmail.com':'student@hcu.hs.kr',email_verified:role!=='admin'}})})});
  const student=make('pages-student');await assert.rejects(student('/api/me'),{code:'registration-required'});
  await student('/api/register',{method:'POST',body:JSON.stringify({displayName:'Pages student'})});
- assert.equal((await student('/api/portfolio')).cash,1000000);
+ assert.equal((await student('/api/portfolio')).cash,2000000);
  await student('/api/register',{method:'POST',body:JSON.stringify({displayName:'Other name'})});
  await assert.rejects(student('/api/admin/news'),/관리자/);
  await assert.rejects(student('/api/orders',{method:'POST'}),/주문/);

@@ -10,7 +10,7 @@ test('traded cash and positions are primary, reserved assets are counted exactly
  assert.equal(p.holdings[0].priceSource,'last');
 });
 test('unopened accounts and initial prices are explicit, missing prices do not invent equity',()=>{
- const empty=tradingPortfolio(null,companies,{});assert.equal(empty.initialized,false);assert.equal(empty.cash,1000000);assert.equal(empty.holdings.length,0);
+ const empty=tradingPortfolio(null,companies,{});assert.equal(empty.initialized,false);assert.equal(empty.cash,2000000);assert.equal(empty.holdings.length,0);
  const p=tradingPortfolio(account,companies,{});assert.equal(p.holdings[0].price,10000);assert.equal(p.holdings[0].priceSource,'initial');
  const unknown=tradingPortfolio(account,{},{});assert.equal(unknown.valuationComplete,false);assert.equal(unknown.totalValue,null);assert.equal(unknown.holdings[0].quantity,2);
 });

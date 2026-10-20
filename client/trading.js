@@ -1,5 +1,6 @@
+import {INITIAL_CASH} from './initial-capital.js';
 import {doc,collection,getDoc,getDocs,query,orderBy,limit,runTransaction,serverTimestamp} from 'firebase/firestore';
-export const emptyAccount=()=>({cash:1000000,positions:{},version:0,lastOrderId:''});
+export const emptyAccount=()=>({cash:INITIAL_CASH,positions:{},version:0,lastOrderId:''});
 export async function testPortfolio(db,uid){
  const ref=doc(db,'tradeTests',uid);
  await runTransaction(db,async t=>{if(!(await t.get(ref)).exists())t.set(ref,emptyAccount());});

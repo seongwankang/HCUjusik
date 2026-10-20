@@ -3,7 +3,8 @@
 export class ExchangeError extends Error {constructor(message,status=400){super(message);this.status=status;}}
 const fail=(s,status)=>{throw new ExchangeError(s,status);};
 const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
-export const INITIAL_CASH=1000000;
+import {INITIAL_CASH} from '../client/initial-capital.js';
+export {INITIAL_CASH};
 export function newExchange(){return {schema:1,sequence:0,accounts:{},markets:{},orders:{},fills:[]};}
 export function validateOrder(b){
  if(!b||Object.keys(b).some(k=>!['orderId','companyId','side','quantity','price'].includes(k))||

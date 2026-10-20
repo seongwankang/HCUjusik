@@ -1,3 +1,4 @@
+import {INITIAL_CASH} from './initial-capital.js';
 import {immutableRows} from './immutable-reads.js';
 import {managementHistory,historyPage} from './management-history.js';
 import {accountLedger} from './account-ledger.js';
@@ -35,7 +36,7 @@ export function createClientApi({db,getUser,viewReads}){
   if(!(profile?.role==='admin'&&profile.active===true)&&!school(claims))message('학교 이메일(@hcu.hs.kr)의 이메일 인증을 완료하세요.');
   if(route==='/api/register'&&method==='POST'){
    const b=JSON.parse(options.body||'{}');if(typeof b.displayName!=='string'||!b.displayName.trim()||b.displayName.length>80)message('학생 이름은 1~80자로 입력하세요.');
-   await runTransaction(db,async t=>{const u=doc(db,'users',user.uid),p=doc(db,'portfolios',user.uid);const old=await t.get(u);if(old.exists())return;t.set(u,{displayName:b.displayName.trim(),role:'student',active:true,email:claims.email.toLowerCase()});t.set(p,{cash:1000000,holdings:[],version:0});});
+   await runTransaction(db,async t=>{const u=doc(db,'users',user.uid),p=doc(db,'portfolios',user.uid);const old=await t.get(u);if(old.exists())return;t.set(u,{displayName:b.displayName.trim(),role:'student',active:true,email:claims.email.toLowerCase()});t.set(p,{cash:INITIAL_CASH,holdings:[],version:0,initialCapital:INITIAL_CASH});});
    return {ok:true,registered:true};
   }
   if(!profile){const error=new Error('학생 가입을 마무리해 주세요.');error.code='registration-required';throw error;}

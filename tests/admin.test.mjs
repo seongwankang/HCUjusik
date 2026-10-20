@@ -15,7 +15,7 @@ test('signup uses verified UID and fixed initial assets; repeated signup does no
  let exists=false;const writes=[];
  const w=createWorker({verify:async()=>({sub:'new-user',email:'new@hcu.hs.kr',email_verified:true}),firestore:()=>({get:async()=>exists?{active:false,role:'student'}:null,commit:async x=>{writes.push(x);exists=true;}})});
  const call=()=>w.fetch(new Request('https://school.test/api/register',{method:'POST',headers:{authorization:'Bearer valid.token.signature','content-type':'application/json'},body:JSON.stringify({displayName:'New',role:'admin',cash:999,uid:'other'})}),env);
- assert.equal((await call()).status,201);assert.equal(writes[0][0].path,'users/new-user');assert.equal(writes[0][0].data.role,'student');assert.equal(writes[0][1].data.cash,1000000);assert.equal(writes[0][1].createOnly,true);assert.equal((await call()).status,200);assert.equal(writes.length,1);
+ assert.equal((await call()).status,201);assert.equal(writes[0][0].path,'users/new-user');assert.equal(writes[0][0].data.role,'student');assert.equal(writes[0][1].data.cash,2000000);assert.equal(writes[0][1].createOnly,true);assert.equal((await call()).status,200);assert.equal(writes.length,1);
 });
 
 test('school verification gates registration and reads; only existing active admin is exempt',async()=>{

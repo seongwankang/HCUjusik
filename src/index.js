@@ -1,3 +1,4 @@
+import {INITIAL_CASH} from '../client/initial-capital.js';
 import {authenticate} from './auth.js';
 import {createFirestore} from './firestore.js';
 import {HttpError} from './errors.js';
@@ -55,7 +56,7 @@ export function createWorker({verify, firestore = createFirestore} = {}) {
           if(typeof data.displayName!=='string'||!data.displayName.trim()||data.displayName.length>80)throw new HttpError(400,'이름은 1~80자로 입력하세요.');
           await db.commit([
             {path:`users/${uid}`,data:{displayName:data.displayName.trim(),role:'student',active:true},createOnly:true},
-            {path:`portfolios/${uid}`,data:{cash:1000000,holdings:[],version:0},createOnly:true}
+            {path:`portfolios/${uid}`,data:{cash:INITIAL_CASH,holdings:[],version:0,initialCapital:INITIAL_CASH},createOnly:true}
           ]);
           return json({ok:true,registered:true},201);
         }
