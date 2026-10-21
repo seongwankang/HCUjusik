@@ -1,5 +1,5 @@
 import {shareholderSnapshots} from './shareholders.js';
-import {withMedianPrice} from './median-price.js';
+import {withSmoothedPrice} from './smoothed-price.js';
 import {investorSnapshot} from './investor.js';
 import {effectRecords} from './events.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -52,7 +52,7 @@ export function marketRankingLists(prices,sessions){
 }
 const marketSessions=new WeakMap();
 export async function marketRankings(db,companies,books,now=Date.now(),reads){
- books=await Promise.all(companies.map(async c=>({id:c.id,...await withMedianPrice(db,c,books.find(b=>b.id===c.id))})));
+ books=await Promise.all(companies.map(async c=>({id:c.id,...await withSmoothedPrice(db,c,books.find(b=>b.id===c.id))})));
  let cache=marketSessions.get(db);if(!cache){cache=new Map();marketSessions.set(db,cache);}
  const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=companyRevenueRows(db,prices,now,reads);
  await Promise.all(prices.map(async p=>{try{
