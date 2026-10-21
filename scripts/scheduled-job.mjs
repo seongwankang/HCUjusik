@@ -17,6 +17,11 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='offering-audit'){
+ const db=getFirestore(app),[companies,books]=await Promise.all([db.collection('companies').get(),db.collection('sparkBooks').get()]),map=new Map(books.docs.map(s=>[s.id,s.data()]));
+ const rows=companies.docs.map(s=>({company:s.data(),book:map.get(s.id)}));
+ console.log(JSON.stringify({offeringAudit:{companies:rows.length,listed:rows.filter(r=>r.company.status==='listed').length,books:books.size,matchingInitialOfferings:rows.filter(r=>r.company.referencePrice===10000&&r.company.issuedShares===1000&&r.book?.initialPrice===10000&&r.book?.issuedShares===1000).length,unsoldCompanies:rows.filter(r=>r.book?.treasuryShares===1000).length,remainingShares:rows.reduce((n,r)=>n+(r.book?.treasuryShares||0),0),missingBooks:rows.filter(r=>!r.book).length}}));process.exit(0);
+}
 if(process.env.ECONOMY_JOB_MODE==='market-close'){console.log(JSON.stringify(await closeMarket(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='production-economy-initialize'){
  const db=getFirestore(app),result=await fundCompanyStartup(db);

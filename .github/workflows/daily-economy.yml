@@ -2,7 +2,7 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/ranking-stock-weight-80.json]
+    paths: [ops/initial-offering-audit-2026-10-22.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
@@ -12,6 +12,7 @@ on:
         description: 'full: 정산·발각·이벤트·순위 / rankings-only: 순위 / spies-policy-only: 스파이 2명 정책 전환만'
         type: choice
         options:
+          - offering-audit
           - market-close
           - production-economy-initialize
           - price-limits-initialize
@@ -51,4 +52,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'rankings-only' || inputs.mode || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'offering-audit' || inputs.mode || 'full' }}
