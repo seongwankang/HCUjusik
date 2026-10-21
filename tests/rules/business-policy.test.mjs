@@ -37,12 +37,12 @@ test('standard IPO finances exact starter plan atomically per purchase; hiring u
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{cash:9700000,receivedIssuerCash:10000000,employees:1,staffRevenue:0,pendingStaffRevenue:18000,activeResearchBps:0,pendingResearchBps:0,pendingDay:koreaDay()+1,production:{factory:0,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}}));
  for(const [asset,count] of [['factory',2],['equipment',2],['employee',5],['research',1]])for(let i=0;i<count;i++)await invest(president,cid,asset);
  const v=await operationsView(president,cid),o=v.ops;assert.equal(v.available,3000000);assert.equal(o.employees,5);assert.equal(o.research,1);assert.equal(o.pendingResearchBps,500);assert.equal(o.pendingStaffRevenue,100000);assert.equal(o.pendingRevenue,1280000);assert.equal(o.production.research,0);assert.equal(o.pendingProduction.research,0);
- assert.equal(dayPlan(o,v.book,koreaDay()).revenue,0);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2898000);
+ assert.throws(()=>dayPlan(o,v.book,koreaDay()),/이미 완료/);assert.equal(dayPlan(o,v.book,koreaDay()+1).revenue,2898000);
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:100,staffRevenue:999999,activeResearchBps:3000}));
  await assertFails(updateDoc(doc(president,'companyOperations',cid),{employees:6,pendingStaffRevenue:108000,cash:700000,employee:'unexpected-field'}));
 });
 test('matured staff and R&D pay dividends once from net income, preserving unmultipled base',async()=>{
- await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),dividendBps:5000}));
+ await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',cid),{pendingDay:koreaDay(),lastSettledDay:koreaDay()-1,dividendBps:5000}));
  const result=await settleDay(admin,cid);assert.equal(result.recipients,1);
  const v=await operationsView(admin,cid),o=v.ops;assert.equal(o.revenue,1280000);assert.equal(o.staffRevenue,100000);assert.equal(o.activeResearchBps,500);assert.equal(o.pendingStaffRevenue,0);assert.equal(o.pendingResearchBps,0);assert.equal(v.days[0].revenue,2898000);assert.equal(v.days[0].perShare,1449);assert.equal(v.available,4449000);
  assert.equal((await getDoc(doc(student,'sparkAccounts/student'))).data().cash,2449000);await assert.rejects(settleDay(admin,cid),/이미 완료/);
@@ -84,10 +84,11 @@ test('president can invest ten million and settle 4.16 million with the v4 catal
  await initializeOperations(president,id);
  for(const [asset,count] of [['factory',2],['equipment',4],['employee',20]])for(let i=0;i<count;i++)await invest(president,id,asset);
  let v=await operationsView(president,id);assert.equal(v.available,0);
- assert.equal(dayPlan(v.ops,v.book,koreaDay()).revenue,0);
+ assert.throws(()=>dayPlan(v.ops,v.book,koreaDay()),/이미 완료/);
  assert.equal(dayPlan(v.ops,v.book,koreaDay()+1).revenue,4160000);
- await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',id),{pendingDay:koreaDay()}));
+ await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'companyOperations',id),{pendingDay:koreaDay(),lastSettledDay:koreaDay()-1}));
  await settleDay(admin,id);v=await operationsView(admin,id);
- assert.equal(v.days[0].revenue,4160000);assert.equal(v.available,4160000);
+ assert.equal(v.days[0].revenue,4160000);assert.equal(v.available,4119000);
  await assert.rejects(settleDay(admin,id),/이미 완료/);
 });
+

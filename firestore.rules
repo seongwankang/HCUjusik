@@ -529,8 +529,8 @@ service cloud.firestore {
       return int((c[asset+'Cost']*(100+percent)+99) / 100);
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay']) &&
-        number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay','revenueRevision']) &&
+        number(d.get('revenueRevision',0),1000000) && number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
@@ -699,7 +699,7 @@ service cloud.firestore {
     match /companyOperations/{cid} {
       allow get: if participant();
       allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
-        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':100,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
+        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':100,'lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :

@@ -17,3 +17,7 @@ test('completion invalidates cached totals and adds newly completed revenue once
  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'companyOperations/one'),{lastSettledDay:day,locked:false}));
  for(let i=0;i<2;i++)assert.equal((await api('/api/rankings')).cumulativeRevenue.find(x=>x.id==='one').cumulativeRevenue,70607);
 });
+test('an audited correction invalidates the cached total without changing the settlement day',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();await updateDoc(doc(d,'companyOperations/one/days','d'+day),{revenue:0});await updateDoc(doc(d,'companyOperations/one'),{revenueRevision:1});});
+ assert.equal((await api('/api/rankings')).cumulativeRevenue.find(x=>x.id==='one').cumulativeRevenue,62830);
+});

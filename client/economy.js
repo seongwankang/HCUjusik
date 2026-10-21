@@ -24,7 +24,8 @@ export async function operationsView(db,cid,reads){
  const ops=o.exists()?o.data():initialOperations(),book=b.exists()?b.data():null;
  return {initialized:o.exists(),ops,book,available:availableFunds(ops,book),config:effectiveConfig(config.exists()?config.data():null),usingDefaultPolicy:config.data()?.version!==4,days:days.docs.map(d=>({id:d.id,...d.data(),createdAt:d.data().createdAt?.toDate().toISOString()})).sort((a,b)=>b.day-a.day)};
 }
-export async function initializeOperations(db,cid){if(!validId(cid))fail('기업을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid);if(!(await t.get(ref)).exists())t.set(ref,initialOperations());});}
+export function newOperations(now=Date.now()){const day=koreaDay(now);return {...initialOperations(),lastSettledDay:now>=settlementTime(day)?day:0};}
+export async function initializeOperations(db,cid){if(!validId(cid))fail('기업을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid);if(!(await t.get(ref)).exists())t.set(ref,newOperations());});}
 export async function invest(db,cid,asset){
  if(!validId(cid)||!Object.hasOwn(ASSETS,asset))fail('기업과 설비를 확인하세요.');
  const investmentId=crypto.randomUUID();
