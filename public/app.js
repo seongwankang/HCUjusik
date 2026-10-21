@@ -78,6 +78,11 @@ function renderCompanies() {
   renderWatchlist();
   const search = ($('#company-search').value || '').trim().toLocaleLowerCase();
   const rows = state.companies.filter(c=>(c.name+' '+c.ticker).toLocaleLowerCase().includes(search));
+  const byName=(a,b)=>a.name.localeCompare(b.name,'ko')||a.ticker.localeCompare(b.ticker,'ko');
+  if($('#company-sort').value==='price')rows.sort((a,b)=>{
+    const price=c=>Number.isSafeInteger(c.currentPrice)&&c.currentPrice>0?c.currentPrice:-1;
+    return price(b)-price(a)||byName(a,b);
+  });else rows.sort(byName);
   $('#market-count').textContent = rows.length;
   $('#market-rows').innerHTML = rows.map(c=>`<tr><td><span class="company-list-name"><strong>${esc(c.name)}</strong>${c.category?`<span class="company-sector">${esc(c.category)}</span>`:""}</span></td><td class="muted">${esc(c.ticker)}</td><td>${quoteText(c)}${c.quoteKind==='initial'?'<small>첫 거래 전</small>':''}</td><td><span class="state-tag ${c.status==='listed'?'listed':''}">${c.status==='listed'?'상장':'준비 중'}</span></td><td><button class="row-button" data-company="${esc(c.id)}">거래하기</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">검색 결과가 없습니다.</td></tr>';
 }
@@ -186,6 +191,7 @@ document.addEventListener('click',event=>{
   if(prompt)registration.open();
 });
 $('#company-search').addEventListener('input',renderCompanies);
+$('#company-sort').addEventListener('change',renderCompanies);
 $('#account-button').addEventListener('click',async()=>{
   if(!state.user){await registration.open();return;}
   closeTrading();
