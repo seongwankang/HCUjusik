@@ -28,7 +28,7 @@ export function priceHistory(trades,interval='minute'){
  return candleMarkup(aggregateCandles(trades,interval),interval);
 }
 export function createPriceChart(container){
- let snapshotKey,trades=[],range='5h',interval='five',available=null,zoom=1,bars=[],selected=-1,view;
+ let snapshotKey,trades=[],range='1d',interval='halfHour',available=null,zoom=1,bars=[],selected=-1,view;
  container.innerHTML=`<div class="candle-controls"><div role="group" aria-label="차트 기간">${Object.entries(CHART_RANGES).map(([key,{label}])=>`<button type="button" data-range="${key}" aria-pressed="${key===range}">${label}</button>`).join('')}</div><div role="group" aria-label="차트 확대 축소"><button type="button" data-zoom="in" aria-label="차트 확대">＋</button><button type="button" data-zoom="out" aria-label="차트 축소">−</button></div><span>전체 참가자 · 최근 100건</span></div><div class="candle-info" aria-live="off"></div><div class="candle-plot"><div class="chart-empty">종목 체결을 불러오는 중…</div></div><div class="candle-caption"><span><i class="candle-up"></i>양봉 <i class="candle-down"></i>음봉 <i class="candle-ma"></i>MA 5</span><span class="candle-touch-hint">봉을 가볍게 누르면 상세 가격이 표시됩니다.</span><span>한국시간</span></div>`;
  const plot=container.querySelector('.candle-plot'),info=container.querySelector('.candle-info');
  function show(index){

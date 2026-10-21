@@ -36,7 +36,7 @@ test('candles display real wicks and rising/falling colors with volume and Korea
 test('period buttons filter real elapsed time and exclude future trades',()=>{
  const now=Date.parse('2026-10-15T06:00:00Z'),hour=3600000;
  const rows=[trade(100,1,now-8*24*hour,1),trade(110,1,now-4*24*hour,2),trade(120,1,now-2*24*hour,3),trade(130,1,now-12*hour,4),trade(140,1,now-5*hour,5),trade(150,1,now-2*hour,6),trade(160,1,now,7),trade(170,1,now+1,8)];
- assert.equal(rangeCandles(rows,'5h',now).count,3);
+ assert.deepEqual(Object.keys(CHART_RANGES),['1d','3d','7d']);assert.equal(rangeCandles(rows,undefined,now).count,4);
  assert.equal(rangeCandles(rows,'1d',now).count,4);
  assert.equal(rangeCandles(rows,'3d',now).count,5);
  assert.equal(rangeCandles(rows,'7d',now).count,6);
@@ -49,5 +49,5 @@ test('automatic candle density stays manageable and zoom narrows the selected ra
   const full=rangeCandles(rows,key,now),zoom=rangeCandles(rows,key,now,2);
   assert.ok(full.bars.length<=65);assert.equal(full.count,100);assert.ok(zoom.count<full.count);assert.ok(zoom.from>full.from);
  }
- assert.throws(()=>rangeCandles([],'bogus',now));assert.throws(()=>rangeCandles([],'5h',now,0));
+ assert.throws(()=>rangeCandles([],'bogus',now));assert.throws(()=>rangeCandles([],'1d',now,0));
 });

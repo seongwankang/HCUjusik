@@ -26,12 +26,11 @@ export function aggregateCandles(trades,interval='minute'){
 }
 
 export const CHART_RANGES={
- '5h':{label:'최근 5시간',duration:5*3600000,interval:'five'},
  '1d':{label:'1일',duration:24*3600000,interval:'halfHour'},
  '3d':{label:'3일',duration:3*86400000,interval:'twoHours'},
  '7d':{label:'7일',duration:7*86400000,interval:'sixHours'}
 };
-export function rangeCandles(trades,key='5h',now=Date.now(),zoom=1){
+export function rangeCandles(trades,key='1d',now=Date.now(),zoom=1){
  const range=CHART_RANGES[key];if(!range||!Number.isFinite(now)||!Number.isFinite(zoom)||zoom<1||zoom>8)throw new Error('지원하지 않는 차트 기간입니다.');
  const from=now-range.duration/zoom;
  const recent=trades.slice().sort((a,b)=>(b.marketVersion||0)-(a.marketVersion||0)).slice(0,100);

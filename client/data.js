@@ -1,3 +1,4 @@
+import {openBuyOrders,pendingBuyRows} from './pending-orders.js';
 import {dividendChangeStatus} from './dividend-policy.js';
 import {INITIAL_CASH} from './initial-capital.js';
 import {immutableRows} from './immutable-reads.js';
@@ -185,10 +186,10 @@ export function createClientApi({db,getUser,viewReads}){
   if(method==='GET'&&kind==='companies'){const [companies,leadership]=await Promise.all([list('companies',100,'ticker'),get('companyLeadership/main')]);return {companies:companies.map(c=>({...c,presidentNames:leadership?.companies?.[c.id]||[]}))};}
   if(method==='GET'&&kinds[kind])return {[kind]:await list(kind,kinds[kind][1],kinds[kind][0])};
   if(route==='/api/trading-portfolio'&&method==='GET'){
-   const ledger=await accountLedger(db,user.uid,reads),account=ledger.account;
-   const ids=[...new Set([...Object.keys(account?.positions||{}),...Object.keys(account?.reservedPositions||{}),...ledger.fills.map(f=>f.companyId)])];if(ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))message('보유 기업 ID를 확인하세요.');const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
+   const [ledger,pending]=await Promise.all([accountLedger(db,user.uid,reads),openBuyOrders(db,user.uid,reads)]),account=ledger.account;
+   const ids=[...new Set([...Object.keys(account?.positions||{}),...Object.keys(account?.reservedPositions||{}),...ledger.fills.map(f=>f.companyId),...pending.map(o=>o.companyId)])];if(ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))message('보유 기업 ID를 확인하세요.');const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
    const portfolio=tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
-   return {...portfolio,holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
+   return {...portfolio,pendingBuys:pendingBuyRows(pending,Object.fromEntries(rows.map(r=>[r.id,r.company]))),holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
   }
   if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true,revision:(await get('sparkAccounts/'+user.uid))?.version}))};
   if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
