@@ -153,7 +153,7 @@ export function createClientApi({db,getUser,viewReads}){
   if(method==='GET'&&route.startsWith('/api/admin/')){
    if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');const kind=route.split('/').at(-1);
    if(kind==='users'&&url.searchParams.has('id')){const id=url.searchParams.get('id');if(!/^[A-Za-z0-9_-]{1,128}$/.test(id))message('잘못된 참가자입니다.');return {companyIds:(await get(`assignments/${id}`))?.companyIds||[]};}
-   if(kind==='users')return {users:await list('users',100,'displayName')};
+   if(kind==='users')return {users:(await allRows(db,'users')).sort((a,b)=>String(a.displayName||'').localeCompare(String(b.displayName||''),'ko')||a.id.localeCompare(b.id))};
    if(kinds[kind])return {[kind]:await list(kind,kinds[kind][1],kinds[kind][0])};
   }
   if(method==='POST'&&route.startsWith('/api/admin/')){
