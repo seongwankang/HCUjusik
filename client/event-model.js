@@ -85,7 +85,8 @@ export function investmentCost(o,config,asset,now=Date.now()){
  return Math.max(1,Math.ceil(base*(100+percent)/100));
 }
 export function effectiveDividendBps(o,now=Date.now()){
- return termActive(o.dividendLimit,now,o)?Math.min(o.dividendBps,o.dividendLimit.percent*100):o.dividendBps;
+ const configured=Math.max(100,o.dividendBps??100);
+ return Math.max(100,termActive(o.dividendLimit,now,o)?Math.min(configured,o.dividendLimit.percent*100):configured);
 }
 export function currentEffect(o,r,now=Date.now()){
  if(!activeEffect(r,now,o))return false;

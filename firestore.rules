@@ -684,12 +684,12 @@ service cloud.firestore {
       let minute=(int(request.time.toMillis() / 60000)+540)%1440;
       return manager(cid) && !o.locked && minute >= 480 && minute < 1020 &&
         o.get('lastDividendDay',-1) < dayNumber() && d.lastDividendDay == dayNumber() &&
-        d.dividendBps != o.dividendBps && d.diff(o).affectedKeys().hasOnly(['dividendBps','lastDividendDay']) && number(d.dividendBps,10000);
+        d.dividendBps != o.dividendBps && d.diff(o).affectedKeys().hasOnly(['dividendBps','lastDividendDay']) && number(d.dividendBps,10000) && d.dividendBps >= 100;
     }
     match /companyOperations/{cid} {
       allow get: if participant();
       allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
-        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':0,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
+        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':100,'lastSettledDay':0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :

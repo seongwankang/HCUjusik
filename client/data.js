@@ -117,7 +117,7 @@ export function createClientApi({db,getUser,viewReads}){
    if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
    if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
    if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');if(!await get('spyRounds/preflight-d'+Math.floor((Date.now()+32400000)/86400000)))message('자동 정산의 산업스파이 발각 처리가 먼저 완료되어야 합니다. 잠시 후 다시 확인하세요.');const result=await settleDay(db,cid);return {...result,spies:{status:'scheduled'}};}
-   if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<0||b.dividendBps>10000)message('배당률은 0~100%로 입력하세요.');
+   if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<100||b.dividendBps>10000)message('배당률은 1~100%로 입력하세요.');
    await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists())message('회사 경영 정보를 먼저 불러와 주세요.');const status=dividendChangeStatus(o.data());if(!status.allowed)message(status.reason);if(o.data().dividendBps===b.dividendBps)message('현재와 다른 배당률을 입력하세요.');t.update(r,{dividendBps:b.dividendBps,lastDividendDay:status.day});});return {ok:true};
   }
   if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role,reads);

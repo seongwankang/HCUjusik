@@ -9,7 +9,7 @@ export const ASSETS={factory:'공장',equipment:'생산 설비',research:'R&D센
 const MAX=1000000000000;
 const fail=s=>{throw new Error(s);};
 export const koreaDay=(time=Date.now())=>Math.floor((time+32400000)/86400000);
-export function initialOperations(){return {cash:0,receivedIssuerCash:0,revenue:0,pendingRevenue:0,pendingDay:0,factory:0,equipment:0,research:0,dividendBps:0,lastSettledDay:0,locked:false,currentDay:'',paidShares:0,paidAmount:0};}
+export function initialOperations(){return {cash:0,receivedIssuerCash:0,revenue:0,pendingRevenue:0,pendingDay:0,factory:0,equipment:0,research:0,dividendBps:100,lastSettledDay:0,locked:false,currentDay:'',paidShares:0,paidAmount:0};}
 export function availableFunds(ops,book){return ops.cash+(book?.issuerCash||0)-ops.receivedIssuerCash;}
 export function dayPlan(ops,book,day,records=[],now=Date.now()){
  if(ops.locked)fail('진행 중인 정산을 먼저 완료하세요.');if(day<=ops.lastSettledDay)fail('오늘 정산은 이미 완료했습니다.');
