@@ -81,13 +81,13 @@ export function revenueRankingLists(prices,revenues){
 const revenueTotals=new WeakMap();
 async function completedRevenueTotal(db,cid,ops){
  const completed=ops?.lastSettledDay??0;if(!Number.isSafeInteger(completed)||completed<0||completed>1000000)throw Error('정산 완료 날짜를 확인하세요.');if(!completed)return 0;
- let cache=revenueTotals.get(db);if(!cache){cache=new Map();revenueTotals.set(db,cache);}const previous=cache.get(cid),base=previous&&previous.day<=completed?previous:{day:0,total:0};if(base.day===completed)return base.total;
+ let cache=revenueTotals.get(db);if(!cache){cache=new Map();revenueTotals.set(db,cache);}const revision=ops?.revenueRevision||0,previous=cache.get(cid),base=previous&&previous.revision===revision&&previous.day<=completed?previous:{day:0,total:0};if(base.day===completed)return base.total;
  let cursor=null,total=base.total;const seen=new Set();
  for(;;){const page=await getDocs(query(collection(db,'companyOperations',cid,'days'),where('day','>',base.day),where('day','<=',completed),orderBy('day'),limit(30),...(cursor?[startAfter(cursor)]:[])));
   for(const doc of page.docs){const d=doc.data();if(!Number.isSafeInteger(d.day)||seen.has(d.day)||!money(d.revenue))throw Error('정산 매출 기록을 확인하세요.');seen.add(d.day);total+=d.revenue;if(!Number.isSafeInteger(total))throw Error('누적 매출 범위를 초과했습니다.');}
   if(page.size<30)break;cursor=page.docs.at(-1);
  }
- cache.set(cid,{day:completed,total});return total;
+ cache.set(cid,{day:completed,total,revision});return total;
 }
 async function companyRevenueRows(db,prices,now,reads){
  const readDoc=reads?.getDoc||getDoc;
