@@ -33,7 +33,7 @@ test('destroyed facilities reduce staff capacity without deleting employees; res
 });
 test('old additive research becomes percentage research without resetting cash or paying old yield twice',()=>{
  const o={...initialOperations(),cash:12345,factory:1,research:1,revenue:132000,production:{factory:120000,equipment:0,research:12000},pendingProduction:{...zero}};
- const p=dayPlan(o,{issuerCash:0,issuedShares:1000,treasuryShares:0},day);assert.equal(p.revenue,252000);assert.equal(p.base,132000);assert.equal(p.cash,264345);assert.equal(o.cash,12345);
+ const p=dayPlan(o,{issuerCash:0,issuedShares:1000,treasuryShares:0},day);assert.equal(p.revenue,252000);assert.equal(p.base,132000);assert.equal(p.dividend,2000);assert.equal(p.cash,262345);assert.equal(o.cash,12345);
 });
 test('R&D efficiency events change the multiplier, and revenue events use final boosted income',()=>{
  const o=company(),record=effect=>({effect,appliedAt:1000});
