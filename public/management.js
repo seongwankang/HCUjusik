@@ -1,3 +1,4 @@
+import {setHTMLKeepingScroll} from './scroll-state.js';
 import {dividendChangeStatus} from '../client/dividend-policy.js';
 import {revenueEffectBadges} from './revenue-effects.js';
 import {showSpies} from './spies.js';
@@ -47,7 +48,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const rateStatus=dividendChangeStatus(o);
    const blocked=o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<settlement.day;
    const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100;
-   host.querySelector('#business-body').innerHTML=`
+   setHTMLKeepingScroll(host.querySelector('#business-body'),`
     <section class="business-overview" aria-label="경영 요약">
      <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>다음 정산 예상 영업수익</span><div class="revenue-value"><strong id="business-next-income">${tomorrow===null?'분류 필요':won(tomorrow)}</strong><span id="business-income-effects" class="revenue-effects"></span></div><small>${settlementLabel} 정산 기준</small></article></div>
      <p class="compact-note">07:55 전 투자·채용은 당일 정산부터 반영됩니다.</p>
@@ -78,7 +79,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
      <div class="business-section-heading"><h2>정산 내역</h2><span>최근 30건</span></div><div class="portfolio-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table><thead><tr><th>정산일</th><th>영업수익</th><th>1주당 배당</th><th>배당 합계</th><th>회사 유보</th></tr></thead><tbody>${days.map(d=>`<tr><td>${new Date(d.day*86400000).toISOString().slice(0,10)}${o.currentDay===d.id?' · 지급 중':''}</td><td>${won(d.revenue)}</td><td>${won(d.perShare)}</td><td>${won(d.dividend)}</td><td>${won(d.retained)}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">정산 내역이 없습니다.</td></tr>'}</tbody></table></div>
      <details class="business-guide"><summary>배당 기준</summary><p>매일 07:55 정산 시 보유 주식 수를 기준으로 지급합니다.</p></details>
      ${user.role==='admin'?`<details class="economy-settings"><summary>설비·채용 가격 및 수익 정책</summary><p>변경한 정책은 새 구매부터 적용됩니다.</p><form id="economy-config-form" class="admin-form">${Object.keys(DEFAULT_CONFIG).filter(k=>k!=='version').map(k=>`<label>${k==='researchBoostBps'?'R&D 수익 증가율 (%)':choices[k.replace(/Cost|Revenue/,'')]+' '+(k.endsWith('Cost')?'투자 비용':'원장 일수익 (정산 시 ×2)')}<input name="${k}" type="number" min="${k==='researchBoostBps'?0.01:1}" max="${k==='researchBoostBps'?10:100000000}" step="${k==='researchBoostBps'?0.01:1}" value="${k==='researchBoostBps'?c[k]/100:c[k]}" required></label>`).join('')}<button class="account-btn">정책 저장</button></form></details>`:''}
-    </section>`;
+    </section>`);
    setTab(tab);
    if(draft){const form=host.querySelector('#'+draft.id);if(form){for(const [name,value] of draft.values){const input=form.elements.namedItem(name);if(input&&input.type!=='file')input.value=value;}form.elements.namedItem(draft.name)?.focus({preventScroll:true});}}
   }

@@ -1,3 +1,4 @@
+import {setHTMLKeepingScroll,captureScroll,restoreScroll} from './scroll-state.js';
 import {mountManagementHistory} from './history-feed.js';
 import {PRICE_TICK,orderPrice,validOrderPrice} from '../client/price-tick.js';
 import {renderOrderBook} from './order-book.js';
@@ -41,11 +42,13 @@ export async function showTrading(c,request,container){
    if(!alive()||read!==investorRead)return;
    const host=box.querySelector('#company-investor'),previous=host.querySelector('.investor-history');
    const keep=info.historyPending&&previous&&previous.dataset.historyVersion===info.historyVersion;
+   const historyScroll=keep?captureScroll(previous):[];
+   const historyList=previous?.querySelector('.investor-history-list'),historyOffset={top:historyList?.scrollTop||0,left:historyList?.scrollLeft||0};
    renderInvestor(host,info);
    if(info.historyPending){
     const section=host.querySelector('.investor-history');
-    if(keep)section.replaceWith(previous);
-    else{stopHistory();section.dataset.historyVersion=info.historyVersion;stopHistory=mountManagementHistory(section,request,c.id,{isCurrent:alive});}
+    if(keep){section.replaceWith(previous);restoreScroll(previous,historyScroll);}
+    else{stopHistory();section.dataset.historyVersion=info.historyVersion;stopHistory=mountManagementHistory(section,request,c.id,{isCurrent:alive,initialScroll:historyOffset});}
    }
   },()=>{if(alive()&&read===investorRead)box.querySelector('#company-investor').innerHTML='<p class="trade-empty">경영·배당 정보를 조회하지 못했습니다. 새로고침으로 다시 조회하세요.</p>';}).finally(()=>{
    investorLoading=false;
@@ -58,13 +61,13 @@ export async function showTrading(c,request,container){
   box.querySelector('#limit-account').innerHTML=`<div><span>주문 가능 현금</span><strong>${won(a.cash-a.reservedCash)}</strong></div><div><span>매수 대기금액</span><strong>${won(a.reservedCash)}</strong></div><div><span>보유 수량</span><strong>${a.positions[c.id]||0}<small>주</small></strong></div><div><span>내 평균 매입가</span><strong>${data.costBasis?.averagePrice==null?'—':Number(data.costBasis.averagePrice).toLocaleString('ko-KR',{maximumFractionDigits:2})+'원'}</strong></div><div><span>매도 가능</span><strong>${(a.positions[c.id]||0)-(a.reservedPositions[c.id]||0)}<small>주</small></strong></div>`;
   c.previousClose=data.market?.previousClose;c.closeKind=data.market?.closeKind;renderDayChange(c,data.market?.lastPrice||c.referencePrice);
   const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(data.market?.lastPrice||c.referencePrice);quoteLabel.textContent=data.market?.lastPrice?'최근 체결가':'첫 거래 전';}
-  box.querySelector('#limit-book').innerHTML=`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':'가격별 대기 주문'}</span></div>`+renderOrderBook(data.book,data.market?.lastPrice||c.referencePrice,form.elements.price.value);
+  setHTMLKeepingScroll(box.querySelector('#limit-book'),`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':'가격별 대기 주문'}</span></div>`+renderOrderBook(data.book,data.market?.lastPrice||c.referencePrice,form.elements.price.value));
 
   const orders=data.orders.filter(o=>o.companyId===c.id),fills=data.fills.filter(f=>f.companyId===c.id);
   priceChart.update(data.marketTrades||[],{available:data.marketHistoryAvailable===true});
-  box.querySelector('#limit-orders').innerHTML=orders.length?`<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table class="trade-table"><thead><tr><th>구분</th><th>지정가격</th><th>주문</th><th>체결</th><th>잔량</th><th>상태 / 취소</th></tr></thead><tbody>${orders.map(o=>`<tr><td class="side-${o.side}">${o.side==='buy'?'매수':'매도'}</td><td>${won(o.price)}</td><td>${o.quantity}주</td><td>${o.filled}주</td><td>${o.remaining}주</td><td>${o.status==='open'?`<button type="button" class="cancel-order" data-cancel-order="${esc(o.orderId)}" data-company-id="${esc(o.companyId)}">잔량 취소</button>`:o.status==='filled'?'체결 완료':'취소 완료'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">이 기업의 주문 내역이 없습니다.</p>';
-  box.querySelector('#limit-fills').innerHTML=fills.length?`<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table class="trade-table"><thead><tr><th>구분</th><th>체결가격</th><th>수량</th><th>체결금액</th></tr></thead><tbody>${fills.map(f=>`<tr><td class="side-${f.side}">${f.side==='buy'?'매수':'매도'}</td><td>${won(f.price)}</td><td>${f.quantity}주</td><td>${won(f.price*f.quantity)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">아직 체결된 주문이 없습니다.</p>';
-  const admin=box.querySelector('#limit-admin');admin.hidden=!data.adminOrders?.length;if(!admin.hidden)admin.innerHTML=`<div class="panel-title"><h2>관리자 · 전체 대기 주문</h2></div><div class="admin-book">${data.adminOrders.map(o=>`<div class="asset-row"><span>${o.side==='buy'?'매수':'매도'} ${won(o.price)} · ${o.remaining}주</span><button type="button" data-cancel-order="${esc(o.id)}" data-owner-uid="${esc(o.uid)}" data-company-id="${esc(c.id)}">관리자 취소</button></div>`).join('')}</div>`;
+  setHTMLKeepingScroll(box.querySelector('#limit-orders'),orders.length?`<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table class="trade-table"><thead><tr><th>구분</th><th>지정가격</th><th>주문</th><th>체결</th><th>잔량</th><th>상태 / 취소</th></tr></thead><tbody>${orders.map(o=>`<tr><td class="side-${o.side}">${o.side==='buy'?'매수':'매도'}</td><td>${won(o.price)}</td><td>${o.quantity}주</td><td>${o.filled}주</td><td>${o.remaining}주</td><td>${o.status==='open'?`<button type="button" class="cancel-order" data-cancel-order="${esc(o.orderId)}" data-company-id="${esc(o.companyId)}">잔량 취소</button>`:o.status==='filled'?'체결 완료':'취소 완료'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">이 기업의 주문 내역이 없습니다.</p>');
+  setHTMLKeepingScroll(box.querySelector('#limit-fills'),fills.length?`<div class="trade-table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table class="trade-table"><thead><tr><th>구분</th><th>체결가격</th><th>수량</th><th>체결금액</th></tr></thead><tbody>${fills.map(f=>`<tr><td class="side-${f.side}">${f.side==='buy'?'매수':'매도'}</td><td>${won(f.price)}</td><td>${f.quantity}주</td><td>${won(f.price*f.quantity)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="trade-empty">아직 체결된 주문이 없습니다.</p>');
+  const admin=box.querySelector('#limit-admin');admin.hidden=!data.adminOrders?.length;if(!admin.hidden)setHTMLKeepingScroll(admin,`<div class="panel-title"><h2>관리자 · 전체 대기 주문</h2></div><div class="admin-book">${data.adminOrders.map(o=>`<div class="asset-row"><span>${o.side==='buy'?'매수':'매도'} ${won(o.price)} · ${o.remaining}주</span><button type="button" data-cancel-order="${esc(o.id)}" data-owner-uid="${esc(o.uid)}" data-company-id="${esc(c.id)}">관리자 취소</button></div>`).join('')}</div>`);
   connected=!settlementLocked;lock();
   refreshInvestor();
  }

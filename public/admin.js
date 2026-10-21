@@ -1,3 +1,4 @@
+import {setHTMLKeepingScroll} from './scroll-state.js';
 import {NEWS_CATEGORIES,newsCategory} from '../src/news-category.js';
 import {showEventAdmin} from './events.js';
 const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -38,7 +39,7 @@ export function setupAdmin(api){
  const search=kind==='users'?document.querySelector('#admin-user-search').value.trim().toLocaleLowerCase():'';
  const visible=items.map((item,index)=>({item,index})).filter(({item})=>!search||(String(item.displayName||'')+' '+String(item.email||'')).toLocaleLowerCase().includes(search));
  document.querySelector('#admin-user-count').textContent=search?'검색 '+visible.length+'명 / 전체 '+items.length+'명':'전체 '+items.length+'명';
- document.querySelector('#admin-list').innerHTML=visible.map(({item:x,index:i})=>`<button class="admin-item" data-item="${i}"><strong>${escape(x.name||x.title||x.displayName)}</strong>${kind==='users'?`<span class="admin-student-email">${escape(x.email||'다음 로그인 시 이메일 확인')}</span>`:''}<small>${escape(kind==='users'?(x.active?'활성':'비활성'):x.ticker||'')} · ${escape(x.role==='president'?'사장':x.role==='student'?'학생':kind==='news'?newsCategory(x):x.status||x.role||x.companyId||'전체')}</small></button>`).join('')||'<p class="muted">'+(search?'검색 결과가 없습니다.':'등록된 항목이 없습니다.')+'</p>';
+ setHTMLKeepingScroll(document.querySelector('#admin-list'),visible.map(({item:x,index:i})=>`<button class="admin-item" data-item="${i}"><strong>${escape(x.name||x.title||x.displayName)}</strong>${kind==='users'?`<span class="admin-student-email">${escape(x.email||'다음 로그인 시 이메일 확인')}</span>`:''}<small>${escape(kind==='users'?(x.active?'활성':'비활성'):x.ticker||'')} · ${escape(x.role==='president'?'사장':x.role==='student'?'학생':kind==='news'?newsCategory(x):x.status||x.role||x.companyId||'전체')}</small></button>`).join('')||'<p class="muted">'+(search?'검색 결과가 없습니다.':'등록된 항목이 없습니다.')+'</p>');
  }
  async function load(){
  const version=++requestVersion,targetKind=kind;

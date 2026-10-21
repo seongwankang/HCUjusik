@@ -72,7 +72,7 @@ export function createClientApi({db,getUser,viewReads}){
    const opTask=get('companyOperations/'+cid);
    const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),opTask,get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),opTask.then(o=>effectRecords(db,cid,{revision:o?.lastEvent||'',persistent:true})),eventsFor()]);
    if(!company)message('기업을 찾을 수 없습니다.');
-   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount,Math.floor(Date.now()/60000)])};
+   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount])};
   }
   if(route==='/api/company-history'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
