@@ -11,7 +11,7 @@ const backupKey=path=>Buffer.from(path).toString('base64url');
 
 // Run with Admin SDK credentials. Never put backup data in files or Actions logs.
 // The maintenance lock stays in place on failure: rerunning this same ID resumes.
-export async function resetPreservingPresidents(db,{publish,now=Date.now()}={}){
+export async function resetPreservingPresidents(db,{publish,now=Date.now(),skipBackup=false}={}){
  if(typeof publish!=='function')throw Error('A ranking publisher is required');
  const receipt=db.doc('resetBackups/'+PRESERVED_RESET_ID),lock=db.doc('systemMaintenance/reset');
  const acquire=await db.runTransaction(async t=>{
@@ -22,18 +22,32 @@ export async function resetPreservingPresidents(db,{publish,now=Date.now()}={}){
  });
  if(!acquire)return {status:'complete'};
  if(!(await receipt.get()).data()?.backupComplete){
-  let count=0;
-  async function backup(collection){
-   for(const ref of await collection.listDocuments()){
+  if(skipBackup){
+   // The owner explicitly waived a backup. Only monotonic cache counters remain.
+   const snapshots=await Promise.all(['sparkBooks','sparkAccounts'].map(name=>db.collection(name).get()));
+   const versions=Object.fromEntries(snapshots.flatMap(s=>s.docs.map(d=>[d.ref.path,{version:d.data().version||0,correctionRevision:d.data().correctionRevision||0}])));
+   await receipt.set({status:'reset-ready',backupComplete:true,backupSkipped:true,versions,createdAt:FieldValue.serverTimestamp()},{merge:true});
+  }else{
+  let count=0,cursor=0;
+  const queue=[];
+  for(const name of backupNames)queue.push(...await db.collection(name).listDocuments());
+  // A shared queue bounds both document and nested-history requests to 8 workers.
+  // All workers must finish successfully before the deletion phase can start.
+  async function backup(){
+   while(cursor<queue.length){
+    const ref=queue[cursor++];
     const snapshot=await ref.get();
     if(snapshot.exists){await receipt.collection('documents').doc(backupKey(ref.path)).set({path:ref.path,data:snapshot.data()});count++;}
-    for(const child of await ref.listCollections())await backup(child);
+    for(const child of await ref.listCollections())queue.push(...await child.listDocuments());
    }
   }
-  for(const name of backupNames)await backup(db.collection(name));
+  const workers=await Promise.allSettled(Array.from({length:8},()=>backup()));
+  const failed=workers.find(result=>result.status==='rejected');if(failed)throw failed.reason;
   await receipt.set({status:'backed-up',backupComplete:true,documents:count,createdAt:FieldValue.serverTimestamp()});
+  }
  }
- const original=async path=>(await receipt.collection('documents').doc(backupKey(path)).get()).data()?.data;
+ const checkpoint=(await receipt.get()).data();
+ const original=async path=>checkpoint.versions?.[path]||(await receipt.collection('documents').doc(backupKey(path)).get()).data()?.data;
  // Company profiles, roles and president assignments are never removed.
  for(const name of CLEARED_COLLECTIONS)await db.recursiveDelete(db.collection(name));
  const companies=await db.collection('companies').get(),users=await db.collection('users').get();

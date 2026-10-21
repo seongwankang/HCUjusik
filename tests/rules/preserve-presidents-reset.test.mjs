@@ -25,6 +25,9 @@ test('preserves company identity and presidents; backs up and resets all trading
    'economyConfig/main':{version:4},'spyPolicy/main':{bps:250},'tradeCorrections/history':{status:'complete'}
   }))await db.doc(path).set(data);
   const publish=async()=>{assert.equal((await db.doc('systemMaintenance/reset').get()).exists,true);await db.doc('leaderboards/cash').set({participants:2});};
+  await assert.rejects(resetPreservingPresidents(db,{publish:async()=>{throw Error('interrupted publication');}}),/interrupted publication/);
+  assert.equal((await db.doc('systemMaintenance/reset').get()).exists,true);
+  assert.equal((await db.doc('resetBackups/'+PRESERVED_RESET_ID).get()).data().backupComplete,true);
   const result=await resetPreservingPresidents(db,{publish,now:Date.parse('2026-10-22T12:00:00+09:00')});
   assert.deepEqual(result,{status:'reset',users:3,companies:1});
   assert.deepEqual((await db.doc('assignments/president').get()).data(),{companyIds:['a']});
@@ -52,5 +55,25 @@ test('backup failure does not delete data and leaves maintenance locked',async()
   const facade={doc:db.doc.bind(db),runTransaction:db.runTransaction.bind(db),collection:()=>({listDocuments:async()=>{throw Error('backup unavailable');}}),recursiveDelete:()=>assert.fail('must not delete before backup completes')};
   await assert.rejects(resetPreservingPresidents(facade,{publish:()=>assert.fail('must not publish')}),/backup unavailable/);
   assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,456);assert.equal((await db.doc('systemMaintenance/reset').get()).data().resetId,PRESERVED_RESET_ID);
+ }finally{await db.terminate();await deleteApp(app);}
+});
+
+test('an explicit backup waiver resets immediately without copying documents',async()=>{
+ const app=initializeApp({projectId:'demo-reset-waived'},'reset-waived'),db=getFirestore(app);
+ try{
+  await db.doc('users/student').set({role:'student'});
+  await db.doc('sparkAccounts/student').set({cash:999,positions:{a:5},version:10,correctionRevision:2});
+  await db.doc('companies/a').set({name:'A',status:'listed'});
+  await db.doc('sparkBooks/a').set({version:20});
+  await db.doc('assignments/student').set({companyIds:['a']});
+  await resetPreservingPresidents(db,{publish:async()=>{},skipBackup:true});
+  const receipt=db.doc('resetBackups/'+PRESERVED_RESET_ID);
+  assert.equal((await receipt.get()).data().backupSkipped,true);
+  assert.equal((await receipt.collection('documents').get()).size,0);
+  assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000000);
+  assert.equal((await db.doc('sparkAccounts/student').get()).data().version,11);
+  assert.equal((await db.doc('sparkBooks/a').get()).data().version,21);
+  assert.deepEqual((await db.doc('assignments/student').get()).data(),{companyIds:['a']});
+  assert.equal((await db.doc('systemMaintenance/reset').get()).exists,false);
  }finally{await db.terminate();await deleteApp(app);}
 });

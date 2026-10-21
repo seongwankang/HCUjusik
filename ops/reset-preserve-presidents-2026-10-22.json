@@ -8,5 +8,8 @@
     "companyLeadership"
   ],
   "requestedAt": "2026-10-22",
-  "note": "One-time reset of existing participants and company operations; reruns are idempotent."
+  "note": "Owner explicitly requested immediate reset without a backup.",
+  "backupConcurrency": 8,
+  "resumeAttempt": 2,
+  "backup": false
 }
