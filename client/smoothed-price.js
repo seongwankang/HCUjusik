@@ -12,7 +12,7 @@ export function createSmoothedReader(fetchPage,storage){
   const task=(queues.get(cid)||Promise.resolve()).catch(()=>{}).then(async()=>{
    if(!Number.isSafeInteger(book.version)||book.version<0||!Number.isSafeInteger(referencePrice)||!validPrice(referencePrice))throw Error('기준가 정보를 확인하세요.');
    let old=cache.get(cid);if(!old&&storage)try{old=await storage.get(cid);}catch{}
-   if(!old||old.referencePrice!==referencePrice||!Number.isSafeInteger(old.version)||old.version<0||old.version>book.version||!validPrice(old.value)||!Number.isSafeInteger(old.count)||old.count<0)old={referencePrice,value:referencePrice,count:0,version:-1};
+   if(!old||old.referencePrice!==referencePrice||old.correctionRevision!==(book.correctionRevision||0)||!Number.isSafeInteger(old.version)||old.version<0||old.version>book.version||!validPrice(old.value)||!Number.isSafeInteger(old.count)||old.count<0)old={referencePrice,value:referencePrice,count:0,version:-1,correctionRevision:book.correctionRevision||0};
    if(old.version!==book.version){
     const state={...old};
     const orderOnly=book.version===old.version+1&&['place','cancel'].includes(book.lastAction?.kind);

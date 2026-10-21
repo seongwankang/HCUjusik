@@ -1,3 +1,4 @@
+import {reverseAccidentalTrade} from '../server/accidental-trade-correction.js';
 import {increaseInitialCapital} from '../server/initial-capital-migration.js';
 import {correctStartupSettlement,releaseCorrectionReservations} from '../server/settlement-correction.js';
 import {publishRecoveryEvent} from '../server/recovery-event.js';
@@ -10,6 +11,7 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='reverse-admin-meme-2026-10-21'){const db=getFirestore(app),result=await reverseAccidentalTrade(db);await publishCashRankings(db);console.log(JSON.stringify(result));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='correct-startup-settlement-2026-10-21'){const db=getFirestore(app);const result=await correctStartupSettlement(db);const reservations=await releaseCorrectionReservations(db);await publishCashRankings(db);console.log(JSON.stringify({...result,reservations}));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='recovery-event-2026-10-21'){console.log(JSON.stringify(await publishRecoveryEvent(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='reset-2026-10-21'){console.log(JSON.stringify(await resetMarket(getFirestore(app))));process.exit(0);}

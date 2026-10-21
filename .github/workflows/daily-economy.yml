@@ -9,6 +9,7 @@ on:
         description: 'full: 정산·발각·이벤트·순위 / rankings-only: 순위 / spies-policy-only: 스파이 2명 정책 전환만'
         type: choice
         options:
+          - reverse-admin-meme-2026-10-21
           - correct-startup-settlement-2026-10-21
           - reset-2026-10-21
           - full

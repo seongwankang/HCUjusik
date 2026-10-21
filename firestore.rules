@@ -222,8 +222,8 @@ service cloud.firestore {
     function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
     function number(v,n) { return v is int && v >= 0 && v <= n; }
     function sparkAccount(d) {
-      return d.keys().hasOnly(['cash','reservedCash','positions','reservedPositions','version','lastMarket']) &&
-        number(d.cash,1000000000000) && number(d.reservedCash,d.cash) && number(d.version,1000000000) &&
+      return d.keys().hasOnly(['cash','reservedCash','positions','reservedPositions','version','lastMarket','correctionRevision']) &&
+        number(d.get('correctionRevision',0),1000000) && number(d.cash,1000000000000) && number(d.reservedCash,d.cash) && number(d.version,1000000000) &&
         d.positions is map && d.reservedPositions is map &&
         number(d.positions.get(d.lastMarket,0),1000000) &&
         number(d.reservedPositions.get(d.lastMarket,0),d.positions.get(d.lastMarket,0)) &&
@@ -450,7 +450,7 @@ service cloud.firestore {
     match /sparkAccounts/{uid} {
       allow get: if (owner(uid) && participant()) || admin();
       allow create: if owner(uid) && participant() && request.resource.data == {'cash':2000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
-      allow update: if participant() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ? (exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked ? dividendAccount(uid) : accountChange(uid)) : accountChange(uid));
+      allow update: if request.resource.data.get('correctionRevision',0) == resource.data.get('correctionRevision',0) && participant() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ? (exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked ? dividendAccount(uid) : accountChange(uid)) : accountChange(uid));
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow delete: if false;
       match /orders/{id} {
