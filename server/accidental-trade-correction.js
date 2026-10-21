@@ -28,9 +28,10 @@ export async function reverseAccidentalTrade(db){
   const latest=await t.get(bookRef.collection('trades').orderBy('marketVersion','desc').limit(100));const good=latest.docs.find(s=>!trades.docs.some(bad=>bad.id===s.id));if(!good)throw Error('No prior valid execution price');
   for(const uid of uids){const ref=db.doc('sparkAccounts/'+uid),[s,orders]=await Promise.all([t.get(ref),t.get(ref.collection('orders').where('companyId','==',cid))]);const a=s.data(),n=delta.get(uid),cash=a.cash+n.cash,shares=(a.positions[cid]||0)+n.shares;
    if(!Number.isSafeInteger(cash)||cash<a.reservedCash||shares<(a.reservedPositions[cid]||0)||shares<0)throw Error('A counterparty has spent or reserved assets; no changes applied');
-   const affected=orders.docs.filter(o=>o.data().side===n.side&&n.versions.has(o.data().marketVersion));
-   const allocations=affected.map(o=>({o,q:[...n.versions].filter(([v])=>v>=o.data().sequence&&v<=o.data().marketVersion).reduce((sum,[,q])=>sum+q,0)}));
-   if(allocations.reduce((sum,a)=>sum+a.q,0)!==Math.abs(n.shares)||allocations.some(({o,q})=>q<1||o.data().filled<q||o.data().remaining!==0||o.data().status!=='filled'||o.data().price<300000))throw Error('Original order does not explain audited executions');
+   const assigned=new Map();
+   for(const [v,q]of n.versions){const price=AUDITED_FILLS.find(a=>a.version===v).price;const candidates=orders.docs.filter(o=>{const d=o.data();return d.side===n.side&&d.sequence<=v&&d.marketVersion>=v&&d.filled>0&&(n.side==='buy'?d.price>=price:d.price===price);});if(candidates.length!==1)throw Error('Execution must resolve to exactly one original order');const o=candidates[0];assigned.set(o.id,{o,q:(assigned.get(o.id)?.q||0)+q});}
+   const allocations=[...assigned.values()];
+   if(allocations.reduce((sum,a)=>sum+a.q,0)!==Math.abs(n.shares)||allocations.some(({o,q})=>q<1||o.data().filled<q||o.data().remaining!==0||!['filled','cancelled'].includes(o.data().status)||o.data().price<300000))throw Error('Original order does not explain audited executions');
    for(const {o,q}of allocations)changes.push([o,{filled:o.data().filled-q,cancelled:(o.data().cancelled||0)+q,status:'cancelled',correctionId:ID}]);
    changes.push([s,{cash,positions:{...a.positions,[cid]:shares},version:a.version+1,lastMarket:cid,correctionRevision:(a.correctionRevision||0)+1}]);
   }
