@@ -1,3 +1,4 @@
+import {closeMarket} from './manual-market-close.js';
 import {marketPaused} from '../client/market-session.js';
 import {publishDailyPriceLimits} from './daily-price-limits.js';
 import {rankingRefreshDue} from '../client/ranking-schedule.js';
@@ -13,6 +14,7 @@ export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=marketPaused,prepareLimits=publishDailyPriceLimits}={}){
  if((await db.doc('systemMaintenance/reset').get()).exists)return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
  if(mode==='rankings-only'||mode==='full'&&isPaused(now)){
+  if(isPaused(now))await closeMarket(db);
   const previous=(await db.doc('leaderboards/cash').get()).data(),updated=mode==='rankings-only'||rankingRefreshDue(previous,now);
   const board=updated?await publish(db):previous;
   return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:updated,participants:board?.participants||0,maintenance:isPaused(now)};
