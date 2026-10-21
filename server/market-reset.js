@@ -1,6 +1,6 @@
 import {FieldValue} from 'firebase-admin/firestore';
 export const RESET_ID='fresh-start-2026-10-21';
-export const RESET_COLLECTIONS=['companies','companyOperations','companySpies','companyChoices','companyEffects','companyLeadership','events','eventQueue','eventAutomation','eventNewsDrafts','eventOutcomes','news','sparkBooks','sparkAccounts','tradeTests','portfolios','assignments','investorSnapshots','leaderboards','spyRegistry','spyRounds','spyAutomation'];
+export const RESET_COLLECTIONS=['companies','companyOperations','companySpies','companyChoices','companyEffects','companyLeadership','companyShareholders','events','eventQueue','eventAutomation','eventNewsDrafts','eventOutcomes','news','sparkBooks','sparkAccounts','tradeTests','portfolios','assignments','investorSnapshots','leaderboards','spyRegistry','spyRounds','spyAutomation'];
 // Backups remain private under the default-deny rules. No student data enters logs.
 export async function resetMarket(db){
  const receipt=db.doc('resetBackups/'+RESET_ID),lock=db.doc('systemMaintenance/reset');

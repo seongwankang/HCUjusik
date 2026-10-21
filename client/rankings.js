@@ -1,3 +1,4 @@
+import {shareholderSnapshots} from './shareholders.js';
 import {investorSnapshot} from './investor.js';
 import {effectRecords} from './events.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -33,6 +34,10 @@ export async function investorSnapshots(users,accounts,companies=[],books=[]){
 export async function publishCashRankings(db){
  const [users,accounts,companies]=await Promise.all([allRows(db,'users'),allRows(db,'sparkAccounts'),allRows(db,'companies')]);const books=await Promise.all(companies.map(async c=>{const s=await getDoc(doc(db,'sparkBooks',c.id));return {id:c.id,...s.data()};}));
  const {board,profiles}=await investorSnapshots(users,accounts,companies,books),batch=writeBatch(db);
+ const shareholders=await shareholderSnapshots(users,accounts,companies,books);
+ // Keep the ranking generation atomic; large company sets use bounded batches.
+ for(let offset=0;offset<Math.max(0,shareholders.length-399);offset+=400){const part=writeBatch(db);for(const holders of shareholders.slice(offset,Math.min(offset+400,shareholders.length-399)))part.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});await part.commit();}
+ for(const holders of shareholders.slice(Math.max(0,shareholders.length-399)))batch.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});
  for(const p of profiles)batch.set(doc(db,'investorSnapshots',p.key),{...p.profile,updatedAt:serverTimestamp()});
  batch.set(doc(db,'leaderboards','cash'),{...board,updatedAt:serverTimestamp()});await batch.commit();return board;
 }
