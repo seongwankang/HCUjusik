@@ -1,3 +1,4 @@
+import {revenueFormula} from './revenue-formula.js';
 import {shareholderMarkup} from './shareholders.js';
 import {setHTMLKeepingScroll} from './scroll-state.js';
 import {dividendChangeStatus} from '../client/dividend-policy.js';
@@ -37,7 +38,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
     await showCompanyEvents(host.querySelector('#company-events'),api,id,load,()=>current()&&selected===id,summary=>{
      if(!current()||selected!==id)return;
      const badge=host.querySelector('#business-event-count');badge.textContent=summary.pendingCount||'';badge.hidden=!summary.pendingCount;
-     const projection=summary.settlementProjection||summary.projection;for(const key of ['salePrice','productionCost','productionPower']){const el=host.querySelector('[data-production="'+key+'"]');if(el&&projection[key]!==undefined)el.textContent=key==='productionPower'?projection[key].toLocaleString('ko-KR')+'개/일':won(projection[key]);}host.querySelector('#business-next-income').textContent=projection.needsProduction?'분류 필요':won(projection.revenue);host.querySelector('#business-income-effects').innerHTML=projection.needsProduction?'':revenueEffectBadges(summary.revenueEffects||[]);
+     const projection=summary.settlementProjection||summary.projection;for(const key of ['salePrice','productionCost','productionPower']){const el=host.querySelector('[data-production="'+key+'"]');if(el&&projection[key]!==undefined)el.textContent=key==='productionPower'?projection[key].toLocaleString('ko-KR')+'개/일':won(projection[key]);}host.querySelector('#business-income-formula').innerHTML=projection.needsProduction?'':revenueFormula(projection,summary.revenueEffects||[]);host.querySelector('#business-next-income').textContent=projection.needsProduction?'분류 필요':won(projection.revenue);host.querySelector('#business-income-effects').innerHTML=projection.needsProduction?'':revenueEffectBadges(summary.revenueEffects||[]);
     });
    }catch(e){if(current()&&selected===id)message(e.message);}
   }
@@ -51,7 +52,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100;
    setHTMLKeepingScroll(host.querySelector('#business-body'),`
     <section class="business-overview" aria-label="경영 요약">
-     <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>다음 정산 예상 영업수익</span><div class="revenue-value"><strong id="business-next-income">${tomorrow===null?'분류 필요':won(tomorrow)}</strong><span id="business-income-effects" class="revenue-effects"></span></div><small>${settlementLabel} 정산 기준</small></article></div>
+     <div class="business-finances"><article><span>투자 가능 자금</span><strong>${won(available)}</strong></article><article><span>다음 정산 예상 영업수익</span><div class="revenue-value"><strong id="business-next-income">${tomorrow===null?'분류 필요':won(tomorrow)}</strong><span id="business-income-effects" class="revenue-effects"></span></div><div id="business-income-formula">${needs?'':revenueFormula(production)}</div><small>${settlementLabel} 정산 기준</small></article></div>
      <div class="investor-facilities"><span>판매가격 <b data-production="salePrice">${won(production.salePrice)}</b></span><span>생산원가 <b data-production="productionCost">${won(production.productionCost)}</b></span><span>생산력 <b data-production="productionPower">${production.productionPower.toLocaleString('ko-KR')}개/일</b></span></div><p class="compact-note">(판매가격 − 생산원가) × 생산력 · 07:55 정산</p>
     </section>
     ${o.locked?'<p class="business-lock">배당 지급 중입니다. 거래·투자는 정산 완료 후 재개됩니다.</p>':''}
