@@ -29,3 +29,10 @@ test('an audited correction discards a cached accidental price and replays valid
  assert.equal((await read('one',{version:1},10000)).price,109000);rows=[];
  assert.deepEqual(await read('one',{version:2,correctionRevision:1},10000),{price:10000,initial:true});
 });
+
+test('manual quote anchor overrides cached history, then subsequent fills resume smoothing',async()=>{
+ const rows=[{marketVersion:1,price:10000},{marketVersion:4,price:40000}];const saved=new Map(),storage={get:async k=>saved.get(k),set:async(k,v)=>saved.set(k,v)};const fetch=async(id,since,to)=>rows.filter(r=>r.marketVersion>since&&r.marketVersion<=to);
+ const read=createSmoothedReader(fetch,storage);await read('one',{version:2},10000);
+ const displayPriceAnchor={price:30000,version:3};assert.deepEqual(await read('one',{version:3,displayPriceAnchor},10000),{price:30000,initial:false});
+ assert.equal((await read('one',{version:4,displayPriceAnchor},10000)).price,31000);assert.equal((await createSmoothedReader(fetch,storage)('one',{version:4,displayPriceAnchor},10000)).price,31000);
+});
