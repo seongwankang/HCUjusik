@@ -12,6 +12,7 @@ on:
           - reset-2026-10-21
           - full
           - initial-capital-2000000
+          - recovery-event-2026-10-21
           - rankings-only
           - spies-policy-only
         default: full
