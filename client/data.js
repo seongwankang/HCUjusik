@@ -1,3 +1,5 @@
+import {withSmoothedPrice} from './smoothed-price.js';
+import {rankingValue} from './ranking-value.js';
 import {openBuyOrders,pendingBuyRows} from './pending-orders.js';
 import {dividendChangeStatus} from './dividend-policy.js';
 import {INITIAL_CASH} from './initial-capital.js';
@@ -52,9 +54,9 @@ export function createClientApi({db,getUser,viewReads}){
   if(route==='/api/rankings-publish'&&method==='POST'){if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');await publishCashRankings(db);return {ok:true};}
   if(route==='/api/rankings'&&method==='GET'){
    const [cash,account,companies]=await Promise.all([get('leaderboards/cash'),get('sparkAccounts/'+user.uid),allRows(db,'companies',reads)]);
-   const books=await Promise.all(companies.map(c=>get('sparkBooks/'+c.id)));
+   const books=await Promise.all(companies.map(async c=>{const b=await get('sparkBooks/'+c.id);return {id:c.id,...await withSmoothedPrice(db,c,b)};}));
    const own=accountAssets(account,Object.fromEntries(companies.map(c=>[c.id,c])),Object.fromEntries(books.filter(Boolean).map(b=>[b.id,b])));
-   return {cash,myCash:own.cash,myTotalValue:own.totalValue,...await marketRankings(db,companies,books.filter(Boolean),Date.now(),reads)};
+   return {cash,myCash:own.cash,myTotalValue:own.totalValue,myRankingValue:own.valuationComplete?rankingValue(own.cash,own.stockValue):null,...await marketRankings(db,companies,books.filter(Boolean),Date.now(),reads)};
   }
   if(route==='/api/investor-profile'&&method==='GET'){
    const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))message('순위표에서 참가자를 선택하세요.');

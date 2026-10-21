@@ -2,14 +2,15 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,getDocs,collection,serverTimestamp,Timestamp} from 'firebase/firestore';
+import {doc,setDoc,deleteDoc,getDoc,getDocs,collection,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {koreaDayStart} from '../../client/market-session.js';
 import {createClientApi} from '../../client/data.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let env,admin,student,studentApi,adminApi;
 before(async()=>{
  env=await initializeTestEnvironment({projectId:'demo-rankings',firestore:{rules:readFileSync('firestore.rules','utf8')}});await env.clearFirestore();
- await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();for(const [id,role]of [['admin','admin'],['student','student'],['other','president']])await setDoc(doc(db,'users',id),{displayName:id,role,active:true});await setDoc(doc(db,'sparkAccounts/student'),{cash:900000,reservedCash:200000,positions:{one:100},reservedPositions:{one:50}});await setDoc(doc(db,'sparkAccounts/other'),{cash:2000000,positions:{}});await setDoc(doc(db,'companies/one'),{name:'One',ticker:'ONE',status:'listed',referencePrice:10000});await setDoc(doc(db,'sparkBooks/one'),{lastPrice:12000});});
+ await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();for(const [id,role]of [['admin','admin'],['student','student'],['other','president']])await setDoc(doc(db,'users',id),{displayName:id,role,active:true});await setDoc(doc(db,'sparkAccounts/student'),{cash:900000,reservedCash:200000,positions:{one:100},reservedPositions:{one:50}});await setDoc(doc(db,'sparkAccounts/other'),{cash:2000000,positions:{}});await setDoc(doc(db,'companies/one'),{name:'One',ticker:'ONE',status:'listed',referencePrice:10000});await setDoc(doc(db,'sparkBooks/one'),{lastPrice:30000,version:1});});
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'sparkBooks/one/trades/fill'),{price:30000,marketVersion:1,quantity:100,createdAt:Timestamp.now()}));
  const claims={email:'school@hcu.hs.kr',email_verified:true},make=(uid)=>createClientApi({db:env.authenticatedContext(uid,claims).firestore(),getUser:async()=>({uid,getIdTokenResult:async()=>({claims})})});admin=env.authenticatedContext('admin',claims).firestore();student=env.authenticatedContext('student',claims).firestore();studentApi=make('student');adminApi=make('admin');
 });
 after(async()=>env?.cleanup());
@@ -25,7 +26,7 @@ test('admin automation is throttled and cannot be invoked by ordinary participan
  assert.deepEqual((await getDoc(doc(student,'sparkAccounts/student'))).data(),before);
 });
 test('only admin publishes projected ranks; student reads snapshot and own cash but cannot access source accounts',async()=>{
- await adminApi('/api/rankings-publish',{method:'POST'});const r=await studentApi('/api/rankings?uid=other');assert.equal(r.myCash,900000);assert.equal(r.myTotalValue,2100000);assert.equal(r.cash.entries[0].totalValue,2100000);assert.equal(r.cash.participants,2);assert.deepEqual(r.cash.entries.map(e=>[e.name,e.cash,e.rank]),[['student',900000,1],['other',2000000,2]]);assert.equal(r.prices[0].price,12000);assert.equal('id' in r.cash.entries[0],false);
+ await adminApi('/api/rankings-publish',{method:'POST'});const r=await studentApi('/api/rankings?uid=other');assert.equal(r.myCash,900000);assert.equal(r.myTotalValue,2100000);assert.equal(r.myRankingValue,1860000);assert.equal(r.cash.entries[0].totalValue,2000000);assert.equal(r.cash.participants,2);assert.deepEqual(r.cash.entries.map(e=>[e.name,e.cash,e.rank]),[['other',2000000,1],['student',900000,2]]);assert.equal(r.prices[0].price,12000);assert.equal('id' in r.cash.entries[0],false);
  await assert.rejects(studentApi('/api/rankings-publish',{method:'POST'}),/관리자/);await assertFails(getDoc(doc(student,'sparkAccounts/other')));await assertFails(getDocs(collection(student,'sparkAccounts')));
  await assertFails(setDoc(doc(student,'leaderboards/cash'),{entries:[],participants:0,updatedAt:serverTimestamp()}));await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'leaderboards/cash')));
  await assertFails(setDoc(doc(admin,'leaderboards/cash'),{entries:Array.from({length:101},()=>({name:'x',cash:1,rank:1})),participants:101,updatedAt:serverTimestamp()}));
@@ -55,7 +56,7 @@ test('investor details expose projected holdings only; private accounts, stale s
 
 test('volume counts all pages of today trades once, and percent changes use the previous close',async()=>{
  const start=koreaDayStart();await env.withSecurityRulesDisabled(async c=>{
-  const db=c.firestore();await setDoc(doc(db,'sparkBooks/one/trades/previous'),{price:10000,quantity:999,createdAt:Timestamp.fromMillis(start-1000),marketVersion:1});
+  const db=c.firestore();await deleteDoc(doc(db,'sparkBooks/one/trades/fill'));await setDoc(doc(db,'sparkBooks/one'),{version:102,lastPrice:12000,correctionRevision:1},{merge:true});await setDoc(doc(db,'sparkBooks/one/trades/previous'),{price:10000,quantity:999,createdAt:Timestamp.fromMillis(start-1000),marketVersion:1});
   for(let i=0;i<101;i++)await setDoc(doc(db,'sparkBooks/one/trades','today-'+i),{price:12000,quantity:2,createdAt:Timestamp.fromMillis(start+1000+i),marketVersion:i+2});
  });
  const r=await studentApi('/api/rankings');assert.equal(r.volume[0].volume,202);assert.equal(r.gainers[0].change.percent,20);assert.equal(r.losers.length,0);assert.equal(r.unavailable,0);

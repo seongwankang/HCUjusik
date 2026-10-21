@@ -22,20 +22,20 @@ before(async()=>{
  await db.doc('users/student').set({displayName:'테스트',role:'student',active:true});await db.doc('users/operator').set({displayName:'관리자',role:'admin',active:true});
  await seed('one');await db.doc('sparkAccounts/student').set({cash:1000000,positions:{one:10},reservedCash:0,reservedPositions:{},version:0,lastMarket:'one'});
 });
-async function seed(cid){await db.doc('companies/'+cid).set({name:cid,status:'listed',referencePrice:10000});await db.doc('companyOperations/'+cid).set({...initialOperations(),factory:1,revenue:1000,dividendBps:5000,production:{factory:1000,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}});await db.doc('sparkBooks/'+cid).set({issuerCash:0,issuedShares:10,treasuryShares:0});}
+async function seed(cid){await db.doc('companies/'+cid).set({name:cid,status:'listed',referencePrice:10000});await db.doc('companyOperations/'+cid).set({...initialOperations(),factory:1,revenue:1000,dividendBps:5000,production:{factory:1000,equipment:0,research:0},pendingProduction:{factory:0,equipment:0,research:0}});await db.doc('sparkBooks/'+cid).set({issuerCash:0,issuedShares:10,treasuryShares:0,lastPrice:0,version:0});}
 after(async()=>{await db?.terminate();if(app)await deleteApp(app);});
 
 test('market pause republishes participant assets without settling or detecting spies',async()=>{
  const before=(await db.doc('sparkAccounts/student').get()).data();
  const result=await job.runScheduledEconomy(db,{isPaused:()=>true,settle:()=>assert.fail('no payouts'),detect:()=>assert.fail('no detection')});
  assert.equal(result.rankingsUpdated,true);assert.equal(result.maintenance,true);assert.equal(result.settled,0);
- const board=(await db.doc('leaderboards/cash').get()).data();assert.equal(board.participants,1);assert.equal(board.entries[0].totalValue,1100000);
+ const board=(await db.doc('leaderboards/cash').get()).data();assert.equal(board.participants,1);assert.equal(board.entries[0].totalValue,1080000);
  assert.deepEqual((await db.doc('sparkAccounts/student').get()).data(),before);
 });
 test('trusted job pays after 07:55, skips repeats and publishes only an asset projection',async()=>{
  const day=koreaDay();let r=await job.runScheduledEconomy(db,{now:day*86400000-3900000-1});assert.equal(r.settled,0);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000000);
  r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+1});assert.equal(r.settled,1);assert.deepEqual(r.failed,[]);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000600);
- const board=(await db.doc('leaderboards/cash').get()).data();assert.deepEqual(board.entries.map(({investorKey,...row})=>row),[{name:'테스트',cash:1000600,stockValue:100000,totalValue:1100600,rank:1}]);
+ const board=(await db.doc('leaderboards/cash').get()).data();assert.deepEqual(board.entries.map(({investorKey,...row})=>row),[{name:'테스트',cash:1000600,stockValue:100000,totalValue:1080600,rank:1}]);
  assert.match(board.entries[0].investorKey,/^[a-f0-9]{64}$/);assert.equal((await db.doc('investorSnapshots/'+board.entries[0].investorKey).get()).data().cash,1000600);
  r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+2});assert.equal(r.settled,0);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000600);assert.equal((await db.doc('companyOperations/one').get()).data().revenue,1000);
 });

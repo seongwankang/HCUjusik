@@ -2,7 +2,7 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/production-economy-v1.json]
+    paths: [ops/ranking-stock-weight-80.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
@@ -51,4 +51,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'production-economy-initialize' || inputs.mode || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'rankings-only' || inputs.mode || 'full' }}

@@ -1,3 +1,4 @@
+import {rankingValue} from '../client/ranking-value.js';
 import {marketPaused} from '../client/market-session.js';
 import {closeMarket} from '../server/manual-market-close.js';
 import {fundCompanyStartup} from '../server/company-startup-capital.js';
@@ -39,3 +40,9 @@ const result=await runScheduledEconomy(getFirestore(app),{mode:process.env.ECONO
 // Public Actions logs contain counts only, never student names/cash/credentials.
 console.log(JSON.stringify({settled:result.settled,resumed:result.resumed,skipped:result.skipped,failedCount:result.failed.length,choiceEvents:result.choiceEvents,spyDetection:result.spyDetection?.status,rankingsUpdated:result.rankingsUpdated}));
 if(result.failed.length||result.choiceEvents.failed)throw Error('Some companies need settlement recovery; inspect company status in the administrator page.');
+
+if(process.env.ECONOMY_JOB_MODE==='rankings-only'){
+ const board=(await getFirestore(app).doc('leaderboards/cash').get()).data();
+ if(!board?.entries?.every(r=>r.totalValue===rankingValue(r.cash,r.stockValue)))throw Error('Ranking weight verification failed');
+ console.log(JSON.stringify({rankingsVerified:board.entries.length,stockWeightPercent:80}));
+}

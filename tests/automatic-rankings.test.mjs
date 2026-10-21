@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {rankingRefreshDue,RANKING_INTERVAL} from '../client/ranking-schedule.js';
 import {automaticRankings} from '../public/automatic-rankings.js';
 test('valid asset rankings become due at fifteen minutes; missing or invalid data is rebuilt',()=>{
- const now=Date.parse('2026-10-20T10:00:00+09:00'),board={generation:'a',entries:[{totalValue:1000000}],updatedAt:new Date(now).toISOString()};
+ const now=Date.parse('2026-10-20T10:00:00+09:00'),board={generation:'a',entries:[{cash:1000000,stockValue:0,totalValue:1000000}],updatedAt:new Date(now).toISOString()};
  assert.equal(rankingRefreshDue(board,now+RANKING_INTERVAL-1),false);assert.equal(rankingRefreshDue(board,now+RANKING_INTERVAL),true);
  assert.equal(rankingRefreshDue({...board,updatedAt:{toMillis:()=>now}},now),false);
  for(const value of [null,{...board,generation:''},{...board,entries:[{totalValue:null}]},{...board,updatedAt:null}])assert.equal(rankingRefreshDue(value,now),true);

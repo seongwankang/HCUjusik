@@ -1,3 +1,4 @@
+import {rankingValue} from './ranking-value.js';
 import {currentPriceLimits} from './daily-price-limits.js';
 import {shareholderSnapshots} from './shareholders.js';
 import {withSmoothedPrice} from './smoothed-price.js';
@@ -13,7 +14,7 @@ export function accountAssets(account,companies,books){return tradingPortfolio(a
 function assetRows(users,accounts,companies=[],books=[]){
  const companyMap=Object.fromEntries(companies.map(c=>[c.id,c])),bookMap=Object.fromEntries(books.map(b=>[b.id,b]));
  const map=new Map(accounts.map(a=>[a.id,a]));
- return users.filter(u=>u.active===true&&['student','president'].includes(u.role)).map(u=>{const a=accountAssets(map.get(u.id),companyMap,bookMap);if(!a.valuationComplete)throw Error('보유 주식의 현재 가격을 확인할 수 없어 자산 순위를 갱신하지 않았습니다.');return {uid:u.id,portfolio:a,name:String(u.displayName||'참가자').slice(0,80),cash:a.cash,stockValue:a.stockValue,totalValue:a.totalValue};});
+ return users.filter(u=>u.active===true&&['student','president'].includes(u.role)).map(u=>{const a=accountAssets(map.get(u.id),companyMap,bookMap);if(!a.valuationComplete)throw Error('보유 주식의 현재 가격을 확인할 수 없어 자산 순위를 갱신하지 않았습니다.');return {uid:u.id,portfolio:a,name:String(u.displayName||'참가자').slice(0,80),cash:a.cash,stockValue:a.stockValue,totalValue:rankingValue(a.cash,a.stockValue)};});
 }
 export function cashRankings(users,accounts,companies=[],books=[]){
  const rows=assetRows(users,accounts,companies,books).map(({uid,portfolio,...row})=>row);
@@ -38,7 +39,7 @@ export async function investorSnapshots(users,accounts,companies=[],books=[]){
  return {board:{entries:entries('totalValue'),cashEntries:entries('cash'),stockEntries:entries('stockValue'),participants:rows.length,generation},profiles:profiles.map(({uid,...p})=>p)};
 }
 export async function publishCashRankings(db){
- const [users,accounts,companies]=await Promise.all([allRows(db,'users'),allRows(db,'sparkAccounts'),allRows(db,'companies')]);const books=await Promise.all(companies.map(async c=>{const s=await getDoc(doc(db,'sparkBooks',c.id));return {id:c.id,...s.data()};}));
+ const [users,accounts,companies]=await Promise.all([allRows(db,'users'),allRows(db,'sparkAccounts'),allRows(db,'companies')]);const books=await Promise.all(companies.map(async c=>{const s=await getDoc(doc(db,'sparkBooks',c.id));return {id:c.id,...await withSmoothedPrice(db,c,s.exists()?s.data():null)};}));
  const {board,profiles}=await investorSnapshots(users,accounts,companies,books),batch=writeBatch(db);
  const shareholders=await shareholderSnapshots(users,accounts,companies,books);
  // Keep the ranking generation atomic; large company sets use bounded batches.
