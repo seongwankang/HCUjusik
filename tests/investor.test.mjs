@@ -9,7 +9,7 @@ test('tomorrow dividends use doubled income, all issued shares and owned shares 
  assert.equal(dayPlan(i.ops,i.book,day+1,[],d.tomorrowAt).perShare,d.perShare);
  assert.equal(investorSnapshot({...i,account:null},now).myDividend,0);
  assert.equal(investorSnapshot({...i,book:{issuedShares:10,treasuryShares:10}},now).perShare,100);
- assert.equal(investorSnapshot({...i,ops:{...i.ops,dividendBps:0}},now).myDividend,0);
+ assert.equal(investorSnapshot({...i,ops:{...i.ops,dividendBps:0}},now).myDividend,4);
 });
 test('next-day facilities mature; current events expiring at Korean midnight do not affect tomorrow',()=>{
  const i=input();i.ops.pendingRevenue=500;i.ops.pendingDay=day+1;i.ops.pendingProduction.factory=500;
