@@ -1,3 +1,7 @@
+import {changeDividendRate} from './dividend-rate.js';
+import {forecastDividendContext} from './dividend-rounds.js';
+import {nextSettlement} from './settlement-time.js';
+import {adjustedRevenue} from './event-model.js';
 import {withSmoothedPrice} from './smoothed-price.js';
 import {rankingValue} from './ranking-value.js';
 import {openBuyOrders,pendingBuyRows} from './pending-orders.js';
@@ -75,7 +79,8 @@ export function createClientApi({db,getUser,viewReads}){
    const opTask=get('companyOperations/'+cid);
    const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),opTask,get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),opTask.then(o=>effectRecords(db,cid,{revision:o?.lastEvent||'',persistent:true})),eventsFor()]);
    if(!company)message('기업을 찾을 수 없습니다.');
-   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount])};
+   const next=nextSettlement(ops||{}),dividendContext=ops?.dividendModel==='rank-v1'?await forecastDividendContext(db,cid,adjustedRevenue(ops,next.day,effects,next.at).revenue,next.day,reads):null;
+   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events,dividendContext}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount])};
   }
   if(route==='/api/company-history'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
@@ -85,7 +90,7 @@ export function createClientApi({db,getUser,viewReads}){
    const [effects,events,investments]=await Promise.all([effectRecords(db,cid,{revision:ops?.lastEvent||'',persistent:true}),eventsFor(),investmentsFor(cid,ops)]);
    return historyPage(managementHistory({ops,effects,events,investments}).recentHistory,cursor);
   }
-  if(route==='/api/company-events'&&method==='GET')return plain(await eventCompanyView(db,url.searchParams.get('companyId'),reads));
+  if(route==='/api/company-events'&&method==='GET'){const cid=url.searchParams.get('companyId'),view=await eventCompanyView(db,cid,reads),next=nextSettlement((await get('companyOperations/'+cid))||{});return plain({...view,dividendContext:await forecastDividendContext(db,cid,view.settlementProjection.revenue,next.day,reads)});}
   if(method==='POST'&&['/api/event-publish','/api/event-random','/api/event-close','/api/event-choose','/api/event-apply'].includes(route)){
    const b=JSON.parse(options.body||'{}');
    if(route==='/api/event-publish'||route==='/api/event-random'||route==='/api/event-close'){
@@ -119,15 +124,14 @@ export function createClientApi({db,getUser,viewReads}){
   if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
   if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
    const b=JSON.parse(options.body||'{}');
-   if(route==='/api/economy-config'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const c=validateConfig(b);await runTransaction(db,async t=>t.set(doc(db,'economyConfig','main'),c));return {ok:true};}
+   if(route==='/api/economy-config'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const c=validateConfig(b);await runTransaction(db,async t=>{const ref=doc(db,'economyConfig','main'),old=await t.get(ref);t.set(ref,{...c,...(old.data()?.dividendModel?{dividendModel:old.data().dividendModel}:{})});});return {ok:true};}
    const cid=b.companyId;if(typeof cid!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(cid))message('기업을 선택하세요.');
    const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
    if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 사용할 수 있습니다.');
    if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
    if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
    if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');if(!await get('spyRounds/preflight-d'+Math.floor((Date.now()+32400000)/86400000)))message('자동 정산의 산업스파이 발각 처리가 먼저 완료되어야 합니다. 잠시 후 다시 확인하세요.');const result=await settleDay(db,cid);return {...result,spies:{status:'scheduled'}};}
-   if(!Number.isSafeInteger(b.dividendBps)||b.dividendBps<100||b.dividendBps>10000)message('배당률은 1~100%로 입력하세요.');
-   await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),o=await t.get(r);if(!o.exists())message('회사 경영 정보를 먼저 불러와 주세요.');const status=dividendChangeStatus(o.data());if(!status.allowed)message(status.reason);if(o.data().dividendBps===b.dividendBps)message('현재와 다른 배당률을 입력하세요.');t.update(r,{dividendBps:b.dividendBps,lastDividendDay:status.day});});return {ok:true};
+   return changeDividendRate(db,cid,b.dividendBps);
   }
   if(route==='/api/exchange'&&method==='GET')return sparkView(db,user.uid,url.searchParams.get('companyId'),profile.role,reads);
   if(route==='/api/limit-order'&&method==='POST'){

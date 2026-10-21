@@ -1,3 +1,4 @@
+import {DIVIDEND_MODEL,normalizeDividendBps} from './ranked-dividends.js';
 import {productionEconomy} from './production-economy.js';
 import {researchBps,staffCapacity,BOOST_LIMIT,RESEARCH_LIMIT} from './business-policy.js';
 export const ASSET_NAMES={factory:'공장',equipment:'생산 설비',research:'R&D센터'};
@@ -68,7 +69,7 @@ export function investmentCost(o,config,asset,now=Date.now()){
 }
 export function effectiveDividendBps(o,now=Date.now()){
  const configured=Math.max(100,o.dividendBps??100);
- return Math.max(100,termActive(o.dividendLimit,now,o)?Math.min(configured,o.dividendLimit.percent*100):configured);
+ const effective=termActive(o.dividendLimit,now,o)?Math.min(configured,o.dividendLimit.percent*100):configured;return o.dividendModel===DIVIDEND_MODEL?normalizeDividendBps(effective):Math.max(100,effective);
 }
 export function currentEffect(o,r,now=Date.now()){
  if(!activeEffect(r,now,o))return false;

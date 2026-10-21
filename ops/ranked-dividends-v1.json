@@ -1,0 +1,10 @@
+{
+  "model": "rank-v1",
+  "rank1Base": 150,
+  "rankStep": 5,
+  "rank22Base": 45,
+  "minimumRateBps": 1000,
+  "maximumRateBps": 3000,
+  "companyCharge": "revenue*rateBps/10000",
+  "rewards": "base*rateBps/100 per share"
+}

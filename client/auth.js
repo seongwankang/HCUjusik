@@ -92,6 +92,7 @@ export async function dataRequest(path,options){
    // Transactions still read authoritative documents. Confirm only affected views.
    const uid=auth.currentUser?.uid,cid=b.companyId;
    const paths=['users/'+uid,'sparkAccounts/'+uid,...(cid?['sparkBooks/'+cid,'companyOperations/'+cid,'companySpies/'+cid,'companyChoices/'+cid]:[])];
+   if(path==='/api/economy-rate')paths.push('news','dividendForecasts');
    if(path.includes('/admin/')||/event-|rankings-publish|economy-config|spy-policy/.test(path))paths.push('*');
    await viewReads.refresh(paths).catch(()=>{});
   }

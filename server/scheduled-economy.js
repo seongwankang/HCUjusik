@@ -1,3 +1,5 @@
+import {prepareDividendRound,publishDividendForecast} from '../client/dividend-rounds.js';
+import {nextSettlement} from '../client/settlement-time.js';
 import {closeMarket} from './manual-market-close.js';
 import {fundCompanyStartup} from './company-startup-capital.js';
 import {marketPaused,settlementPaused} from '../client/market-session.js';
@@ -17,6 +19,7 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
  if(marketPaused(now))await closeMarket(db);
  if(mode==='rankings-only'||mode==='full'&&isPaused(now)){
   const previous=(await db.doc('leaderboards/cash').get()).data(),updated=mode==='rankings-only'||rankingRefreshDue(previous,now);
+  const policy=(await db.doc('economyConfig/main').get()).data();if(policy?.dividendModel==='rank-v1')await publishDividendForecast(db,nextSettlement({},now).day);
   const board=updated?await publish(db):previous;
   return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:updated,participants:board?.participants||0,maintenance:isPaused(now)};
  }
@@ -36,6 +39,7 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
   }
   if(result.spyDetection.status==='waiting'){result.failed.push('spy-detection');return result;}
  }catch(error){result.spyDetection={status:'failed',message:error.message};result.failed.push('spy-detection');return result;}
+ const policy=(await db.doc('economyConfig/main').get()).data();if(policy?.dividendModel==='rank-v1'&&settlementDue(now)){try{await prepareDividendRound(db,day);}catch{result.failed.push('dividend-round');return result;}}
  for(const c of companies.filter(c=>['listed','paused'].includes(c.status))){
   try{
    // Resuming yesterday's interrupted payout must not mint today's revenue twice.
@@ -51,6 +55,7 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
   }catch{result.failed.push(c.id);}
  }
  try{result.spies=await settleSpies(db,now);}catch(error){result.spies={status:'failed',message:error.message};result.failed.push('industrial-spies');}
+ if(policy?.dividendModel==='rank-v1')await publishDividendForecast(db,nextSettlement({},now).day);
  const leadership=(await db.doc('companyLeadership/main').get()).data();
  const board=(await db.doc('leaderboards/cash').get()).data();
  // Avoid rereading every participant on each settlement retry (Spark quota).

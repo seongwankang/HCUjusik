@@ -74,7 +74,7 @@ service cloud.firestore {
         d.eventSummary.unselected is list && d.eventSummary.unselected.size() <= 100;
     }
     function newsData(d) {
-      return d.keys().hasOnly(['title','content','category','companyId','companyName','publishedAt','eventId','eventSummary']) &&
+      return d.keys().hasOnly(['title','content','category','companyId','companyName','publishedAt','eventId','eventSummary','dividendChange']) &&
         d.get('category','공지') in ['공지','기업 뉴스','시장 동향','이벤트'] && str(d.title,120) && str(d.content,5000) &&
         d.companyId is string && d.companyId.size() <= 128 && d.companyName is string &&
         (d.companyId == '' ? d.companyName == '' : d.companyName == get(/databases/$(database)/documents/companies/$(d.companyId)).data.name) && eventNewsData(d);
@@ -82,7 +82,7 @@ service cloud.firestore {
     match /news/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-      allow create: if admin() && newsData(request.resource.data) && request.resource.data.publishedAt == request.time;
+      allow create: if newsData(request.resource.data) && request.resource.data.publishedAt == request.time && ('dividendChange' in request.resource.data ? dividendRateNews(id,request.resource.data) : admin());
       allow update: if admin() && newsData(request.resource.data) &&
         (request.resource.data.publishedAt == request.time ||
           request.resource.data.publishedAt == resource.data.publishedAt && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['eventSummary']));
@@ -541,8 +541,8 @@ service cloud.firestore {
       return int((c[asset+'Cost']*(100+percent)+99) / 100);
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay','revenueRevision']) &&
-        number(d.get('revenueRevision',0),1000000) && number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay','revenueRevision','dividendModel','lastDividendNews']) &&
+        d.get('dividendModel','legacy') in ['legacy','rank-v1'] && (!('lastDividendNews' in d) || sparkId(d.lastDividendNews)) && number(d.get('revenueRevision',0),1000000) && number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
@@ -624,7 +624,7 @@ service cloud.firestore {
     }
     match /economyConfig/{id} {
       allow get: if id == 'main' && participant();
-      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['version','factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchBoostBps','employeeCost','employeeRevenue']) && request.resource.data.version == 4 &&
+      allow create,update: if id == 'main' && admin() && request.resource.data.keys().hasOnly(['version','factoryCost','factoryRevenue','equipmentCost','equipmentRevenue','researchCost','researchBoostBps','employeeCost','employeeRevenue','dividendModel']) && (!('dividendModel' in request.resource.data) || request.resource.data.dividendModel == 'rank-v1') && request.resource.data.version == 4 &&
         number(request.resource.data.factoryCost,100000000) && request.resource.data.factoryCost > 0 && number(request.resource.data.factoryRevenue,100000000) && request.resource.data.factoryRevenue > 0 &&
         number(request.resource.data.equipmentCost,100000000) && request.resource.data.equipmentCost > 0 && number(request.resource.data.equipmentRevenue,100000000) && request.resource.data.equipmentRevenue > 0 &&
         number(request.resource.data.researchCost,100000000) && request.resource.data.researchCost > 0 && number(request.resource.data.researchBoostBps,1000) && request.resource.data.researchBoostBps > 0 &&
@@ -702,16 +702,41 @@ service cloud.firestore {
       allow create: if admin();
       allow update,delete,list: if false;
     }
+    function dividendRateNews(nid,n) {
+      let cid=n.companyId;
+      let o=operations(cid);
+      let d=getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data;
+      return manager(cid) && n.keys().hasOnly(['title','content','category','companyId','companyName','dividendChange','publishedAt']) &&
+        n.category == '기업 뉴스' && n.title == n.companyName+' 배당률 변경' &&
+        n.content == '배당률을 변경했습니다. 변경된 배당률은 다음 정산부터 적용됩니다.' &&
+        n.publishedAt == request.time && d.lastDividendNews == nid &&
+        o.get('lastDividendDay',-1) < dayNumber() && d.lastDividendDay == dayNumber() && d.dividendBps != o.dividendBps &&
+        n.dividendChange == {'day':dayNumber(),'fromBps':o.dividendBps,'toBps':d.dividendBps};
+    }
     function dividendRate(cid,d,o) {
       let minute=(int(request.time.toMillis() / 60000)+540)%1440;
+      let nid=d.lastDividendNews;
+      let n=getAfter(/databases/$(database)/documents/news/$(nid)).data;
       return manager(cid) && !o.locked && minute >= 480 && minute < 1020 &&
         o.get('lastDividendDay',-1) < dayNumber() && d.lastDividendDay == dayNumber() &&
-        d.dividendBps != o.dividendBps && d.diff(o).affectedKeys().hasOnly(['dividendBps','lastDividendDay']) && number(d.dividendBps,10000) && d.dividendBps >= 100;
+        d.dividendBps != o.dividendBps && d.diff(o).affectedKeys().hasOnly(['dividendBps','lastDividendDay','lastDividendNews']) &&
+        number(d.dividendBps,3000) && d.dividendBps >= 1000 && sparkId(nid) &&
+        !exists(/databases/$(database)/documents/news/$(nid)) && newsData(n) && dividendRateNews(nid,n);
+    }
+    match /dividendRounds/{id} {
+      allow get: if participant();
+      allow create: if admin() && request.resource.data.model == 'rank-v1' && request.resource.data.day == dayNumber() && request.time.toMillis() >= dayNumber()*86400000-3900000 && request.resource.data.createdAt == request.time;
+      allow list,update,delete: if false;
+    }
+    match /dividendForecasts/{id} {
+      allow get: if id == 'main' && participant();
+      allow create,update: if id == 'main' && admin() && request.resource.data.model == 'rank-v1' && request.resource.data.entries is list && request.resource.data.entries.size() <= 1000 && request.resource.data.updatedAt == request.time;
+      allow list,delete: if false;
     }
     match /companyOperations/{cid} {
       allow get: if participant();
       allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
-        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':100,'lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
+        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':1000,'dividendModel':'rank-v1','lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :

@@ -1,3 +1,5 @@
+import {frozenDividendContext} from './dividend-rounds.js';
+import {DIVIDEND_MODEL} from './ranked-dividends.js';
 import {dividendAllocation} from './dividends.js';
 import {DEFAULT_CONFIG,validateConfig,effectiveConfig,researchBps,hasPending,staffCapacity,RESEARCH_LIMIT} from './business-policy.js';
 import {investmentDay,settlementTime} from './settlement-time.js';
@@ -11,11 +13,12 @@ const fail=s=>{throw new Error(s);};
 export const koreaDay=(time=Date.now())=>Math.floor((time+32400000)/86400000);
 export function initialOperations(){return {cash:0,receivedIssuerCash:0,revenue:0,pendingRevenue:0,pendingDay:0,factory:0,equipment:0,research:0,dividendBps:100,lastSettledDay:0,locked:false,currentDay:'',paidShares:0,paidAmount:0};}
 export function availableFunds(ops,book){return ops.cash+(book?.issuerCash||0)-ops.receivedIssuerCash;}
-export function dayPlan(ops,book,day,records=[],now=Date.now()){
+export function dayPlan(ops,book,day,records=[],now=Date.now(),context){
  if(ops.locked)fail('진행 중인 정산을 먼저 완료하세요.');if(day<=ops.lastSettledDay)fail('오늘 정산은 이미 완료했습니다.');
- const {base,revenue}=adjustedRevenue(ops,day,records,now),allocation=dividendAllocation(revenue,effectiveDividendBps(ops,now),book),{dividend}=allocation;
- const cash=availableFunds(ops,book)+revenue-dividend;if(!Number.isSafeInteger(cash)||Math.abs(cash)>MAX)fail('회사 자금 한도를 초과합니다.');
- return {base,revenue,...allocation,retained:revenue-dividend,cash,rateBps:effectiveDividendBps(ops,now)};
+ if(ops.dividendModel===DIVIDEND_MODEL&&!context)fail('배당 순위가 확정되지 않았습니다.');
+ const calculated=adjustedRevenue(ops,day,records,now),{base}=calculated,revenue=context?.revenue??calculated.revenue,rateBps=context?.rateBps??effectiveDividendBps(ops,now),allocation=dividendAllocation(revenue,rateBps,book,context),{dividend}=allocation,companyCharge=allocation.companyCharge??dividend;
+ const cash=availableFunds(ops,book)+revenue-companyCharge;if(!Number.isSafeInteger(cash)||Math.abs(cash)>MAX)fail('회사 자금 한도를 초과합니다.');
+ return {base,revenue,...allocation,retained:revenue-companyCharge,companyCharge,cash,rateBps:allocation.rateBps??rateBps};
 }
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 export async function operationsView(db,cid,reads){
@@ -24,7 +27,7 @@ export async function operationsView(db,cid,reads){
  const ops=o.exists()?o.data():initialOperations(),book=b.exists()?b.data():null;
  return {initialized:o.exists(),ops,book,available:availableFunds(ops,book),config:effectiveConfig(config.exists()?config.data():null),usingDefaultPolicy:config.data()?.version!==4,days:days.docs.map(d=>({id:d.id,...d.data(),createdAt:d.data().createdAt?.toDate().toISOString()})).sort((a,b)=>b.day-a.day)};
 }
-export function newOperations(now=Date.now()){const day=koreaDay(now);return {...initialOperations(),lastSettledDay:now>=settlementTime(day)?day:0};}
+export function newOperations(now=Date.now()){const day=koreaDay(now);return {...initialOperations(),dividendBps:1000,dividendModel:DIVIDEND_MODEL,lastSettledDay:now>=settlementTime(day)?day:0};}
 export async function initializeOperations(db,cid){if(!validId(cid))fail('기업을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid);if(!(await t.get(ref)).exists())t.set(ref,newOperations());});}
 export async function invest(db,cid,asset){
  if(!validId(cid)||!Object.hasOwn(ASSETS,asset))fail('기업과 설비를 확인하세요.');
@@ -47,10 +50,10 @@ export async function invest(db,cid,asset){
 }
 export async function beginDay(db,cid,retry=0){
  if(Date.now()<settlementTime(koreaDay())){const running=(await getDoc(doc(db,'companyOperations',cid))).data();if(!running?.locked)fail('오늘 정산은 오전 7시 55분부터 실행할 수 있습니다.');}
- if(!validId(cid))fail('기업을 선택하세요.');const existing=(await getDoc(doc(db,'companyOperations',cid))).data();if(existing?.locked)return existing.currentDay;await applyDueCompanyChoices(db,cid);let before=await getDoc(doc(db,'companyOperations',cid));if(before.data()?.pendingEvent){const eid=before.data().pendingEvent,selected=await getDoc(doc(db,'companyChoices',cid,'items',eid));const event=await getDoc(doc(db,'events',eid));if(event.data()?.type==='choice'&&event.data().endsAt.toMillis()>Date.now()){await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),s=await t.get(r);if(!s.data().locked&&s.data().pendingEvent===eid)t.update(r,{pendingEvent:''});});}else await applyEvent(db,cid,eid,selected.data().option);before=await getDoc(doc(db,'companyOperations',cid));}const records=await effectRecords(db,cid);return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid))]);
+ if(!validId(cid))fail('기업을 선택하세요.');const existing=(await getDoc(doc(db,'companyOperations',cid))).data();if(existing?.locked)return existing.currentDay;await applyDueCompanyChoices(db,cid);let before=await getDoc(doc(db,'companyOperations',cid));if(before.data()?.pendingEvent){const eid=before.data().pendingEvent,selected=await getDoc(doc(db,'companyChoices',cid,'items',eid));const event=await getDoc(doc(db,'events',eid));if(event.data()?.type==='choice'&&event.data().endsAt.toMillis()>Date.now()){await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),s=await t.get(r);if(!s.data().locked&&s.data().pendingEvent===eid)t.update(r,{pendingEvent:''});});}else await applyEvent(db,cid,eid,selected.data().option);before=await getDoc(doc(db,'companyOperations',cid));}const records=await effectRecords(db,cid),context=before.data()?.dividendModel===DIVIDEND_MODEL?await frozenDividendContext(db,cid,koreaDay()):null;return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid))]);
  if(!os.exists()||!bs.exists())fail('회사 계좌와 주식 판매 내역을 확인하세요.');const o=os.data();if(o.locked)return o.currentDay;if(o.pendingEvent||o.lastEvent!==before.data()?.lastEvent)throw new Error('EVENT_RETRY');
- const day=koreaDay(),key='d'+day,p=dayPlan(o,bs.data(),day,records),dayRef=doc(db,'companyOperations',cid,'days',key);if((await t.get(dayRef)).exists())fail('이미 정산한 날짜입니다.');
- t.set(dayRef,{day,revenue:p.revenue,issuedShares:p.issuedShares,treasuryShares:p.treasuryShares,treasuryDividend:p.treasuryDividend,sold:p.sold,perShare:p.perShare,dividend:p.dividend,retained:p.retained,rateBps:p.rateBps,createdAt:serverTimestamp()});
+ const day=koreaDay(),key='d'+day,p=dayPlan(o,bs.data(),day,records,context?settlementTime(day):Date.now(),context),dayRef=doc(db,'companyOperations',cid,'days',key);if((await t.get(dayRef)).exists())fail('이미 정산한 날짜입니다.');
+ t.set(dayRef,{...(context?{model:DIVIDEND_MODEL,rank:p.rank,rankBase:p.rankBase,companyCharge:p.companyCharge}:{}),day,revenue:p.revenue,issuedShares:p.issuedShares,treasuryShares:p.treasuryShares,treasuryDividend:p.treasuryDividend,sold:p.sold,perShare:p.perShare,dividend:p.dividend,retained:p.retained,rateBps:p.rateBps,createdAt:serverTimestamp()});
  t.update(ref,{settlementCount:(o.settlementCount||0)+1,cash:p.cash,receivedIssuerCash:bs.data().issuerCash,revenue:p.base,...(o.production?{production:Object.fromEntries(['factory','equipment','research'].map(k=>[k,productionPool(o)[k]+(o.pendingDay<=day?productionPool(o,true)[k]:0)])),pendingProduction:o.pendingDay<=day?{factory:0,equipment:0,research:0}:productionPool(o,true)}:{}),staffRevenue:(o.staffRevenue||0)+(o.pendingDay<=day?(o.pendingStaffRevenue||0):0),pendingStaffRevenue:o.pendingDay<=day?0:(o.pendingStaffRevenue||0),activeResearchBps:researchBps(o)+(o.pendingDay<=day?(o.pendingResearchBps||0):0),pendingResearchBps:o.pendingDay<=day?0:(o.pendingResearchBps||0),pendingRevenue:o.pendingDay<=day?0:o.pendingRevenue,pendingDay:o.pendingDay<=day?0:o.pendingDay,locked:true,currentDay:key,paidShares:0,paidAmount:0});return key;
  }).catch(e=>{if(e.message==='EVENT_RETRY'&&retry<5)return beginDay(db,cid,retry+1);throw e;});
 }
