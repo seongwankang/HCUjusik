@@ -104,6 +104,12 @@ export function createClientApi({db,getUser,viewReads}){
    if((profile.role==='admin'||assigned)&&!(await get('companyOperations/'+cid)))await initializeOperations(db,cid);
    return operationsView(db,cid,reads);
   }
+  if(route==='/api/company-shareholders'&&method==='GET'){
+   const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
+   const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
+   if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 주주 명부를 볼 수 있습니다.');
+   return {shareholders:await get('companyShareholders/'+cid)};
+  }
   if(route==='/api/spies'&&method==='GET'){const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');return spyView(db,cid,reads);}
   if(route==='/api/spy-policy'&&method==='POST'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const policy=spyPolicy(JSON.parse(options.body||'{}'));await runTransaction(db,async t=>t.set(doc(db,'spyPolicy/main'),policy));return {ok:true};}
   if(route==='/api/spy-hire'&&method==='POST'){const b=JSON.parse(options.body||'{}');const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(b.companyId);if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 고용할 수 있습니다.');return hireSpy(db,b.companyId,b.targetId);}

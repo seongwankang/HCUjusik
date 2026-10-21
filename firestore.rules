@@ -427,6 +427,16 @@ service cloud.firestore {
       allow create,update: if id == 'cash' && admin() && leaderboardData(request.resource.data);
       allow list,delete: if false;
     }
+    // Only the assigned manager sees this company's names and simulation share counts.
+    match /companyShareholders/{cid} {
+      allow get: if manager(cid);
+      allow create,update: if admin() && request.resource.data.keys().hasOnly(['companyId','entries','holderShares','issuedShares','treasuryShares','bookVersion','updatedAt']) &&
+        request.resource.data.companyId == cid && request.resource.data.entries is list && request.resource.data.entries.size() <= 1000 &&
+        number(request.resource.data.holderShares,1000000) && number(request.resource.data.issuedShares,1000000) && request.resource.data.issuedShares > 0 &&
+        request.resource.data.holderShares <= request.resource.data.issuedShares && number(request.resource.data.treasuryShares,request.resource.data.issuedShares) &&
+        number(request.resource.data.bookVersion,1000000000) && request.resource.data.updatedAt == request.time;
+      allow list,delete: if false;
+    }
     match /investorSnapshots/{id} {
       allow get: if participant() && id.matches('^[a-f0-9]{64}$') && resource.data.generation == get(/databases/$(database)/documents/leaderboards/cash).data.generation;
       allow create,update: if admin() && id.matches('^[a-f0-9]{64}$') &&
