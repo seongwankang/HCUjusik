@@ -10,13 +10,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/systemMaintenance/reset); }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
-    function schoolVerified() { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email is string && request.auth.token.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$'); }
+    function schoolClaims() { return request.auth.token.email_verified == true && request.auth.token.email is string && request.auth.token.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$'); }
+    function schoolVerified() { return signedIn() && schoolClaims(); }
     function participant() {
       return signedIn() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true &&
-        (schoolVerified() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || schoolClaims());
     }
-    function admin() { return participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function admin() { return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true; }
     function str(v, n) { return v is string && v.size() > 0 && v.size() <= n; }
     function ids(v) { return v is list && v.size() <= 5 &&
       (v.size() < 1 || v[0] is string) && (v.size() < 2 || v[1] is string) &&
@@ -259,8 +260,7 @@ service cloud.firestore {
       let opposite=e.side == 'buy' ? o.ownerAsks.get(e.uid,[]) : o.ownerBids.get(e.uid,[]);
       return opposite.size() == 0 || (e.side == 'buy' ? e.price < opposite[0].price : e.price > opposite[0].price);
     }
-    function removedIndex(d,o,entry,remove) {
-      let e=priorityEntry(entry);
+    function removedIndex(d,o,e,remove) {
       let buy=e.side == 'buy';
       let key=buy ? 'bidIndex' : 'askIndex';
       let own=buy ? 'ownerBids' : 'ownerAsks';
@@ -269,16 +269,16 @@ service cloud.firestore {
     }
     function cancelIndexes(d,o,e) {
       let buy=e.side == 'buy';
-      return removedIndex(d,o,e,true) && d[buy ? 'askIndex' : 'bidIndex'] == o[buy ? 'askIndex' : 'bidIndex'] &&
+      return removedIndex(d,o,priorityEntry(e),true) && d[buy ? 'askIndex' : 'bidIndex'] == o[buy ? 'askIndex' : 'bidIndex'] &&
         d[buy ? 'ownerAsks' : 'ownerBids'] == o[buy ? 'ownerAsks' : 'ownerBids'] && d[buy ? 'ownerBids' : 'ownerAsks'].diff(o[buy ? 'ownerBids' : 'ownerAsks']).affectedKeys().hasOnly([e.uid]) &&
         d.initialIndex == o.initialIndex.removeAll([priorityEntry(e)]);
     }
-    function fillIndexes(d,o,b,s,q) {
+    function fillIndexes(d,o,b,s,q,bp,sp) {
       let gone=b.remaining == q;
       let issuer=s.id == 'issuer';
-      return removedIndex(d,o,b,gone) && d.ownerBids.diff(o.ownerBids).affectedKeys().hasOnly([b.uid]) &&
-        d.initialIndex == (gone ? o.initialIndex.removeAll([priorityEntry(b)]) : o.initialIndex) &&
-        (issuer ? d.askIndex == o.askIndex && d.ownerAsks == o.ownerAsks : removedIndex(d,o,s,s.remaining == q) && d.ownerAsks.diff(o.ownerAsks).affectedKeys().hasOnly([s.uid]));
+      return removedIndex(d,o,bp,gone) && d.ownerBids.diff(o.ownerBids).affectedKeys().hasOnly([b.uid]) &&
+        d.initialIndex == (gone ? o.initialIndex.removeAll([bp]) : o.initialIndex) &&
+        (issuer ? d.askIndex == o.askIndex && d.ownerAsks == o.ownerAsks : removedIndex(d,o,sp,s.remaining == q) && d.ownerAsks.diff(o.ownerAsks).affectedKeys().hasOnly([s.uid]));
     }
     function migrateIndexes(d,o) {
       let a=d.lastAction;
@@ -323,11 +323,13 @@ service cloud.firestore {
       let issuer=s.id == 'issuer';
       let q=fillQuantity(a);
       let price=fillPrice(a);
+      let bp=priorityEntry(b);
+      let sp=priorityEntry(s);
       let left=o.orders.removeAll([b,s]).concat(remainder(b,q)).concat(issuer ? [] : remainder(s,q));
       return a.keys().hasOnly(['kind','actor','buy','sell','fillId']) && orderId(a.fillId) &&
         b.side == 'buy' && s.side == 'sell' && b.uid != s.uid && b.price >= s.price &&
-        o.orders.hasAny([b]) && priorityEntry(b) == (issuer ? o.initialIndex[0] : o.bidIndex[0]) &&
-        (issuer ? (o.askIndex.size() == 0 || o.askIndex[0].price >= o.initialPrice) : priorityEntry(s) == o.askIndex[0]) && fillIndexes(d,o,b,s,q) &&
+        o.orders.hasAny([b]) && bp == (issuer ? o.initialIndex[0] : o.bidIndex[0]) &&
+        (issuer ? (o.askIndex.size() == 0 || o.askIndex[0].price >= o.initialPrice) : sp == o.askIndex[0]) && fillIndexes(d,o,b,s,q,bp,sp) &&
         (issuer ? (o.treasuryShares > 0 && s == issuerEntry(o)) :
           (o.orders.hasAny([s]) && (o.treasuryShares == 0 || s.price < o.initialPrice))) &&
         d.orders == left && d.treasuryShares == o.treasuryShares-(issuer ? q : 0) &&
@@ -438,7 +440,7 @@ service cloud.firestore {
     match /sparkAccounts/{uid} {
       allow get: if (owner(uid) && participant()) || admin();
       allow create: if owner(uid) && participant() && request.resource.data == {'cash':2000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
-      allow update: if (admin() && exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked && dividendAccount(uid)) || (participant() && accountChange(uid));
+      allow update: if participant() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ? (exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked ? dividendAccount(uid) : accountChange(uid)) : accountChange(uid));
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow delete: if false;
       match /orders/{id} {
@@ -464,14 +466,13 @@ service cloud.firestore {
     }
     function sparkFill(uid,id) {
       let d=request.resource.data;
-      let before=sparkBefore(d.companyId);
       let book=sparkAfter(d.companyId);
       let a=book.lastAction;
-      return sparkId(d.companyId) && book.version == before.version+1 && a.kind == 'fill' && a.fillId == id &&
+      let trade=getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data;
+      return sparkId(d.companyId) && book.version == sparkBefore(d.companyId).version+1 && a.kind == 'fill' && a.fillId == id &&
         ((uid == a.buy.uid && d.side == 'buy') || (a.sell.id != 'issuer' && uid == a.sell.uid && d.side == 'sell')) &&
-        d == {'companyId':d.companyId,'price':fillPrice(a),'quantity':fillQuantity(a),'side':d.side,'marketVersion':book.version,'createdAt':request.time} &&
-        getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data ==
-          {'companyId':d.companyId,'price':d.price,'quantity':d.quantity,'marketVersion':d.marketVersion,'createdAt':request.time};
+        trade.marketVersion == book.version && trade.createdAt == request.time &&
+        d.diff(trade).affectedKeys().hasOnly(['side']);
     }
     function publicTrade(cid,id,d) {
       let before=sparkBefore(cid);

@@ -134,8 +134,17 @@ test('ordinary student uses the same direct Firebase trade API without backend c
 // Production can still have the previous rules while the new bundle deploys.
 test('rules rollout preserves old trading and activates mandatory market history',async()=>{
  const current=readFileSync('firestore.rules','utf8');
- const requirement=" &&\n        getAfter(/databases/$(database)/documents/sparkBooks/$(d.companyId)/trades/$(id)).data ==\n          {'companyId':d.companyId,'price':d.price,'quantity':d.quantity,'marketVersion':d.marketVersion,'createdAt':request.time}";
- const legacy=current.replace(requirement,'').replace(/    function publicTrade[\s\S]*?(?=    function manager)/,'');
+ const legacyFill=`    function sparkFill(uid,id) {
+      let d=request.resource.data;
+      let before=sparkBefore(d.companyId);
+      let book=sparkAfter(d.companyId);
+      let a=book.lastAction;
+      return sparkId(d.companyId) && book.version == before.version+1 && a.kind == 'fill' && a.fillId == id &&
+        ((uid == a.buy.uid && d.side == 'buy') || (a.sell.id != 'issuer' && uid == a.sell.uid && d.side == 'sell')) &&
+        d == {'companyId':d.companyId,'price':fillPrice(a),'quantity':fillQuantity(a),'side':d.side,'marketVersion':book.version,'createdAt':request.time};
+    }
+`;
+ const legacy=current.replace(/    function sparkFill[\s\S]*?(?=    function publicTrade)/,()=>legacyFill).replace(/    function publicTrade[\s\S]*?(?=    function manager)/,'');
  assert.notEqual(legacy,current);assert.ok(!legacy.includes('function publicTrade'));
  const projectId='demo-history-rollout';
  const old=await initializeTestEnvironment({projectId,firestore:{rules:legacy}});let upgraded;
@@ -243,4 +252,22 @@ test('more than four resting orders accept both crossing and non-crossing orders
  await placeSpark(a,'a',{companyId:cid,orderId:'slot-crossing-sell',side:'sell',price:9000,quantity:1});
  assert.equal(await matchSpark(a,'a',cid),true);
  assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/slot-crossing-sell'))).data().filled,1);
+});
+
+
+test('10200 same-price cross settles with operations and a deep order book',async()=>{
+ const cid='memtrion-cross-regression';
+ await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await setDoc(doc(db,'companies',cid),{status:'listed',referencePrice:10000,issuedShares:20});await setDoc(doc(db,'companyOperations',cid),{locked:false});});
+ await initializeSpark(a,'a',cid);await initializeSpark(b,'b',cid);
+ await placeSpark(b,'b',{companyId:cid,orderId:'mem-issue-stock',side:'buy',price:10000,quantity:20});assert.equal(await matchSpark(b,'b',cid),true);
+ for(let i=0;i<12;i++){
+  await placeSpark(a,'a',{companyId:cid,orderId:'mem-deep-bid-'+i,side:'buy',price:9000-i*100,quantity:1});
+  await placeSpark(b,'b',{companyId:cid,orderId:'mem-deep-ask-'+i,side:'sell',price:20000+i*100,quantity:1});
+ }
+ await placeSpark(b,'b',{companyId:cid,orderId:'mem-sell-10200',side:'sell',price:10200,quantity:3});
+ await placeSpark(a,'a',{companyId:cid,orderId:'mem-buy-10200',side:'buy',price:10200,quantity:3});
+ assert.equal(await matchSpark(a,'a',cid),true);
+ assert.equal((await getDoc(doc(a,'sparkAccounts/a/orders/mem-buy-10200'))).data().filled,3);
+ assert.equal((await getDoc(doc(b,'sparkAccounts/b/orders/mem-sell-10200'))).data().filled,3);
+ assert.equal((await getDoc(doc(a,'sparkBooks',cid))).data().lastPrice,10200);
 });
