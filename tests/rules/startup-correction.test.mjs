@@ -6,7 +6,7 @@ import {writeFile} from 'node:fs/promises';
 import {buildJob} from '../../scripts/build-jobs.mjs';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 test('startup correction reverses only revenue and actual dividends atomically, preserves investments, and is retry safe',async()=>{
- await writeFile('.generated-correction-entry.mjs',"export {correctStartupSettlement} from './server/settlement-correction.js';export {initializeOperations,dayPlan} from './client/economy.js';");
+ await writeFile('.generated-correction-entry.mjs',"export {correctStartupSettlement,releaseCorrectionReservations} from './server/settlement-correction.js';export {initializeOperations,dayPlan} from './client/economy.js';");
  await buildJob('.generated-correction-entry.mjs','.generated-correction.mjs');const job=await import('../../.generated-correction.mjs?'+Date.now());
  const app=initializeApp({projectId:'demo-startup-correction'},'startup-correction'),db=getFirestore(app),day=20747;
  try{
@@ -28,6 +28,7 @@ test('startup correction reverses only revenue and actual dividends atomically, 
  assert.equal((await db.doc('companyOperations/one/days/d'+day).get()).data().revenue,0);assert.equal((await db.doc('sparkAccounts/student/dividends/one_d'+day).get()).data().amount,0);
  assert.ok((await db.collection('settlementCorrections/startup-cutoff-'+day+'/documents').get()).size>0);
  assert.equal((await job.correctStartupSettlement(db)).status,'complete');assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1840000);
+ const {emptyIndexes,insertIndexes}=await import('../../client/order-index.js');const entry={uid:'student',id:'reserve-order',side:'buy',price:1900000,quantity:1,remaining:1,sequence:1};let book={...emptyIndexes(),initialPrice:10000,orders:[entry],version:1};book={...book,...insertIndexes(book,entry).patch};await db.doc('sparkBooks/one').set(book);await db.doc('sparkAccounts/student/orders/reserve-order').set({companyId:'one',side:'buy',price:1900000,remaining:1,cancelled:0,status:'open',createdAt:new Date()});await db.doc('sparkAccounts/student').update({reservedCash:1900000});assert.equal((await job.releaseCorrectionReservations(db)).cancelled,1);assert.equal((await db.doc('sparkAccounts/student').get()).data().reservedCash,0);assert.equal((await db.doc('sparkBooks/one').get()).data().orders.length,0);assert.equal((await job.releaseCorrectionReservations(db)).cancelled,0);
  // New midday accounts skip today's settlement even after a grant becomes active.
  await job.initializeOperations(db,'fresh');const fresh=(await db.doc('companyOperations/fresh').get()).data();assert.equal(fresh.lastSettledDay,Math.floor((Date.now()+32400000)/86400000));
  }finally{await db.terminate();await deleteApp(app);}

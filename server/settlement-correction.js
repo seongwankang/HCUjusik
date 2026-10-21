@@ -1,5 +1,6 @@
 import {FieldValue} from 'firebase-admin/firestore';
 import {koreaDay,settlementTime} from '../client/settlement-time.js';
+import {removeIndexes} from '../client/order-index.js';
 const stamp=v=>v?.toMillis?.()??NaN;
 // A single, narrowly checked repair. All originals remain in private Firestore;
 // no account identifiers, balances or student data are printed by the job.
@@ -41,4 +42,23 @@ export async function correctStartupSettlement(db,{day=20747,expectedCompanies=4
   t.set(root,{status:'complete',day,companies:candidates.length,reversedRevenue:revenue,reversedDividends:dividends,completedAt:FieldValue.serverTimestamp()});
   return {status:'corrected',companies:candidates.length,reversedRevenue:revenue,reversedDividends:dividends};
  });
+}
+// A recalled dividend may have funded an unfilled buy reservation. Release only
+// the necessary newest buy orders, using the same book/index updates as cancelSpark.
+export async function releaseCorrectionReservations(db,day=20747){
+ const root=db.doc('settlementCorrections/startup-cutoff-'+day);
+ if((await root.get()).data()?.status!=='complete')throw Error('Correction must complete first');
+ const backups=(await root.collection('documents').get()).docs.map(s=>s.data()).filter(x=>/^sparkAccounts\/[^/]+$/.test(x.path));let cancelled=0;
+ for(const backup of backups)cancelled+=await db.runTransaction(async t=>{
+  const ref=db.doc(backup.path),s=await t.get(ref),a=s.data();if(a.reservedCash<=a.cash)return 0;
+  const orders=(await t.get(ref.collection('orders').where('status','==','open'))).docs.filter(o=>o.data().side==='buy').sort((x,y)=>stamp(y.data().createdAt)-stamp(x.data().createdAt)||y.id.localeCompare(x.id));
+  const selected=[];let released=0;for(const o of orders){selected.push(o);released+=o.data().price*o.data().remaining;if(a.reservedCash-released<=a.cash)break;}
+  if(!released||released>a.reservedCash||a.reservedCash-released>a.cash)throw Error('Open orders do not explain cash reservation');
+  const books=new Map();for(const o of selected){const cid=o.data().companyId;if(!books.has(cid))books.set(cid,await t.get(db.doc('sparkBooks/'+cid)));}
+  const patches=[];for(const [cid,bs]of books){const b=bs.data(),own=selected.filter(o=>o.data().companyId===cid),entries=own.map(o=>b.orders.find(e=>e.uid===ref.id&&e.id===o.id));if(entries.some((e,i)=>!e||e.side!=='buy'||e.price!==own[i].data().price||e.remaining!==own[i].data().remaining))throw Error('Order book changed');patches.push([bs,{...removeIndexes(b,entries),orders:b.orders.filter(e=>!entries.includes(e)),version:b.version+1,lastAction:{kind:'cancel',actor:ref.id,entry:entries.at(-1)},updatedAt:FieldValue.serverTimestamp()}]);}
+  for(const snap of [s,...selected,...books.values()])t.set(root.collection('reservationBackups').doc(Buffer.from(snap.ref.path).toString('base64url')),{path:snap.ref.path,data:snap.data()});
+  for(const [bs,patch]of patches)t.update(bs.ref,patch);
+  for(const o of selected)t.update(o.ref,{remaining:0,cancelled:(o.data().cancelled||0)+o.data().remaining,status:'cancelled',marketVersion:books.get(o.data().companyId).data().version+1,correctionId:root.id});
+  t.update(ref,{reservedCash:a.reservedCash-released,version:a.version+1});return selected.length;
+ });return {cancelled};
 }
