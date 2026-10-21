@@ -16,7 +16,7 @@ before(async()=>{
  await writeFile('.generated-scheduled-test-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {runDueChoiceEvents} from './server/choice-events.js';export {beginDay,payHolder} from './client/economy.js';");
  // Settlement scenarios run at a controlled open settlement window without
  // changing the system clock used by gRPC deadlines.
- await build({entryPoints:['.generated-scheduled-test-entry.mjs'],outfile:'.generated-scheduled-test.mjs',bundle:true,platform:'node',format:'esm',packages:'external',plugins:[{name:'admin-fixture',setup(b){b.onResolve({filter:/^firebase[/]firestore$/},()=>({path:resolve('server/firestore-admin-adapter.js')}));b.onLoad({filter:/client[\\/]economy[.]js$/},args=>({contents:readFileSync(args.path,'utf8').replace('if(Date.now()<settlementTime(koreaDay()))','if(false)'),loader:'js'}));}}]});const loaded=await import('../../.generated-scheduled-test.mjs?test='+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,prepareLimits:async()=>{},now:Math.max(Date.now(),koreaDay()*86400000-3900000+1),...options})};
+ await build({entryPoints:['.generated-scheduled-test-entry.mjs'],outfile:'.generated-scheduled-test.mjs',bundle:true,platform:'node',format:'esm',packages:'external',plugins:[{name:'admin-fixture',setup(b){b.onResolve({filter:/^firebase[/]firestore$/},()=>({path:resolve('server/firestore-admin-adapter.js')}));b.onLoad({filter:/client[\\/]economy[.]js$/},args=>({contents:readFileSync(args.path,'utf8').replace('if(Date.now()<settlementTime(koreaDay()))','if(false)'),loader:'js'}));}}]});const loaded=await import('../../.generated-scheduled-test.mjs?test='+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,prepareLimits:async()=>{},fundStartup:async()=>{},now:Math.max(Date.now(),koreaDay()*86400000-3900000+1),...options})};
  app=initializeApp({projectId:'demo-scheduled-economy'},'scheduled-test');db=getFirestore(app);
  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-scheduled-economy/databases/(default)/documents',{method:'DELETE'});
  await db.doc('users/student').set({displayName:'테스트',role:'student',active:true});await db.doc('users/operator').set({displayName:'관리자',role:'admin',active:true});
@@ -34,10 +34,10 @@ test('market pause republishes participant assets without settling or detecting 
 });
 test('trusted job pays after 07:55, skips repeats and publishes only an asset projection',async()=>{
  const day=koreaDay();let r=await job.runScheduledEconomy(db,{now:day*86400000-3900000-1});assert.equal(r.settled,0);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000000);
- r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+1});assert.equal(r.settled,1);assert.deepEqual(r.failed,[]);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1001000);
- const board=(await db.doc('leaderboards/cash').get()).data();assert.deepEqual(board.entries.map(({investorKey,...row})=>row),[{name:'테스트',cash:1001000,stockValue:100000,totalValue:1101000,rank:1}]);
- assert.match(board.entries[0].investorKey,/^[a-f0-9]{64}$/);assert.equal((await db.doc('investorSnapshots/'+board.entries[0].investorKey).get()).data().cash,1001000);
- r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+2});assert.equal(r.settled,0);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1001000);assert.equal((await db.doc('companyOperations/one').get()).data().revenue,1000);
+ r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+1});assert.equal(r.settled,1);assert.deepEqual(r.failed,[]);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000600);
+ const board=(await db.doc('leaderboards/cash').get()).data();assert.deepEqual(board.entries.map(({investorKey,...row})=>row),[{name:'테스트',cash:1000600,stockValue:100000,totalValue:1100600,rank:1}]);
+ assert.match(board.entries[0].investorKey,/^[a-f0-9]{64}$/);assert.equal((await db.doc('investorSnapshots/'+board.entries[0].investorKey).get()).data().cash,1000600);
+ r=await job.runScheduledEconomy(db,{now:day*86400000-3900000+2});assert.equal(r.settled,0);assert.equal((await db.doc('sparkAccounts/student').get()).data().cash,1000600);assert.equal((await db.doc('companyOperations/one').get()).data().revenue,1000);
 });
 
 test('rankings-only job publishes snapshots without running settlement or deadline effects',async()=>{
@@ -86,6 +86,6 @@ test('trusted deadline worker applies new cash, grant, discount and dividend-cap
 test('scheduled IAM job integrates final spy transfers after ordinary dividends exactly once',async()=>{
  const prefix='spy-job-',today=koreaDay();for(const cid of [prefix+'a',prefix+'b']){await seed(cid);await db.doc('sparkBooks/'+cid).update({treasuryShares:10});await db.doc('companyOperations/'+cid).update({cash:1000000});}
  await db.doc('companySpies/'+prefix+'a').set({companyId:prefix+'a',targetId:prefix+'b',hireId:'fixture',cost:2000000,bps:200,settlements:3,remaining:3,activeFromDay:today,lastRoundDay:0});await db.doc('spyRegistry/main').set({version:1,companyId:prefix+'a',hireId:'fixture'});
- const first=await job.runScheduledEconomy(db);assert.equal(first.spies.status,'settled');assert.equal((await db.doc('companyOperations/'+prefix+'a').get()).data().cash,1002050);assert.equal((await db.doc('companyOperations/'+prefix+'b').get()).data().cash,1001950);
+ const first=await job.runScheduledEconomy(db);assert.equal(first.spies.status,'settled');assert.equal((await db.doc('companyOperations/'+prefix+'a').get()).data().cash,1001230);assert.equal((await db.doc('companyOperations/'+prefix+'b').get()).data().cash,1001170);
  const again=await job.runScheduledEconomy(db);assert.equal(again.spies.status,'complete');assert.equal((await db.doc('companySpies/'+prefix+'a').get()).data().remaining,3);
 });

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "companyInitialCapital": 10000000,
+  "formula": "(salePrice-productionCost)*productionPower",
+  "startupBudget": 20000000
+}

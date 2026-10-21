@@ -1,4 +1,5 @@
-import {researchBps,staffCapacity,BOOST_LIMIT,INCOME_MULTIPLIER,RESEARCH_LIMIT} from './business-policy.js';
+import {productionEconomy} from './production-economy.js';
+import {researchBps,staffCapacity,BOOST_LIMIT,RESEARCH_LIMIT} from './business-policy.js';
 export const ASSET_NAMES={factory:'공장',equipment:'생산 설비',research:'R&D센터'};
 const keys=Object.keys(ASSET_NAMES);
 const fail=s=>{throw new Error(s);};
@@ -47,26 +48,7 @@ export function activeEffect(r,now=Date.now(),o={}){
 }
 export function adjustedRevenue(o,day,records=[],now=Date.now()){
  if(o.research>0)requireProduction(o);
- const p=productionPool(o),q=productionPool(o,true),mature=o.pendingDay<=day;
- // base is the stored additive pool, never the multiplied daily result.
- // Historical additive R&D entries stay in the ledger but no longer earn money.
- const base=o.revenue+(mature?o.pendingRevenue:0),facilities=base-(o.research>0?p.research+(mature?q.research:0):0);
- const employees=o.employees||0,staffPool=(o.staffRevenue||0)+(mature?(o.pendingStaffRevenue||0):0);
- const supported=Math.min(employees,staffCapacity(o)),staff=employees?Math.floor(staffPool*supported/employees):0;
- const additive=facilities+staff;
- const baseBoost=Math.min(BOOST_LIMIT,researchBps(o)+(mature?(o.pendingResearchBps||0):0));let boost=baseBoost,extra=0;
- for(const r of records)if(activeEffect(r,now,o)&&r.effect.kind==='efficiency'&&r.effect.asset==='research')boost+=Math.trunc(baseBoost*r.effect.percent/100);
- boost=Math.max(0,Math.min(BOOST_LIMIT,boost));
- const researchBonus=Math.floor(additive*boost/10000),enhanced=additive+researchBonus;
- for(const r of records)if(['revenue','efficiency'].includes(r.effect.kind)&&activeEffect(r,now,o)){
-  const e=r.effect;if(e.kind==='efficiency'&&e.asset==='research')continue;
-  if(e.kind==='efficiency')requireProduction(o);
-  const raw=e.kind==='revenue'?enhanced:p[e.asset]+(mature?q[e.asset]:0);
-  const amount=e.kind==='revenue'?raw:raw+Math.floor(raw*boost/10000);
-  extra+=Math.trunc(amount*e.percent/100);
- }
- const revenue=Math.max(0,enhanced+extra)*INCOME_MULTIPLIER;if(!Number.isSafeInteger(revenue)||revenue>1e12)fail('이벤트 적용 수익 한도를 초과합니다.');
- return {base,revenue,additive,staff,supported,capacity:staffCapacity(o),researchBonus,boostBps:boost};
+ return productionEconomy(o,day,records,r=>activeEffect(r,now,o),productionPool,researchBps,staffCapacity);
 }
 export function effectText(input,result){
  const e={...input,...(result&&input.kind==='cash'?{amount:result.amount}:{}),...(result&&['workforce','grant','destroy'].includes(input.kind)?{count:result.count}:{})};

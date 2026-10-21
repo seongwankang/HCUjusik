@@ -7,12 +7,12 @@ test('new companies start with a 1% dividend rate',()=>{
  assert.equal(initialOperations().dividendBps,100);
 });
 test('legacy 0% companies receive at least 1% in settlement',()=>{
- const ops={...initialOperations(),revenue:50000,dividendBps:0};
+ const ops={...initialOperations(),factory:1,production:{factory:440000,equipment:0,research:0},revenue:440000,dividendBps:0};
  const plan=dayPlan(ops,{issuerCash:0,issuedShares:100,treasuryShares:0},1);
  assert.equal(plan.rateBps,100);
- assert.equal(plan.revenue,100000);
- assert.equal(plan.perShare,10);
- assert.equal(plan.dividend,1000);
+ assert.equal(plan.revenue,600000);
+ assert.equal(plan.perShare,60);
+ assert.equal(plan.dividend,6000);
 });
 test('active dividend caps cannot reduce the effective rate below 1%',()=>{
  const now=Date.parse('2026-10-21T12:00:00+09:00');

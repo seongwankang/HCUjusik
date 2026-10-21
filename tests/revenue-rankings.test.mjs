@@ -3,7 +3,7 @@ const now=Date.parse('2026-10-19T03:00:00Z'),day=koreaDay(now),zero={factory:0,e
 test('expected revenue includes pending investment, staffing, R&D and applied effects; cumulative counts only completed operating revenue',()=>{
  const ops={...initialOperations(),cash:-1000000,factory:1,equipment:1,research:1,employees:2,revenue:400000,staffRevenue:40000,activeResearchBps:500,pendingRevenue:100000,pendingDay:day+1,production:{...zero,factory:400000},pendingProduction:{...zero,equipment:100000},lastSettledDay:day-1};
  const effects=[{effect:{kind:'revenue',percent:-20,settlements:2},startsAfterSettlement:0,appliedAt:now-1000}];
- assert.deepEqual(companyRevenueMetrics(ops,[{day:day-2,revenue:100},{day:day-1,revenue:200},{day,revenue:999999}],effects,now),{expectedRevenue:907200,cumulativeRevenue:300});
+ assert.deepEqual(companyRevenueMetrics(ops,[{day:day-2,revenue:100},{day:day-1,revenue:200},{day,revenue:999999}],effects,now),{expectedRevenue:569985,cumulativeRevenue:300});
  assert.deepEqual(companyRevenueMetrics(null,[],[],now),{expectedRevenue:0,cumulativeRevenue:0});
  assert.equal(companyRevenueMetrics({...initialOperations(),revenue:100},[],[],now).expectedRevenue,null);
  assert.throws(()=>companyRevenueMetrics(ops,[{day:1,revenue:10},{day:1,revenue:10}],[],now),/정산/);

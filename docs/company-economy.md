@@ -1,3 +1,5 @@
+현재 매출 모델·투자 효과·초기자금은 [production-economy.md](production-economy.md)를 따릅니다. 아래는 이전 모델의 기록입니다.
+
 > 현재 설비·채용 가격, 순영업수익, R&D 비율 효과는 [경영 정책 v3](business-policy.md)를 따릅니다. 아래 문서의 과거 고정 R&D 일매출 설명은 v3로 대체되었습니다.
 
 # 회사경영과 뉴스 운영

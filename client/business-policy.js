@@ -1,9 +1,10 @@
-// Fictional classroom economy: daily contributions are net of routine costs.
+// Compatibility ledger for atomic investment rules. Revenue fields now encode
+// production technology; daily cash is computed in production-economy.js.
 // Keep the fallback policy identical to economyPolicy() in firestore.rules.
 export const DEFAULT_CONFIG={version:4,factoryCost:2000000,factoryRevenue:440000,equipmentCost:1000000,equipmentRevenue:200000,researchCost:500000,researchBoostBps:500,employeeCost:100000,employeeRevenue:20000};
 export const BASE_CAPACITY=10,FACTORY_CAPACITY=25,EQUIPMENT_CAPACITY=10;
-// Apply once to the computed operating income, never to stored production pools.
-export const INCOME_MULTIPLIER=2;
+// Legacy export only; production income has no final multiplier.
+export const INCOME_MULTIPLIER=1;
 export const RESEARCH_LIMIT=6,BOOST_LIMIT=3000;
 export const staffCapacity=o=>Math.min(1000,BASE_CAPACITY+o.factory*FACTORY_CAPACITY+o.equipment*EQUIPMENT_CAPACITY);
 export const researchBps=o=>o.activeResearchBps??Math.min(o.research,RESEARCH_LIMIT)*500;

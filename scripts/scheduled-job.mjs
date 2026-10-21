@@ -1,4 +1,6 @@
+import {marketPaused} from '../client/market-session.js';
 import {closeMarket} from '../server/manual-market-close.js';
+import {fundCompanyStartup} from '../server/company-startup-capital.js';
 import {publishDailyPriceLimits,limitSession} from '../server/daily-price-limits.js';
 import {resetPreservingPresidents} from '../server/preserve-presidents-reset.js';
 import {reverseAccidentalTrade} from '../server/accidental-trade-correction.js';
@@ -15,8 +17,13 @@ if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
 if(process.env.ECONOMY_JOB_MODE==='market-close'){console.log(JSON.stringify(await closeMarket(getFirestore(app))));process.exit(0);}
+if(process.env.ECONOMY_JOB_MODE==='production-economy-initialize'){
+ const db=getFirestore(app),result=await fundCompanyStartup(db);
+ console.log(JSON.stringify({startupCapital:result,amountPerCompany:10000000}));process.exit(0);
+}
 if(process.env.ECONOMY_JOB_MODE==='price-limits-initialize'){
- const db=getFirestore(app),now=Date.now(),result=await publishDailyPriceLimits(db,{now}),day=limitSession(now).day;
+ const db=getFirestore(app),now=Date.now();if(marketPaused(now)){console.log(JSON.stringify(await closeMarket(db)));process.exit(0);}
+ const result=await publishDailyPriceLimits(db,{now}),day=limitSession(now).day;
  const books=await db.collection('sparkBooks').get(),limits=books.docs.map(s=>{const b=s.data();return b.priceLimits?.day===day?b.priceLimits:b.nextPriceLimits;}).filter(p=>p?.day===day);
  console.log(JSON.stringify({priceLimits:result,verifiedCompanies:limits.length,referencePrices:[...new Set(limits.map(p=>p.referencePrice))],lowerPrices:[...new Set(limits.map(p=>p.lower))],upperPrices:[...new Set(limits.map(p=>p.upper))]}));process.exit(0);
 }
