@@ -1,4 +1,5 @@
 import {shareholderSnapshots} from './shareholders.js';
+import {withMedianPrice} from './median-price.js';
 import {investorSnapshot} from './investor.js';
 import {effectRecords} from './events.js';
 import {tradingPortfolio} from './portfolio.js';
@@ -19,7 +20,7 @@ export function cashRankings(users,accounts,companies=[],books=[]){
 }
 export function priceRankings(companies,books,max=100){
  const map=new Map(books.map(b=>[b.id,b]));
- return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const last=map.get(c.id)?.lastPrice,initial=!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
+ return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const b=map.get(c.id),last=b&&Object.hasOwn(b,'displayPrice')?b.displayPrice:b?.lastPrice,initial=b?.displayInitial??!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
 }
 export async function allRows(db,path,reads){const readDocs=reads?.getDocs||getDocs;let cursor=null,rows=[];for(;;){const page=await readDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])),path);rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
 export async function investorSnapshots(users,accounts,companies=[],books=[]){
@@ -51,6 +52,7 @@ export function marketRankingLists(prices,sessions){
 }
 const marketSessions=new WeakMap();
 export async function marketRankings(db,companies,books,now=Date.now(),reads){
+ books=await Promise.all(companies.map(async c=>({id:c.id,...await withMedianPrice(db,c,books.find(b=>b.id===c.id))})));
  let cache=marketSessions.get(db);if(!cache){cache=new Map();marketSessions.set(db,cache);}
  const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=companyRevenueRows(db,prices,now,reads);
  await Promise.all(prices.map(async p=>{try{
