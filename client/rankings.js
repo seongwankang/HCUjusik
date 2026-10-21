@@ -1,3 +1,4 @@
+import {currentPriceLimits} from './daily-price-limits.js';
 import {shareholderSnapshots} from './shareholders.js';
 import {withSmoothedPrice} from './smoothed-price.js';
 import {investorSnapshot} from './investor.js';
@@ -56,12 +57,12 @@ export async function marketRankings(db,companies,books,now=Date.now(),reads){
  let cache=marketSessions.get(db);if(!cache){cache=new Map();marketSessions.set(db,cache);}
  const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=companyRevenueRows(db,prices,now,reads);
  await Promise.all(prices.map(async p=>{try{
-  const version=books.find(b=>b.id===p.id)?.version,key=JSON.stringify([start,version]),cached=cache.get(p.id);
+  const limitReference=currentPriceLimits(books.find(b=>b.id===p.id),now)?.referencePrice,version=books.find(b=>b.id===p.id)?.version,key=JSON.stringify([start,version,limitReference]),cached=cache.get(p.id);
   if(Number.isSafeInteger(version)&&cached?.key===key){sessions[p.id]={volume:cached.volume,change:dayChange(p.price,cached.close)};return;}
   const path=collection(db,'sparkBooks',p.id,'trades');let cursor=null,volume=0;
   for(;;){const page=await getDocs(query(path,where('createdAt','>=',Timestamp.fromMillis(start)),where('createdAt','<',Timestamp.fromMillis(start+86400000)),orderBy('createdAt'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const d of page.docs){const q=d.data().quantity;if(!Number.isSafeInteger(q)||q<=0)throw Error('체결 수량 오류');volume+=q;}if(page.size<100)break;cursor=page.docs.at(-1);}
-  const previous=await getDocs(query(path,where('createdAt','<',Timestamp.fromMillis(start)),orderBy('createdAt','desc'),limit(1)));
-  const close=previous.empty?companies.find(c=>c.id===p.id).referencePrice:previous.docs[0].data().price;
+  const previous=limitReference?null:await getDocs(query(path,where('createdAt','<',Timestamp.fromMillis(start)),orderBy('createdAt','desc'),limit(1)));
+  const close=limitReference??(previous.empty?companies.find(c=>c.id===p.id).referencePrice:previous.docs[0].data().price);
   sessions[p.id]={volume,change:dayChange(p.price,close)};if(Number.isSafeInteger(version))cache.set(p.id,{key,volume,close});
  }catch{sessions[p.id]={volume:null,change:null};}}));
  return {...marketRankingLists(prices,sessions),...revenueRankingLists(prices,await revenueTask),asOf:now,day:new Date(start+32400000).toISOString().slice(0,10)};

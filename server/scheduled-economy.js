@@ -1,4 +1,5 @@
 import {marketPaused} from '../client/market-session.js';
+import {publishDailyPriceLimits} from './daily-price-limits.js';
 import {rankingRefreshDue} from '../client/ranking-schedule.js';
 import {settleSpies} from '../client/spies.js';
 import {detectDailySpy} from './spy-detection.js';
@@ -9,7 +10,7 @@ import {settleDay,koreaDay} from '../client/economy.js';
 import {publishCashRankings,allRows} from '../client/rankings.js';
 import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
-export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=marketPaused}={}){
+export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=marketPaused,prepareLimits=publishDailyPriceLimits}={}){
  if((await db.doc('systemMaintenance/reset').get()).exists)return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
  if(mode==='rankings-only'||mode==='full'&&isPaused(now)){
   const previous=(await db.doc('leaderboards/cash').get()).data(),updated=mode==='rankings-only'||rankingRefreshDue(previous,now);
@@ -18,6 +19,7 @@ export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,pu
  }
  if(mode==='spies-policy-only'){const migration=await migrateSpyPolicy(db);return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,spyPolicy:migration};}
  if(mode!=='full')throw Error('Unknown economy job mode');
+ await prepareLimits(db,{now});
  await migrateSpyPolicy(db);
  const choiceEvents=await runDueChoiceEvents(db,now);
  const day=koreaDay(now),companies=await allRows(db,'companies'),result={settled:0,resumed:0,skipped:0,failed:[...choiceEvents.blocked],choiceEvents:{processed:choiceEvents.processed,failed:choiceEvents.failed}};

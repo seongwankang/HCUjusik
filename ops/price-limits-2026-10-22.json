@@ -1,0 +1,5 @@
+{
+  "policy": "previous closing quote +100% / -50%",
+  "initialReference": 10000,
+  "tick": 100
+}

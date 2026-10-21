@@ -287,10 +287,21 @@ service cloud.firestore {
           o.indexVersion == 1 && o.indexCursor < o.orders.size() && a.entry == o.orders[o.indexCursor] && d.indexCursor == o.indexCursor+1 && d.indexVersion == (d.indexCursor == o.orders.size() ? 2 : 1) &&
           a.keys().hasOnly(['kind','actor','entry','prefix','suffix','ownPrefix','ownSuffix','initialPrefix','initialSuffix']) && insertIndex(d,o,a.entry,a));
     }
+    function priceLimitDay() { return int((request.time.toMillis()+32400000) / 86400000); }
+    function initialPriceLimits(price) {
+      return {'day':priceLimitDay(),'referencePrice':price,'lower':price < 200 ? 100 : int((price+199) / 200)*100,'upper':price*2};
+    }
+    // Only the Admin SDK can change an existing band's fields. New books
+    // derive the entire map from the immutable initial price below.
+    function priceAllowed(book,low,high) {
+      let day=priceLimitDay();
+      let p=book.get('priceLimits',{}).get('day',-1) == day ? book.priceLimits : book.get('nextPriceLimits',{});
+      return p.get('day',-1) == day && low >= p.lower && high <= p.upper;
+    }
     function entryValid(e,v) {
       return e.keys().hasOnly(['uid','id','side','price','quantity','remaining','sequence']) &&
         e.uid == request.auth.uid && orderId(e.id) && e.side in ['buy','sell'] &&
-        number(e.price,1000000) && e.price >= 100 && e.price % 100 == 0 && number(e.quantity,1000000) && e.quantity > 0 &&
+        number(e.price,1000000000) && e.price >= 100 && e.price % 100 == 0 && number(e.quantity,1000000) && e.quantity > 0 &&
         e.price*e.quantity <= 1000000000 && e.remaining == e.quantity && e.sequence == v;
     }
     function unchangedTreasury(d,o) {
@@ -298,7 +309,7 @@ service cloud.firestore {
     }
     function placeBook(cid,d,o) {
       let e=d.lastAction.entry;
-      return d.lastAction.keys().hasOnly(['kind','actor','entry','prefix','suffix','ownPrefix','ownSuffix','initialPrefix','initialSuffix']) && entryValid(e,d.version) &&
+      return d.lastAction.keys().hasOnly(['kind','actor','entry','prefix','suffix','ownPrefix','ownSuffix','initialPrefix','initialSuffix']) && entryValid(e,d.version) && priceAllowed(o,e.price,e.price) &&
         d.orders == o.orders.concat([e]) && noSelfCross(o,e) && insertIndex(d,o,e,d.lastAction) &&
         unchangedTreasury(d,o) && accountAdvanced(e.uid,cid) && orderAdvanced(e,cid,d.version);
     }
@@ -327,7 +338,7 @@ service cloud.firestore {
       let sp=priorityEntry(s);
       let left=o.orders.removeAll([b,s]).concat(remainder(b,q)).concat(issuer ? [] : remainder(s,q));
       return a.keys().hasOnly(['kind','actor','buy','sell','fillId']) && orderId(a.fillId) &&
-        b.side == 'buy' && s.side == 'sell' && b.uid != s.uid && b.price >= s.price &&
+        b.side == 'buy' && s.side == 'sell' && b.uid != s.uid && b.price >= s.price && priceAllowed(o,s.price,b.price) &&
         o.orders.hasAny([b]) && bp == (issuer ? o.initialIndex[0] : o.bidIndex[0]) &&
         (issuer ? (o.askIndex.size() == 0 || o.askIndex[0].price >= o.initialPrice) : sp == o.askIndex[0]) && fillIndexes(d,o,b,s,q,bp,sp) &&
         (issuer ? (o.treasuryShares > 0 && s == issuerEntry(o)) :
@@ -345,6 +356,7 @@ service cloud.firestore {
     match /sparkBooks/{cid} {
       allow get: if sparkId(cid) && participant();
       allow create: if sparkId(cid) && participant() && request.resource.data == {
+        'priceLimits':initialPriceLimits(get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice),
         'initialPrice':get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice,
         'issuedShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
         'treasuryShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,

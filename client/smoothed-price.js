@@ -1,5 +1,5 @@
 import {collection,getDocs,query,where,orderBy,limit} from 'firebase/firestore';
-const validPrice=p=>Number.isFinite(p)&&p>0&&p<=1000000;
+const validPrice=p=>Number.isFinite(p)&&p>0&&p<=1000000000;
 export function nextSmoothedPrice(previous,price){
  if(!validPrice(previous)||!Number.isSafeInteger(price)||!validPrice(price))throw Error('체결 가격을 확인하세요.');
  return previous*.9+price*.1;

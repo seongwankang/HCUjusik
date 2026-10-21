@@ -15,5 +15,6 @@ export const limit=n=>q=>q.limit(n);
 export const startAfter=cursor=>q=>q.startAfter(cursor.raw||cursor);
 export const documentId=()=>FieldPath.documentId();
 export const serverTimestamp=()=>FieldValue.serverTimestamp();
+export const increment=value=>FieldValue.increment(value);
 export const writeBatch=db=>db.batch();
 export const runTransaction=(db,callback)=>db.runTransaction(t=>callback({get:async ref=>snap(await t.get(ref)),set:(...args)=>t.set(...args),update:(...args)=>t.update(...args),delete:(...args)=>t.delete(...args)}));

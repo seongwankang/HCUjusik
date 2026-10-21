@@ -1,3 +1,6 @@
+import {build} from 'esbuild';
+import {resolve} from 'node:path';
+import {readFileSync} from 'node:fs';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeApp,deleteApp} from 'firebase-admin/app';
@@ -7,9 +10,13 @@ import {buildJob} from '../../scripts/build-jobs.mjs';
 import {initialOperations,koreaDay} from '../../client/economy.js';
 if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
 let app,db,job;
+
 before(async()=>{
+
  await writeFile('.generated-scheduled-test-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {runDueChoiceEvents} from './server/choice-events.js';export {beginDay,payHolder} from './client/economy.js';");
- await buildJob('.generated-scheduled-test-entry.mjs','.generated-scheduled-test.mjs');const loaded=await import('../../.generated-scheduled-test.mjs?test='+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,...options})};
+ // Settlement scenarios run at a controlled open settlement window without
+ // changing the system clock used by gRPC deadlines.
+ await build({entryPoints:['.generated-scheduled-test-entry.mjs'],outfile:'.generated-scheduled-test.mjs',bundle:true,platform:'node',format:'esm',packages:'external',plugins:[{name:'admin-fixture',setup(b){b.onResolve({filter:/^firebase[/]firestore$/},()=>({path:resolve('server/firestore-admin-adapter.js')}));b.onLoad({filter:/client[\\/]economy[.]js$/},args=>({contents:readFileSync(args.path,'utf8').replace('if(Date.now()<settlementTime(koreaDay()))','if(false)'),loader:'js'}));}}]});const loaded=await import('../../.generated-scheduled-test.mjs?test='+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,prepareLimits:async()=>{},now:Math.max(Date.now(),koreaDay()*86400000-3900000+1),...options})};
  app=initializeApp({projectId:'demo-scheduled-economy'},'scheduled-test');db=getFirestore(app);
  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-scheduled-economy/databases/(default)/documents',{method:'DELETE'});
  await db.doc('users/student').set({displayName:'테스트',role:'student',active:true});await db.doc('users/operator').set({displayName:'관리자',role:'admin',active:true});

@@ -16,7 +16,7 @@ let app,db,env,job;
 before(async()=>{
  env=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8')}});
  app=initializeApp({projectId},'spy-detection');db=getFirestore(app);
- await writeFile('.generated-spy-detection-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {settleDay} from './client/economy.js';");await buildJob('.generated-spy-detection-entry.mjs','.generated-spy-detection-job.mjs');const loaded=await import('../../.generated-spy-detection-job.mjs?'+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,...options})};
+ await writeFile('.generated-spy-detection-entry.mjs',"export {runScheduledEconomy} from './server/scheduled-economy.js';export {settleDay} from './client/economy.js';");await buildJob('.generated-spy-detection-entry.mjs','.generated-spy-detection-job.mjs');const loaded=await import('../../.generated-spy-detection-job.mjs?'+Date.now());job={...loaded,runScheduledEconomy:(db,options={})=>loaded.runScheduledEconomy(db,{isPaused:()=>false,prepareLimits:async()=>{},...options})};
 });
 beforeEach(async()=>{await env.clearFirestore();for(const [id,revenue]of [['owner',100000],['target',2000000]]){
  await db.doc('companies/'+id).set({name:id==='owner'?'파견 기업':'대상 기업',ticker:id,status:'listed',referencePrice:10000,issuedShares:1000});

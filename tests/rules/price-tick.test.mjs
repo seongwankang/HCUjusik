@@ -12,6 +12,7 @@ test('server rejects old ten-won client orders but accepts hundred-won orders',a
  try{
   await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'users/student'),{role:'student',active:true,displayName:'test'});await setDoc(doc(db,'companies/tick'),{status:'listed',referencePrice:10000,issuedShares:100});});
   await build({stdin:{contents:"export {initializeSpark,placeSpark,cancelSpark} from './client/spark-exchange.js';",resolveDir:process.cwd()},outfile:'.generated-old-tick-client.mjs',bundle:true,platform:'node',format:'esm',packages:'external',plugins:[{name:'legacy-client-fixture',setup(b){
+   b.onLoad({filter:/daily-price-limits[.]js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/export function assertDailyPrice[\s\S]*$/,'export function assertDailyPrice(){}'),loader:'js'}));
    b.onLoad({filter:/client[\\/]price-tick\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace('PRICE_TICK=100','PRICE_TICK=10'),loader:'js'}));
    b.onLoad({filter:/client[\\/]market-session\.js$/},()=>({contents:"export const marketSession=()=>({open:true,label:'test'});export const assertMarketOpen=()=>{};export const koreaDayStart=()=>0;",loader:'js'}));
   }}]});

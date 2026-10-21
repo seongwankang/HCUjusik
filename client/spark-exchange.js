@@ -1,3 +1,4 @@
+import {priceLimits,priceLimitDay,currentPriceLimits,withinPriceLimits,assertDailyPrice} from './daily-price-limits.js';
 import {INITIAL_CASH} from './initial-capital.js';
 import {immutableRows} from './immutable-reads.js';
 import {emptyIndexes,insertIndexes,removeIndexes} from './order-index.js';
@@ -22,11 +23,13 @@ async function transact(db,bookRef,callback){
 }
 export function crossing(book){
  let buy=sorted(book.orders,'buy')[0];if(!buy)return null;
+ const limits=currentPriceLimits(book);
+ if(!limits)return null;
  const asks=sorted(book.orders,'sell');
- if(book.treasuryShares>0)asks.push({uid:'',id:'issuer',side:'sell',price:book.initialPrice,quantity:book.issuedShares,remaining:book.treasuryShares,sequence:0});
+ if(book.treasuryShares>0&&withinPriceLimits(book.initialPrice,limits))asks.push({uid:'',id:'issuer',side:'sell',price:book.initialPrice,quantity:book.issuedShares,remaining:book.treasuryShares,sequence:0});
  asks.sort((a,b)=>a.price-b.price||a.sequence-b.sequence);const sell=asks[0];
  if(sell?.id==='issuer')buy=book.orders.filter(o=>o.side==='buy'&&o.price>=book.initialPrice).sort((a,b)=>a.sequence-b.sequence)[0];
- if(!buy||!sell||buy.price<sell.price||buy.uid===sell.uid)return null;
+ if(!buy||!sell||buy.price<sell.price||buy.uid===sell.uid||!withinPriceLimits(buy.price,limits)||!withinPriceLimits(sell.price,limits))return null;
  return {buy,sell,quantity:Math.min(buy.remaining,sell.remaining),price:buy.sequence<sell.sequence?buy.price:sell.price};
 }
 export async function initializeSpark(db,uid,companyId,reads){
@@ -41,7 +44,7 @@ export async function initializeSpark(db,uid,companyId,reads){
   if(!b.exists()){
    const company=c.data();if(!company||company.status!=='listed')throw new Error('현재 거래 가능한 기업이 아닙니다.');
    if(!Number.isSafeInteger(company.referencePrice)||company.referencePrice<1||company.referencePrice>1000000||!Number.isSafeInteger(company.issuedShares)||company.issuedShares<1||company.issuedShares>1000000)throw new Error('기업 초기 발행 설정을 확인하세요.');
-   t.set(book,{...emptyIndexes(),initialPrice:company.referencePrice,issuedShares:company.issuedShares,treasuryShares:company.issuedShares,issuerCash:0,lastPrice:0,orders:[],version:0,lastAction:{kind:'init',actor:uid},updatedAt:serverTimestamp()});
+   t.set(book,{...emptyIndexes(),priceLimits:priceLimits(company.referencePrice,priceLimitDay(Date.now())),initialPrice:company.referencePrice,issuedShares:company.issuedShares,treasuryShares:company.issuedShares,issuerCash:0,lastPrice:0,orders:[],version:0,lastAction:{kind:'init',actor:uid},updatedAt:serverTimestamp()});
   }
   return !b.exists()||b.data().indexVersion===2;
  });
@@ -64,8 +67,8 @@ export async function ensureOrderIndexes(db,uid,cid){
 }
 export async function placeSpark(db,uid,b){
  assertMarketOpen();
- if(!validOrderPrice(b.price))throw new Error('주문 가격은 100원부터 1,000,000원까지 100원 단위로 입력하세요.');
- if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!validCompany(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
+ if(!validOrderPrice(b.price))throw new Error('주문 가격은 100원 단위로 입력하세요.');
+ if(typeof b.orderId!=='string'||! /^[A-Za-z0-9_-]{8,80}$/.test(b.orderId)||!validCompany(b.companyId)||!['buy','sell'].includes(b.side)||!Number.isSafeInteger(b.price)||b.price<1||b.price>1000000000||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000000||b.price*b.quantity>1000000000)throw new Error('지정가격과 수량을 정수로 확인하세요.');
  const bookRef=doc(db,'sparkBooks',b.companyId),orderRef=doc(db,'sparkAccounts',uid,'orders',b.orderId);
  return transact(db,bookRef,async(t,bookDoc)=>{
   assertMarketOpen();
@@ -75,6 +78,7 @@ export async function placeSpark(db,uid,b){
    return {order:old.data(),duplicate:true};
   }
   const book=bookDoc.data(),account=accountDoc.data();if(!book||!account)throw new Error('종목 화면을 열어 계좌를 준비하세요.');
+  assertDailyPrice(b.price,book);
   if(book.orders.some(o=>o.uid===uid&&o.side!==b.side&&(b.side==='buy'?b.price>=o.price:b.price<=o.price)))throw new Error('본인의 반대 주문과 가격이 겹칩니다. 기존 주문을 먼저 취소하세요.');
   if(b.side==='buy'&&account.cash-account.reservedCash<b.price*b.quantity)throw new Error('주문 가능 현금이 부족합니다.');
   if(b.side==='sell'&&(account.positions[b.companyId]??0)-(account.reservedPositions[b.companyId]??0)<b.quantity)throw new Error('매도 가능 수량이 부족합니다.');
@@ -127,7 +131,8 @@ export async function marketHistory(db,companyId,max=100,options={}){
  catch(error){if(error.code==='permission-denied')return {available:false,trades:[]};throw error;}
 }
 const closeCaches=new WeakMap();
-export function previousClose(db,companyId){
+export function previousClose(db,companyId,book){
+ const limits=currentPriceLimits(book);if(limits)return Promise.resolve(limits.referencePrice);
  let cache=closeCaches.get(db);if(!cache){cache=new Map();closeCaches.set(db,cache);}
  const day=koreaDayStart(),old=cache.get(companyId);if(old?.day===day)return old.promise;
  const promise=getDocs(query(collection(db,'sparkBooks',companyId,'trades'),where('createdAt','<',Timestamp.fromMillis(day)),orderBy('createdAt','desc'),limit(1))).then(result=>result.empty?null:result.docs[0].data().price).catch(error=>{if(cache.get(companyId)?.promise===promise)cache.delete(companyId);throw error;});
@@ -140,15 +145,15 @@ export async function sparkView(db,uid,companyId,role,reads){
  // private counterparty account read is trusted as settlement authority.
  const [operation,initialHistory,previous]=await Promise.all([
   readDoc(doc(db,'companyOperations',companyId)),marketHistory(db,companyId,100,{revision:initialBook.data().version,epoch:initialBook.data().correctionRevision||0}),
-  previousClose(db,companyId).then(price=>({price}),()=>({unavailable:true}))
+  previousClose(db,companyId,initialBook.data()).then(price=>({price}),()=>({unavailable:true}))
  ]),settlementLocked=operation.exists()&&operation.data().locked===true;
  let history=initialHistory,matched=false;
  let matchError=settlementLocked?'배당 정산 중입니다. 정산이 완료되면 거래를 재개합니다.':null;try{for(let i=0;i<8&&!settlementLocked;i++){if(i===0&&!crossing(initialBook.data()))break;if(!await matchSpark(db,uid,companyId,{recordPublic:history.available}))break;matched=true;}}catch{matchError='미체결 주문 처리가 보류됐습니다. 호가를 새로고침하거나 관리자에게 대기 주문 확인을 요청하세요.';}
  if(matched){await reads?.refresh?.(['sparkAccounts/'+uid,'sparkBooks/'+companyId]);if(history.available)history=await marketHistory(db,companyId,100,{epoch:initialBook.data().correctionRevision||0});}
  const [ledger,bookDoc,ordersDoc]=await Promise.all([accountLedger(db,uid,reads),readDoc(doc(db,'sparkBooks',companyId)),readDocs(query(collection(db,'sparkAccounts',uid,'orders'),orderBy('createdAt','desc'),limit(30)),'sparkAccounts/'+uid+'/orders')]);
- const book=bookDoc.data(),orders=ordersDoc.docs.map(d=>d.data());
+ const book=bookDoc.data(),limits=currentPriceLimits(book),orders=ordersDoc.docs.map(d=>d.data());
  for(const o of book.orders.filter(o=>o.uid===uid))if(!orders.some(x=>x.orderId===o.id))orders.push({companyId,orderId:o.id,...o,filled:o.quantity-o.remaining,cancelled:0,status:'open'});
- const levels=side=>{const m=new Map();for(const o of book.orders.filter(o=>o.side===side))m.set(o.price,(m.get(o.price)||0)+o.remaining);if(side==='sell'&&book.treasuryShares)m.set(book.initialPrice,(m.get(book.initialPrice)||0)+book.treasuryShares);return [...m].sort((a,b)=>side==='buy'?b[0]-a[0]:a[0]-b[0]).map(([price,quantity])=>({price,quantity}));};
+ const levels=side=>{const m=new Map();for(const o of book.orders.filter(o=>o.side===side))m.set(o.price,(m.get(o.price)||0)+o.remaining);if(side==='sell'&&book.treasuryShares&&withinPriceLimits(book.initialPrice,limits))m.set(book.initialPrice,(m.get(book.initialPrice)||0)+book.treasuryShares);return [...m].sort((a,b)=>side==='buy'?b[0]-a[0]:a[0]-b[0]).map(([price,quantity])=>({price,quantity}));};
  const close=previous.unavailable?null:previous.price??book.initialPrice,closeKind=previous.unavailable?'unavailable':previous.price?'previous':'initial';
- return {marketOpen:marketSession().open,marketHours:marketSession().label,settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:ledger.account,costBasis:ledger.costBasis[companyId]||{averagePrice:null,complete:true},market:{lastPrice:book.lastPrice,treasuryShares:book.treasuryShares,previousClose:close,closeKind},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:ledger.fills.filter(f=>f.companyId===companyId).slice(0,30),mode:'spark-limit-v1',matchPending:!settlementLocked&&!matchError&&marketSession().open&&!!crossing(book),matchError,adminOrders:role==='admin'?book.orders:[]};
+ return {priceLimits:limits,marketOpen:marketSession().open&&!!limits,marketHours:marketSession().label,settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:ledger.account,costBasis:ledger.costBasis[companyId]||{averagePrice:null,complete:true},market:{lastPrice:book.lastPrice,treasuryShares:book.treasuryShares,previousClose:close,closeKind},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:ledger.fills.filter(f=>f.companyId===companyId).slice(0,30),mode:'spark-limit-v1',matchPending:!settlementLocked&&!matchError&&marketSession().open&&!!crossing(book),matchError,adminOrders:role==='admin'?book.orders:[]};
 }
