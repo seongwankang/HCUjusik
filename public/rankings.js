@@ -24,7 +24,7 @@ export async function showRankings(host,api,user,isCurrent,{preserveOnError=fals
  host.querySelectorAll('[data-personal-ranking]').forEach(b=>b.onclick=()=>personalTable(b.dataset.personalRanking));personalTable(selectedPersonal);
  function marketTable(key){
   host.querySelector('#market-ranking-table').dataset.ranking=key;
-  const notes={prices:'현재가 기준',volume:'오늘 체결 수량',gainers:'전일 종가 대비',losers:'전일 종가 대비',expectedRevenue:'다음 정산 예상 매출',cumulativeRevenue:'정산 완료 매출 누계'};
+  const notes={prices:'최근 체결 100건 중앙값',volume:'오늘 체결 수량',gainers:'전일 종가 대비',losers:'전일 종가 대비',expectedRevenue:'다음 정산 예상 매출',cumulativeRevenue:'정산 완료 매출 누계'};
   host.querySelectorAll('[data-ranking]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ranking===key)));
   host.querySelector('#market-ranking-note').textContent=notes[key]+(['gainers','losers'].includes(key)?' · 전일 거래가 없으면 초기 판매가 기준':'')+(data[key+'Unavailable']?' · '+data[key+'Unavailable']+'개 종목 집계 불가':'');
   const rows=data[key]||[],label={prices:'현재가',volume:'거래량',gainers:'상승률',losers:'하락률',expectedRevenue:'예상 일매출',cumulativeRevenue:'누적 매출'}[key];
