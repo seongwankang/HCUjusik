@@ -24,3 +24,8 @@ test('order-only updates do not change price; version gaps find hidden fills; re
  assert.deepEqual(await read('one',{version:4},10000),{price:11300,initial:false});rows=[];
  assert.deepEqual(await read('one',{version:0},10000),{price:10000,initial:true});
 });
+test('an audited correction discards a cached accidental price and replays valid history',async()=>{
+ let rows=[{marketVersion:1,price:1000000}];const read=createSmoothedReader(async(id,since,to)=>rows.filter(r=>r.marketVersion>since&&r.marketVersion<=to));
+ assert.equal((await read('one',{version:1},10000)).price,109000);rows=[];
+ assert.deepEqual(await read('one',{version:2,correctionRevision:1},10000),{price:10000,initial:true});
+});

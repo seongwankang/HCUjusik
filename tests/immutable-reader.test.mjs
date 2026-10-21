@@ -1,6 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createImmutableReader,compareValue} from '../client/immutable-reader.js';
+test('correction epoch reloads history instead of retaining a reversed execution',async()=>{
+ let rows=[{id:'bad',time:10}],queries=0;const read=createImmutableReader(async()=>{queries++;return {rows,more:false};});
+ assert.equal((await read('fills',{field:'time',revision:1})).length,1);rows=[];
+ assert.equal((await read('fills',{field:'time',revision:2,epoch:1})).length,0);assert.equal(queries,2);
+});
 function fixture(){
  let rows=[],fail=false;const calls=[];
  const read=createImmutableReader(async(path,o)=>{

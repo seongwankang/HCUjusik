@@ -139,12 +139,12 @@ export async function sparkView(db,uid,companyId,role,reads){
  // Each confirmed pair is independently validated by Rules. No browser or
  // private counterparty account read is trusted as settlement authority.
  const [operation,initialHistory,previous]=await Promise.all([
-  readDoc(doc(db,'companyOperations',companyId)),marketHistory(db,companyId,100,{revision:initialBook.data().version}),
+  readDoc(doc(db,'companyOperations',companyId)),marketHistory(db,companyId,100,{revision:initialBook.data().version,epoch:initialBook.data().correctionRevision||0}),
   previousClose(db,companyId).then(price=>({price}),()=>({unavailable:true}))
  ]),settlementLocked=operation.exists()&&operation.data().locked===true;
  let history=initialHistory,matched=false;
  let matchError=settlementLocked?'배당 정산 중입니다. 정산이 완료되면 거래를 재개합니다.':null;try{for(let i=0;i<8&&!settlementLocked;i++){if(i===0&&!crossing(initialBook.data()))break;if(!await matchSpark(db,uid,companyId,{recordPublic:history.available}))break;matched=true;}}catch{matchError='미체결 주문 처리가 보류됐습니다. 호가를 새로고침하거나 관리자에게 대기 주문 확인을 요청하세요.';}
- if(matched){await reads?.refresh?.(['sparkAccounts/'+uid,'sparkBooks/'+companyId]);if(history.available)history=await marketHistory(db,companyId);}
+ if(matched){await reads?.refresh?.(['sparkAccounts/'+uid,'sparkBooks/'+companyId]);if(history.available)history=await marketHistory(db,companyId,100,{epoch:initialBook.data().correctionRevision||0});}
  const [ledger,bookDoc,ordersDoc]=await Promise.all([accountLedger(db,uid,reads),readDoc(doc(db,'sparkBooks',companyId)),readDocs(query(collection(db,'sparkAccounts',uid,'orders'),orderBy('createdAt','desc'),limit(30)),'sparkAccounts/'+uid+'/orders')]);
  const book=bookDoc.data(),orders=ordersDoc.docs.map(d=>d.data());
  for(const o of book.orders.filter(o=>o.uid===uid))if(!orders.some(x=>x.orderId===o.id))orders.push({companyId,orderId:o.id,...o,filled:o.quantity-o.remaining,cancelled:0,status:'open'});

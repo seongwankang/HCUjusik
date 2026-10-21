@@ -2,14 +2,14 @@
 // orders, roles, votes and company settings must never use this reader.
 export function createImmutableReader(fetchPage,storage){
  const entries=new Map();
- async function read(path,{field,pageSize=30,maxRecords=Infinity,revision}={}){
-  const key=JSON.stringify([path,field,maxRecords===Infinity?'all':maxRecords]);
+ async function read(path,{field,pageSize=30,maxRecords=Infinity,revision,epoch=0}={}){
+  const key=JSON.stringify([path,field,maxRecords===Infinity?'all':maxRecords,epoch]);
   let entry=entries.get(key);if(!entry){
    entry={rows:new Map(),loaded:false};entries.set(key,entry);
    if(storage)entry.ready=storage.get(key).then(saved=>{if(saved?.loaded&&Array.isArray(saved.rows)){entry.rows=new Map(saved.rows.map(row=>[row.id,row]));entry.loaded=true;entry.latest=saved.latest;entry.revision=saved.revision;}},()=>{});
   }
   if(entry.ready)await entry.ready;
-  if(entry.pending){if(revision===undefined||revision===entry.pendingRevision)return entry.pending;await entry.pending;return read(path,{field,pageSize,maxRecords,revision});}
+  if(entry.pending){if(revision===undefined||revision===entry.pendingRevision)return entry.pending;await entry.pending;return read(path,{field,pageSize,maxRecords,revision,epoch});}
   if(entry.loaded&&revision!==undefined&&entry.revision===revision)return [...entry.rows.values()];
   const load=async()=>{
    const incoming=new Map();let cursor,latest=entry.latest;
