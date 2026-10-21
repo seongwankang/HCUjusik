@@ -420,7 +420,7 @@ service cloud.firestore {
          (a.kind == 'fill' && (e == a.buy || e == a.sell) && d.remaining == o.remaining-q && d.filled == o.filled+q && d.cancelled == o.cancelled && d.status == (d.remaining == 0 ? 'filled' : 'open')));
     }
     function leaderboardData(d) {
-      return d.keys().hasOnly(['entries','participants','updatedAt','generation']) && (!('generation' in d) || sparkId(d.generation)) && d.entries is list && d.entries.size() <= 100 && number(d.participants,1000000) && d.participants >= d.entries.size() && d.updatedAt == request.time;
+      return d.keys().hasOnly(['entries','cashEntries','stockEntries','participants','updatedAt','generation']) && (!('generation' in d) || sparkId(d.generation)) && d.entries is list && d.entries.size() <= 100 && (!('cashEntries' in d) || d.cashEntries is list && d.cashEntries.size() <= 100) && (!('stockEntries' in d) || d.stockEntries is list && d.stockEntries.size() <= 100) && number(d.participants,1000000) && d.participants >= d.entries.size() && d.updatedAt == request.time;
     }
     match /leaderboards/{id} {
       allow get: if id == 'cash' && participant();
