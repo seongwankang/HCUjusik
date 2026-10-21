@@ -24,20 +24,24 @@ export function priceRankings(companies,books,max=100){
 export async function allRows(db,path,reads){const readDocs=reads?.getDocs||getDocs;let cursor=null,rows=[];for(;;){const page=await readDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])),path);rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
 export async function investorSnapshots(users,accounts,companies=[],books=[]){
  const rows=assetRows(users,accounts,companies,books),generation=crypto.randomUUID();
- const profiles=await Promise.all(ranked(rows,'totalValue').slice(0,100).map(async ({uid,portfolio,...row})=>{
+ const lists=Object.fromEntries(['totalValue','cash','stockValue'].map(key=>[key,ranked([...rows],key).slice(0,100)]));
+ const selected=new Map(Object.values(lists).flat().map(row=>[row.uid,row]));
+ const profiles=await Promise.all([...selected.values()].map(async ({uid,portfolio,...row})=>{
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('hcujusik-investor:'+uid));
   const key=Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
-  return {key,entry:{...row,investorKey:key},profile:{name:row.name,cash:row.cash,generation,holdings:portfolio.holdings.map(({companyId,name,ticker,quantity})=>({companyId,name,ticker,quantity}))}};
+  return {uid,key,entry:{...row,investorKey:key},profile:{name:row.name,cash:row.cash,generation,holdings:portfolio.holdings.map(({companyId,name,ticker,quantity})=>({companyId,name,ticker,quantity}))}};
  }));
- return {board:{entries:profiles.map(p=>p.entry),participants:rows.length,generation},profiles};
+ const byUid=new Map(profiles.map(p=>[p.uid,p]));
+ const entries=key=>lists[key].map(row=>({...byUid.get(row.uid).entry,rank:row.rank}));
+ return {board:{entries:entries('totalValue'),cashEntries:entries('cash'),stockEntries:entries('stockValue'),participants:rows.length,generation},profiles:profiles.map(({uid,...p})=>p)};
 }
 export async function publishCashRankings(db){
  const [users,accounts,companies]=await Promise.all([allRows(db,'users'),allRows(db,'sparkAccounts'),allRows(db,'companies')]);const books=await Promise.all(companies.map(async c=>{const s=await getDoc(doc(db,'sparkBooks',c.id));return {id:c.id,...s.data()};}));
  const {board,profiles}=await investorSnapshots(users,accounts,companies,books),batch=writeBatch(db);
  const shareholders=await shareholderSnapshots(users,accounts,companies,books);
  // Keep the ranking generation atomic; large company sets use bounded batches.
- for(let offset=0;offset<Math.max(0,shareholders.length-399);offset+=400){const part=writeBatch(db);for(const holders of shareholders.slice(offset,Math.min(offset+400,shareholders.length-399)))part.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});await part.commit();}
- for(const holders of shareholders.slice(Math.max(0,shareholders.length-399)))batch.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});
+ for(let offset=0;offset<Math.max(0,shareholders.length-(499-profiles.length));offset+=400){const part=writeBatch(db);for(const holders of shareholders.slice(offset,Math.min(offset+400,shareholders.length-(499-profiles.length))))part.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});await part.commit();}
+ for(const holders of shareholders.slice(Math.max(0,shareholders.length-(499-profiles.length))))batch.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});
  for(const p of profiles)batch.set(doc(db,'investorSnapshots',p.key),{...p.profile,updatedAt:serverTimestamp()});
  batch.set(doc(db,'leaderboards','cash'),{...board,updatedAt:serverTimestamp()});await batch.commit();return board;
 }

@@ -1,0 +1,12 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
+import {doc,writeBatch,getDoc,setDoc,serverTimestamp} from 'firebase/firestore';
+import {publishCashRankings} from '../../client/rankings.js';
+if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
+test('three independent top-100 lists and 300 detail profiles publish atomically without broadening source access',async()=>{
+ const env=await initializeTestEnvironment({projectId:'demo-personal-ranking-modes',firestore:{rules:readFileSync('firestore.rules','utf8')}});
+ try{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const d=c.firestore();let b=writeBatch(d),count=0;const put=async(path,data)=>{b.set(doc(d,path),data);if(++count===400){await b.commit();b=writeBatch(d);count=0;}};await put('users/admin',{displayName:'admin',role:'admin',active:true});await put('companies/one',{name:'One',ticker:'ONE',status:'listed',referencePrice:1,issuedShares:1000000});await put('sparkBooks/one',{lastPrice:1,issuedShares:1000000,treasuryShares:840000,version:0});for(const [group,cash,quantity] of [['C',1000,0],['S',0,1000],['B',600,600]])for(let i=0;i<100;i++){const id=group+String(i).padStart(3,'0');await put('users/'+id,{displayName:id,role:'student',active:true});await put('sparkAccounts/'+id,{cash,positions:quantity?{one:quantity}:{},reservedPositions:{},reservedCash:0,version:0,lastMarket:''});}if(count)await b.commit();});
+ const claims={email:'test@hcu.hs.kr',email_verified:true},admin=env.authenticatedContext('admin',claims).firestore(),student=env.authenticatedContext('B000',claims).firestore();await publishCashRankings(admin);const board=(await getDoc(doc(student,'leaderboards/cash'))).data();for(const [field,prefix] of [['entries','B'],['cashEntries','C'],['stockEntries','S']]){assert.equal(board[field].length,100);assert.ok(board[field].every(r=>r.name.startsWith(prefix)));const profile=(await getDoc(doc(student,'investorSnapshots',board[field][0].investorKey))).data();assert.equal(profile.name,prefix+'000');}
+ await assertFails(getDoc(doc(student,'sparkAccounts/C000')));await assertFails(setDoc(doc(student,'leaderboards/cash'),{...board,updatedAt:serverTimestamp()}));await assertFails(setDoc(doc(admin,'leaderboards/cash'),{...board,cashEntries:Array(101).fill(board.cashEntries[0]),updatedAt:serverTimestamp()}));
+ }finally{await env.cleanup();}
+});
