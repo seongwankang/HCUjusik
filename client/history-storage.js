@@ -5,7 +5,7 @@ const decode=v=>v&&typeof v==='object'&&Object.keys(v).length===1&&Array.isArray
 export function historyStorage(projectId,indexedDB=globalThis.indexedDB){
  if(!indexedDB)return null;
  let owner=null,opening;
- const open=()=>opening||=new Promise(resolve=>{try{const r=indexedDB.open('chung-un-history-'+projectId+'-fresh-20261021',1);r.onupgradeneeded=()=>r.result.createObjectStore('records');r.onsuccess=()=>{const db=r.result;db.onversionchange=()=>db.close();resolve(db);};r.onerror=r.onblocked=()=>resolve(null);}catch{resolve(null);}});
+ const open=()=>opening||=new Promise(resolve=>{try{const r=indexedDB.open('chung-un-history-'+projectId+'-fresh-20261022',1);r.onupgradeneeded=()=>r.result.createObjectStore('records');r.onsuccess=()=>{const db=r.result;db.onversionchange=()=>db.close();resolve(db);};r.onerror=r.onblocked=()=>resolve(null);}catch{resolve(null);}});
  const get=async key=>{try{const db=await open();if(!db)return;return await new Promise(resolve=>{const r=db.transaction('records').objectStore('records').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>resolve();});}catch{return;}};
  const setOwner=async uid=>{owner=uid;try{const db=await open();if(!db)return false;return await new Promise(resolve=>{const tx=db.transaction('records','readwrite'),s=tx.objectStore('records'),r=s.get('__owner');let changed=false;r.onsuccess=()=>{if(r.result!==uid){changed=true;s.clear();s.put(uid,'__owner');}};tx.oncomplete=()=>resolve(changed);tx.onerror=tx.onabort=()=>resolve(false);});}catch{return false;}};
  return {

@@ -1,11 +1,13 @@
 import {FieldValue} from 'firebase-admin/firestore';
-import {INITIAL_CASH} from '../client/initial-capital.js';
+// Historical migration keeps its original amount; the newer reset supersedes it.
+const INITIAL_CASH=2000000;
 export const CAPITAL_MIGRATION='initial-capital-2000000-v1';
 const BONUS=1000000;
 const money=n=>Number.isSafeInteger(n)&&n>=0&&n<=1e12;
 
 // Private per-user receipts make retries and concurrent runs exactly-once.
 export async function increaseInitialCapital(db){
+ if((await db.doc('resetBackups/preserve-presidents-2026-10-22').get()).data()?.backupComplete)return {credited:0,alreadyApplied:0,excluded:0,superseded:true};
  const users=await db.collection('users').get();
  const result={credited:0,alreadyApplied:0,excluded:0};
  for(const entry of users.docs){

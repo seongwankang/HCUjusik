@@ -1,5 +1,8 @@
 name: Deploy GitHub Pages
 on:
+  push:
+    branches: [main]
+    paths: [client/history-storage.js]
   workflow_dispatch:
 permissions:
   contents: read

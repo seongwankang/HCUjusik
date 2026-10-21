@@ -1,0 +1,12 @@
+{
+  "resetId": "preserve-presidents-2026-10-22",
+  "cash": 1000000,
+  "preserve": [
+    "users",
+    "companies.identity",
+    "assignments",
+    "companyLeadership"
+  ],
+  "requestedAt": "2026-10-22",
+  "note": "One-time reset of existing participants and company operations; reruns are idempotent."
+}
