@@ -1,3 +1,4 @@
+import {companyFinancialsMarkup} from '../public/company-financials.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -35,7 +36,7 @@ test('order refresh finishes before management history and ignores an older hist
  const pending=[];let rendered=0,lastInfo;
  const elements=new Map(),node=key=>{if(!elements.has(key))elements.set(key,{innerHTML:'',textContent:'',querySelector:()=>null});return elements.get(key);};
  const data={account:{cash:1000,reservedCash:0,positions:{},reservedPositions:{}},orders:[],fills:[],market:{lastPrice:10000},book:{},costBasis:{}};
- const context={c:{id:'one',referencePrice:10000},box:{querySelector:node},document:{querySelector:node},form:{elements:{price:{value:10000}}},alive:()=>true,request:path=>path.startsWith('/api/company-investor')?new Promise(resolve=>pending.push(resolve)):Promise.resolve(data),captureScroll:()=>[],restoreScroll:()=>{},setHTMLKeepingScroll:(host,html)=>host.innerHTML=html,won:String,renderDayChange:()=>{},renderOrderBook:()=>'',priceChart:{update:()=>{}},lock:()=>{},renderInvestor:(host,info)=>{rendered++;lastInfo=info;}};
+ const context={companyFinancialsMarkup,c:{id:'one',referencePrice:10000},box:{querySelector:node},document:{querySelector:node},form:{elements:{price:{value:10000}}},alive:()=>true,request:path=>path.startsWith('/api/company-investor')?new Promise(resolve=>pending.push(resolve)):Promise.resolve(data),captureScroll:()=>[],restoreScroll:()=>{},setHTMLKeepingScroll:(host,html)=>host.innerHTML=html,won:String,renderDayChange:()=>{},renderOrderBook:()=>'',priceChart:{update:()=>{}},lock:()=>{},renderInvestor:(host,info)=>{rendered++;lastInfo=info;}};
  runInNewContext('let investorRead=0,investorLoading=false,investorQueued=false;'+refreshSource+';this.refresh=refresh;',context);
  await context.refresh();assert.equal(pending.length,1);assert.equal(rendered,0);assert.equal(context.connected,true);
  await context.refresh();await context.refresh();assert.equal(pending.length,1);pending[0]({version:1});await new Promise(r=>setImmediate(r));assert.equal(rendered,0);assert.equal(pending.length,2);
