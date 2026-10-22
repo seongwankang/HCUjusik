@@ -7,7 +7,7 @@ const id=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x);
 export async function spyView(db,cid,reads){
  const readDoc=reads?.getDoc||getDoc,readDocs=reads?.getDocs||getDocs;
  const [p,s,h]=await Promise.all([readDoc(doc(db,'spyPolicy/main')),readDoc(doc(db,'companySpies',cid)),immutableRows(db,'companySpies/'+cid+'/history',{field:'day',pageSize:30,maxRecords:30,persistent:true})]);
- return {policy:effectiveSpyPolicy(p.data()),contract:s.data()?{...s.data(),agents:spyAgents(s.data())}:null,history:h};
+ return {policy:effectiveSpyPolicy(p.data()),contract:s.data()?{...s.data(),bps:DEFAULT_SPY_POLICY.bps,agents:Object.fromEntries(Object.entries(spyAgents(s.data())).map(([slot,a])=>[slot,a.remaining>0?{...a,bps:DEFAULT_SPY_POLICY.bps}:a]))}:null,history:h};
 }
 export async function hireSpy(db,cid,targetId,retry=0){
  if(!id(cid)||!id(targetId)||cid===targetId)throw Error('다른 상장 기업을 선택하세요.');const hireId=crypto.randomUUID();let attemptedVersion;
@@ -36,7 +36,7 @@ export async function settleSpies(db,now=Date.now(),retry=0){
  const round=doc(db,'spyRounds','d'+day);if((await getDoc(round)).exists())return {status:'complete'};
  const version=(await getDoc(doc(db,'spyRegistry/main'))).data()?.version||0;
  const roster=await allRows(db,'companySpies');
- const contracts=roster.flatMap(s=>activeSpyEntries(s).slice(0,MAX_SPIES).map(([slot,a])=>({...a,slot,bps:250}))).filter(s=>s.remaining>0&&s.activeFromDay<=day&&s.lastRoundDay<day);
+ const contracts=roster.flatMap(s=>activeSpyEntries(s).slice(0,MAX_SPIES).map(([slot,a])=>({...a,slot,bps:DEFAULT_SPY_POLICY.bps}))).filter(s=>s.remaining>0&&s.activeFromDay<=day&&s.lastRoundDay<day);
  const owners=[...new Set(contracts.map(s=>s.companyId))];
  if(!contracts.length)return {status:'empty'};
  const ids=[...new Set(contracts.flatMap(s=>[s.companyId,s.targetId]))].sort();

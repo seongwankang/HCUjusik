@@ -1,8 +1,8 @@
-export const DEFAULT_SPY_POLICY=Object.freeze({cost:1000000,bps:250,settlements:0});
+export const DEFAULT_SPY_POLICY=Object.freeze({cost:1000000,bps:400,settlements:0});
 export const SPY_LOSS_BPS=1000;
 export function spyPolicy(value){
  const p=value||DEFAULT_SPY_POLICY;
- if(Object.keys(p).length!==3||!Number.isSafeInteger(p.cost)||p.cost!==1000000||!Number.isInteger(p.bps)||p.bps!==250||!Number.isInteger(p.settlements)||p.settlements!==0)throw Error('스파이 정책: 1명당 고용비 100만 원, 비율 2.5%, 기간 제한 없음');
+ if(Object.keys(p).length!==3||!Number.isSafeInteger(p.cost)||p.cost!==1000000||!Number.isInteger(p.bps)||p.bps!==400||!Number.isInteger(p.settlements)||p.settlements!==0)throw Error('스파이 정책: 1명당 고용비 100만 원, 비율 4%, 기간 제한 없음');
  return {cost:p.cost,bps:p.bps,settlements:p.settlements};
 }
 // All amounts use immutable ordinary revenue, before any spy transfers.

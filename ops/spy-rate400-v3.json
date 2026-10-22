@@ -1,0 +1,7 @@
+{
+  "bps": 400,
+  "perAgent": true,
+  "maxAgents": 2,
+  "cost": 1000000,
+  "migration": "two-agent-rate400-v3"
+}
