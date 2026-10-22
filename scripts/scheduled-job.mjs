@@ -1,3 +1,4 @@
+import {migrateProductionUnits} from '../server/production-units-migration.js';
 import {migrateRankedDividends} from '../server/ranked-dividend-migration.js';
 import {rankingValue} from '../client/ranking-value.js';
 import {marketPaused} from '../client/market-session.js';
@@ -18,6 +19,7 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='production-units-migrate'){console.log(JSON.stringify(await migrateProductionUnits(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='ranked-dividends-migrate'){console.log(JSON.stringify(await migrateRankedDividends(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='offering-audit'){
  const db=getFirestore(app),[companies,books]=await Promise.all([db.collection('companies').get(),db.collection('sparkBooks').get()]),map=new Map(books.docs.map(s=>[s.id,s.data()]));

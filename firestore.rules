@@ -159,7 +159,7 @@ service cloud.firestore {
         (d.effect.get('settlements',0) > 0 ? d.startsAfterSettlement == (exists(/databases/$(database)/documents/companyOperations/$(cid)) ? operations(cid).get('settlementCount',0) : 0) : !('startsAfterSettlement' in d)) &&
         (!('result' in d) || (d.effect.kind == 'destroy' ? d.result.keys().hasOnly(['count']) && d.result.count == operations(cid)[d.effect.asset]-getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data[d.effect.asset] : admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
         (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
-          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
+          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).get('productionModel','legacy') == 'units-v2' || operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
     }
     match /companyEffects/{cid}/items/{eid} {
       // Applied outcomes are investor information; unrevealed outcomes stay private.
@@ -541,8 +541,8 @@ service cloud.firestore {
       return int((c[asset+'Cost']*(100+percent)+99) / 100);
     }
     function operationData(d) {
-      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay','revenueRevision','dividendModel','lastDividendNews']) &&
-        d.get('dividendModel','legacy') in ['legacy','rank-v1'] && (!('lastDividendNews' in d) || sparkId(d.lastDividendNews)) && number(d.get('revenueRevision',0),1000000) && number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
+      return d.keys().hasOnly(['cash','receivedIssuerCash','revenue','pendingRevenue','pendingDay','factory','equipment','research','dividendBps','lastSettledDay','locked','currentDay','paidShares','paidAmount','production','pendingProduction','lastEvent','pendingEvent','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','costEvents','dividendLimit','lastInvestment','settlementCount','lastSpyHire','lastDividendDay','revenueRevision','dividendModel','lastDividendNews','productionModel','pendingUnits','lastRefund','inventoryLossAt']) &&
+        (d.get('productionModel','legacy') == 'legacy' || d.productionModel == 'units-v2' && unitsData(d.pendingUnits) && d.pendingUnits.factory <= d.factory && d.pendingUnits.employee <= d.get('employees',0) && d.pendingUnits.equipment <= d.equipment && d.pendingUnits.research <= d.research) && d.get('dividendModel','legacy') in ['legacy','rank-v1'] && (!('lastDividendNews' in d) || sparkId(d.lastDividendNews)) && number(d.get('revenueRevision',0),1000000) && number(d.get('lastDividendDay',0),1000000) && number(d.get('settlementCount',0),1000000) && (!('lastInvestment' in d) || sparkId(d.lastInvestment)) && costEventData(d.get('costEvents',{})) && (!('dividendLimit' in d) || termData(d.dividendLimit,0,100)) && d.cash is int && d.cash >= -1000000000000 && d.cash <= 1000000000000 && number(d.receivedIssuerCash,1000000000000) && number(d.revenue,1000000000000) && number(d.pendingRevenue,1000000000000) && number(d.pendingDay,1000000) &&
         number(d.factory,1000) && number(d.equipment,1000) && number(d.research,1000) && number(d.dividendBps,10000) && number(d.lastSettledDay,1000000) && d.locked is bool && d.currentDay is string && number(d.get('employees',0),1000) && number(d.get('staffRevenue',0),1000000000000) && number(d.get('pendingStaffRevenue',0),1000000000000) && number(d.get('activeResearchBps',0),1000000) && number(d.get('pendingResearchBps',0),1000000) && number(d.paidShares,100000000) && number(d.paidAmount,1000000000000);
     }
     function pool(o,pending) {
@@ -565,7 +565,7 @@ service cloud.firestore {
       let lost=n < e.count ? n : e.count;
       let p=pool(o,false);
       let q=pool(o,true);
-      return d.diff(o).affectedKeys().hasOnly(e.asset == 'research' ? [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent','activeResearchBps','pendingResearchBps'] : [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent']) &&
+      return o.get('productionModel','legacy') == 'units-v2' ? unitsDestroyed(d,o,e,lost) : d.diff(o).affectedKeys().hasOnly(e.asset == 'research' ? [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent','activeResearchBps','pendingResearchBps'] : [e.asset,'revenue','pendingRevenue','production','pendingProduction','lastEvent','pendingEvent']) &&
         (e.asset != 'research' || (d.activeResearchBps == researchBps(o)-(n > 0 ? int(researchBps(o)*lost / n) : 0) && d.pendingResearchBps == o.get('pendingResearchBps',0)-(n > 0 ? int(o.get('pendingResearchBps',0)*lost / n) : 0))) &&
         d[e.asset] == n-lost && poolLoss(d.production,p,e.asset,n,lost) && poolLoss(d.pendingProduction,q,e.asset,n,lost) &&
         d.revenue == o.revenue-(n > 0 ? int(p[e.asset]*lost / n) : 0) && d.pendingRevenue == o.pendingRevenue-(n > 0 ? int(q[e.asset]*lost / n) : 0);
@@ -582,7 +582,7 @@ service cloud.firestore {
         r.appliedAt == request.time && (r.effect.kind == 'destroy' ? destroyed(cid,eid,r.effect) : d.diff(o).affectedKeys().hasOnly(['lastEvent','pendingEvent']));
     }
     function researchBps(o) { return o.get('activeResearchBps',(o.research < 6 ? o.research : 6)*500); }
-    function staffCapacity(o) { let n=10+o.factory*25+o.equipment*10; return n < 1000 ? n : 1000; }
+    function staffCapacity(o) { let n=10+o.factory*25+(o.get('productionModel','legacy') == 'units-v2' ? 0 : o.equipment*10); return n < 1000 ? n : 1000; }
     function economyPolicy() {
       return exists(/databases/$(database)/documents/economyConfig/main) && get(/databases/$(database)/documents/economyConfig/main).data.get('version',0) == 4 ? get(/databases/$(database)/documents/economyConfig/main).data :
         {'version':4,'factoryCost':2000000,'factoryRevenue':440000,'equipmentCost':1000000,'equipmentRevenue':200000,'researchCost':500000,'researchBoostBps':500,'employeeCost':100000,'employeeRevenue':20000};
@@ -611,6 +611,42 @@ service cloud.firestore {
         d.employees == o.get('employees',0)+(asset == 'employee' ? 1 : 0) && d.staffRevenue == o.get('staffRevenue',0) &&
         d.pendingStaffRevenue == o.get('pendingStaffRevenue',0)+(asset == 'employee' ? c.employeeRevenue : 0) &&
         d.activeResearchBps == researchBps(o) && d.pendingResearchBps == o.get('pendingResearchBps',0)+(asset == 'research' ? c.researchBoostBps : 0);
+    }
+    function unitsData(p) {
+      return p is map && p.keys().hasAll(['factory','employee','equipment','research']) && p.keys().hasOnly(['factory','employee','equipment','research']) && number(p.factory,1000) && number(p.employee,1000) && number(p.equipment,1000) && number(p.research,1000);
+    }
+    function unitsDestroyed(d,o,e,lost) {
+      let p=o.pendingUnits[e.asset];
+      return d.diff(o).affectedKeys().hasOnly([e.asset,'pendingUnits','lastEvent','pendingEvent','inventoryLossAt']) && (lost == 0 ? d.get('inventoryLossAt',{}) == o.get('inventoryLossAt',{}) : d.inventoryLossAt.diff(o.get('inventoryLossAt',{})).affectedKeys().hasOnly([e.asset]) && d.inventoryLossAt[e.asset] == request.time) && d[e.asset] == o[e.asset]-lost && unitsData(d.pendingUnits) && d.pendingUnits.diff(o.pendingUnits).affectedKeys().hasOnly([e.asset]) && d.pendingUnits[e.asset] == (p > lost ? p-lost : 0);
+    }
+    function unitsInvestment(cid,d,o) {
+      let r=getAfter(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(d.lastInvestment)).data;
+      let asset=r.asset;
+      let field=asset == 'employee' ? 'employees' : asset;
+      let day=investmentDay(o);
+      let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      return manager(cid) && !o.locked && o.get('pendingEvent','') == '' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
+        !exists(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(d.lastInvestment)) && r.quantity == 1 && r.activeFromDay == day && r.createdAt == request.time && r.cost == eventCost(o,economyPolicy(),asset) &&
+        (o.pendingUnits == {'factory':0,'employee':0,'equipment':0,'research':0} || o.pendingDay >= day) &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',field,'pendingDay','pendingUnits','lastInvestment']) &&
+        d[field] == o.get(field,0)+1 && number(d[field],1000) && (asset != 'employee' || o.get('employees',0) < staffCapacity(o)) &&
+        d.pendingDay == day && unitsData(d.pendingUnits) && d.pendingUnits.diff(o.pendingUnits).affectedKeys().hasOnly([asset]) && d.pendingUnits[asset] == o.pendingUnits[asset]+1 &&
+        number(d.cash,1000000000000) && d.cash == o.cash+funding-o.receivedIssuerCash-r.cost && d.receivedIssuerCash == funding;
+    }
+    function unitsRefund(cid,d,o,id) {
+      let r=get(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(id)).data;
+      let f=getAfter(/databases/$(database)/documents/companyOperations/$(cid)/refunds/$(id)).data;
+      let field=r.asset == 'employee' ? 'employees' : r.asset;
+      let removed=r.activeFromDay > o.lastSettledDay ? r.quantity : 0;
+      let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
+      return d.lastRefund == id && sparkId(id) && manager(cid) && !o.locked && o.get('pendingEvent','') == '' && o.productionModel == 'units-v2' &&
+        int((r.createdAt.toMillis()+32400000) / 86400000) == dayNumber() && o.get('inventoryLossAt',{}).get(r.asset,timestamp.date(1970,1,1)) <= r.createdAt &&
+        !exists(/databases/$(database)/documents/companyOperations/$(cid)/refunds/$(id)) &&
+        f == {'investmentId':id,'asset':r.asset,'quantity':r.quantity,'amount':r.cost,'createdAt':request.time} &&
+        d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',field,'pendingUnits','lastRefund']) &&
+        d[field] == o.get(field,0)-r.quantity && number(d[field],1000) &&
+        unitsData(d.pendingUnits) && d.pendingUnits.diff(o.pendingUnits).affectedKeys().hasOnly([r.asset]) && d.pendingUnits[r.asset] == o.pendingUnits[r.asset]-removed &&
+        d.cash == o.cash+funding-o.receivedIssuerCash+r.cost && d.cash >= -1000000000000 && d.cash <= 1000000000000 && d.receivedIssuerCash == funding;
     }
     function investmentReceipt(cid,id,r) {
       let o=operations(cid);
@@ -736,15 +772,22 @@ service cloud.firestore {
     match /companyOperations/{cid} {
       allow get: if participant();
       allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
-        {'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':1000,'dividendModel':'rank-v1','lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
+        {'productionModel':'units-v2','pendingUnits':{'factory':0,'employee':0,'equipment':0,'research':0},'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':1000,'dividendModel':'rank-v1','lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :
         admin() ? operationData(request.resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastSpyHire']) ? spyHireOperation(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
+        resource.data.get('productionModel','legacy') == 'units-v2' ? (request.resource.data.get('lastRefund','') != resource.data.get('lastRefund','') ? unitsRefund(cid,request.resource.data,resource.data,request.resource.data.lastRefund) : unitsInvestment(cid,request.resource.data,resource.data)) :
         investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
       allow list,delete: if false;
+      match /refunds/{id} {
+        allow get: if participant();
+        allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if unitsRefund(cid,getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data,operations(cid),id);
+        allow update,delete: if false;
+      }
       match /investments/{id} {
         allow get: if participant();
         allow list: if participant() && request.query.limit != null && request.query.limit <= 30;

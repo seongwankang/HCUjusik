@@ -1,3 +1,4 @@
+import {UNITS_MODEL,unitCapacity,pendingUnits} from './production-units.js';
 // Compatibility ledger for atomic investment rules. Revenue fields now encode
 // production technology; daily cash is computed in production-economy.js.
 // Keep the fallback policy identical to economyPolicy() in firestore.rules.
@@ -6,9 +7,9 @@ export const BASE_CAPACITY=10,FACTORY_CAPACITY=25,EQUIPMENT_CAPACITY=10;
 // Legacy export only; production income has no final multiplier.
 export const INCOME_MULTIPLIER=1;
 export const RESEARCH_LIMIT=6,BOOST_LIMIT=3000;
-export const staffCapacity=o=>Math.min(1000,BASE_CAPACITY+o.factory*FACTORY_CAPACITY+o.equipment*EQUIPMENT_CAPACITY);
+export const staffCapacity=o=>o.productionModel===UNITS_MODEL?unitCapacity(o):Math.min(1000,BASE_CAPACITY+o.factory*FACTORY_CAPACITY+o.equipment*EQUIPMENT_CAPACITY);
 export const researchBps=o=>o.activeResearchBps??Math.min(o.research,RESEARCH_LIMIT)*500;
-export const hasPending=o=>o.pendingRevenue+(o.pendingStaffRevenue||0)+(o.pendingResearchBps||0)>0;
+export const hasPending=o=>o.productionModel===UNITS_MODEL?Object.values(pendingUnits(o)).some(n=>n>0):o.pendingRevenue+(o.pendingStaffRevenue||0)+(o.pendingResearchBps||0)>0;
 export function validateConfig(c){
  const result={version:4};for(const key of Object.keys(DEFAULT_CONFIG).filter(k=>k!=='version')){
   const n=c[key],max=key==='researchBoostBps'?1000:100000000;

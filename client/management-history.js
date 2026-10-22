@@ -12,9 +12,9 @@ export function managementHistory({ops={},effects=[],events=[],investments=[]},n
  }));
  const investmentNames={factory:'공장',equipment:'생산 설비',research:'R&D센터',employee:'직원'};
  const investmentHistory=investments.filter(r=>Object.hasOwn(investmentNames,r.asset)&&Number.isSafeInteger(r.quantity)&&r.quantity>0&&r.quantity<=1000&&Number.isSafeInteger(r.cost)&&r.cost>0&&r.cost<=1e12&&Number.isSafeInteger(r.activeFromDay)&&r.activeFromDay>=0&&r.activeFromDay<=1000000&&Number.isFinite(timestamp(r.createdAt))&&timestamp(r.createdAt)<=now).map(r=>({
-  source:'investment',activationAt:settlementTime(r.activeFromDay),id:r.id,kind:r.asset==='employee'?'hiring':'investment',appliedAt:timestamp(r.createdAt),status:settlementTime(r.activeFromDay)>now?'pending':'applied',
+  source:'investment',activationAt:settlementTime(r.activeFromDay),id:r.id,kind:r.asset==='employee'?'hiring':'investment',appliedAt:timestamp(r.createdAt),status:r.refunded?'refunded':settlementTime(r.activeFromDay)>now?'pending':'applied',
   title:investmentNames[r.asset]+' '+r.quantity+(r.asset==='employee'?'명 채용':'개 건설'),
-  description:'투자금 '+r.cost.toLocaleString('ko-KR')+'원 · '+new Date(r.activeFromDay*86400000).toISOString().slice(0,10)+' 오전 7시 55분 정산부터 수익 반영',
+  description:(r.refunded?'당일 취소·전액 환불 ':'투자금 ')+r.cost.toLocaleString('ko-KR')+'원 · '+new Date(r.activeFromDay*86400000).toISOString().slice(0,10)+' 오전 7시 55분 정산부터 수익 반영',
  }));
  const recentHistory=[...recentEvents,...investmentHistory].sort(compareHistory);
  return {recentEvents,recentHistory};

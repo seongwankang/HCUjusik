@@ -1,7 +1,9 @@
+import {UNITS_MODEL,unitsEconomy} from './production-units.js';
 // Ledger values remain compatible with the existing atomic investment rules.
 // They encode capacity/technology, rather than additive money income.
 export const PRODUCTION_POLICY={salePrice:1000,productionCost:600,minCost:300,factoryUnits:1500,equipmentDiscount:75,employeeUnits:50};
 export function productionEconomy(o,day,records,active,pool,research,capacity){
+ if(o.productionModel===UNITS_MODEL)return unitsEconomy(o,day,records,active);
  const mature=o.pendingDay<=day,p=pool(o),q=pool(o,true),c=PRODUCTION_POLICY;
  const units=k=>Math.max(0,p[k]+(mature?q[k]:0));
  let factories=units('factory')/440000,equipment=units('equipment')/200000;

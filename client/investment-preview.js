@@ -1,6 +1,12 @@
+import {UNITS_MODEL,unitPurchase} from './production-units.js';
 import {effectiveConfig,researchBps,staffCapacity,RESEARCH_LIMIT} from './business-policy.js';
 import {adjustedRevenue,productionPool,investmentCost} from './event-model.js';
 export function previewPurchase(o,input,asset,day,activeDay=day+1){
+ if(o.productionModel===UNITS_MODEL){
+  let next;try{next={...o,...unitPurchase(o,asset,activeDay)};}catch{return {before:adjustedRevenue(o,activeDay).revenue,after:0,gain:0,payback:null,allowed:false};}
+  const before=adjustedRevenue(o,activeDay).revenue,after=adjustedRevenue(next,activeDay).revenue,gain=after-before;
+  return {before,after,gain,payback:gain>0?Math.round(investmentCost(o,effectiveConfig(input),asset)/gain*10)/10:null,allowed:true};
+ }
  const c=effectiveConfig(input),next={...o,production:productionPool(o),pendingProduction:productionPool(o,true),activeResearchBps:researchBps(o)};
  if(['factory','equipment'].includes(asset)){next[asset]++;next.pendingRevenue+=c[asset+'Revenue'];next.pendingProduction[asset]+=c[asset+'Revenue'];}
  if(asset==='research'){next.research++;next.pendingResearchBps=(o.pendingResearchBps||0)+c.researchBoostBps;}
