@@ -4,7 +4,6 @@ import {currentDividendForecast} from './dividend-rounds.js';
 import {nextSettlement} from './settlement-time.js';
 import {rankingValue} from './ranking-value.js';
 import {currentPriceLimits} from './daily-price-limits.js';
-import {shareholderSnapshots} from './shareholders.js';
 import {withSmoothedPrice} from './smoothed-price.js';
 import {investorSnapshot} from './investor.js';
 import {effectRecords} from './events.js';
@@ -45,10 +44,7 @@ export async function investorSnapshots(users,accounts,companies=[],books=[]){
 export async function publishCashRankings(db){
  const [users,accounts,companies]=await Promise.all([allRows(db,'users'),allRows(db,'sparkAccounts'),allRows(db,'companies')]);const books=await Promise.all(companies.map(async c=>{const s=await getDoc(doc(db,'sparkBooks',c.id));return {id:c.id,...await withSmoothedPrice(db,c,s.exists()?s.data():null)};}));
  const {board,profiles}=await investorSnapshots(users,accounts,companies,books),batch=writeBatch(db);
- const shareholders=await shareholderSnapshots(users,accounts,companies,books);
- // Keep the ranking generation atomic; large company sets use bounded batches.
- for(let offset=0;offset<Math.max(0,shareholders.length-(499-profiles.length));offset+=400){const part=writeBatch(db);for(const holders of shareholders.slice(offset,Math.min(offset+400,shareholders.length-(499-profiles.length))))part.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});await part.commit();}
- for(const holders of shareholders.slice(Math.max(0,shareholders.length-(499-profiles.length))))batch.set(doc(db,'companyShareholders',holders.companyId),{...holders,updatedAt:serverTimestamp()});
+ // Ownership projections are refreshed separately from consistent ledger reads.
  for(const p of profiles)batch.set(doc(db,'investorSnapshots',p.key),{...p.profile,updatedAt:serverTimestamp()});
  batch.set(doc(db,'leaderboards','cash'),{...board,updatedAt:serverTimestamp()});await batch.commit();return board;
 }

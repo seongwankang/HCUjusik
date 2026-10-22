@@ -2,11 +2,11 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/additional-offering-200-2026-10-23.json]
+    paths: [ops/shareholder-refresh-2026-10-23.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
-    - cron: '*/5 * * * *' # Reservation checks; no settlement or rankings
+    - cron: '*/5 * * * *' # Reservations and changed shareholder lists; no settlement or rankings
   workflow_dispatch:
     inputs:
       mode:
@@ -28,6 +28,7 @@ on:
           - initial-capital-2000000
           - recovery-event-2026-10-21
           - additional-offering-200
+          - shareholders-only
           - events-only
           - rankings-only
           - spies-policy-only
@@ -58,4 +59,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'additional-offering-200' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'shareholders-only' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}

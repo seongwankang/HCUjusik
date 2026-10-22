@@ -1,3 +1,4 @@
+import {refreshShareholders} from '../server/shareholder-refresh.js';
 import {issueAdditionalShares} from '../server/additional-offering.js';
 import {randomBytes,createCipheriv,publicEncrypt} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -65,6 +66,7 @@ if(process.env.ECONOMY_JOB_MODE==='reset-2026-10-21'){console.log(JSON.stringify
 if(process.env.ECONOMY_JOB_MODE==='initial-capital-2000000'){
  const db=getFirestore(app),result=await increaseInitialCapital(db);await publishCashRankings(db);console.log(JSON.stringify({capitalMigration:result,rankingsUpdated:true}));process.exit(0);
 }
+if(['shareholders-only','events-only','full','rankings-only'].includes(process.env.ECONOMY_JOB_MODE||'full')){const result=await refreshShareholders(getFirestore(app));console.log(JSON.stringify({shareholders:result}));if(process.env.ECONOMY_JOB_MODE==='shareholders-only')process.exit(0);}
 const result=await runScheduledEconomy(getFirestore(app),{mode:process.env.ECONOMY_JOB_MODE||'full'});
 // Public Actions logs contain counts only, never student names/cash/credentials.
 console.log(JSON.stringify({settled:result.settled,resumed:result.resumed,skipped:result.skipped,failedCount:result.failed.length,choiceEvents:result.choiceEvents,spyDetection:result.spyDetection?.status,rankingsUpdated:result.rankingsUpdated}));
