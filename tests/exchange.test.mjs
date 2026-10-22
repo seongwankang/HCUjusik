@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {newExchange,submit,cancel,view,pruneInactive,validateOrder} from '../server/exchange.js';
+import {newExchange,submit,cancel,view,pruneInactive,validateOrder,INITIAL_CASH} from '../server/exchange.js';
 const company={status:'listed',referencePrice:100,issuedShares:10};
 let n=0;
 const body=(side,price,quantity,extra={})=>({orderId:'order-'+String(++n).padStart(8,'0'),companyId:'test-a',side,price,quantity,...extra});
@@ -8,7 +8,7 @@ const place=(s,uid,side,price,q)=>submit(s,uid,body(side,price,q),company,'2026-
 function conservation(s){
  const accounts=Object.values(s.accounts),m=s.markets['test-a'];if(!m)return;
  assert.equal(accounts.reduce((n,a)=>n+(a.positions['test-a']||0),0)+m.treasuryShares,10);
- assert.equal(accounts.reduce((n,a)=>n+a.cash,0)+m.issuerCash,accounts.length*2000000);
+ assert.equal(accounts.reduce((n,a)=>n+a.cash,0)+m.issuerCash,accounts.length*INITIAL_CASH);
  for(const a of accounts){assert.ok(a.cash>=a.reservedCash&&a.reservedCash>=0);assert.ok((a.positions['test-a']||0)>=(a.reservedPositions['test-a']||0));}
  for(const [uid,a]of Object.entries(s.accounts)){
   const orders=Object.values(s.orders).filter(o=>o.uid===uid&&o.status==='open');
@@ -17,7 +17,7 @@ function conservation(s){
  }
 }
 test('initial supply first accepted buyer, partial fill, limit refund and no synthetic seller',()=>{
- const s=newExchange();let r=place(s,'a','buy',120,7);assert.equal(r.order.filled,7);assert.equal(s.accounts.a.cash,1999300);assert.equal(s.accounts.a.reservedCash,0);
+ const s=newExchange();let r=place(s,'a','buy',120,7);assert.equal(r.order.filled,7);assert.equal(s.accounts.a.cash,INITIAL_CASH-700);assert.equal(s.accounts.a.reservedCash,0);
  r=place(s,'b','buy',100,5);assert.equal(r.order.filled,3);assert.equal(r.order.remaining,2);assert.equal(s.accounts.b.reservedCash,200);assert.equal(s.markets['test-a'].treasuryShares,0);
  assert.equal(s.fills[0].price,100);assert.equal(s.fills[1].buyer,'b');conservation(s);
 });

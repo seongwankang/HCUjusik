@@ -7,7 +7,7 @@ const money=n=>Number.isSafeInteger(n)&&n>=0&&n<=1e12;
 export function eligibleSignup(user,portfolio,createdAt,{from=SIGNUP_FROM,until=SIGNUP_UNTIL}={}){return ['student','president'].includes(user?.role)&&createdAt>=from&&createdAt<until&&portfolio?.initialCapital===2000000;}
 // Selection uses Firestore's server-controlled profile creation metadata and the
 // original capital marker, never the current cash balance as proof of a grant.
-export async function correctSignupCapital(db,{apply=false,from=SIGNUP_FROM,until=SIGNUP_UNTIL,onExcluded=()=>{}}={}){
+export async function correctSignupCapital(db,{apply=false,from=SIGNUP_FROM,until=SIGNUP_UNTIL,allowOverdraft=false,onExcluded=()=>{}}={}){
  const users=await db.collection('users').get(),result={scanned:users.size,eligible:0,alreadyApplied:0,recovered:0,amount:0,insufficientCash:0,reservedFunds:0,missingAccounts:0};
  for(const u of users.docs){
   if(!['student','president'].includes(u.data().role)||u.createTime.toMillis()<from||u.createTime.toMillis()>=until)continue;
@@ -19,8 +19,8 @@ export async function correctSignupCapital(db,{apply=false,from=SIGNUP_FROM,unti
    if(!user.exists||!eligibleSignup(user.data(),portfolio.data(),user.createTime.toMillis(),{from,until}))return 'excluded';
    const p=portfolio.data(),a=account.data();
    if(!money(p.cash)||!Number.isSafeInteger(p.version)||a&&(!money(a.cash)||!money(a.reservedCash)||!Number.isSafeInteger(a.version)))throw Error('Invalid eligible account; no writes committed');
-   if(p.cash<EXTRA||a&&a.cash<EXTRA)return {kind:'insufficientCash',account:{uid:u.id,name:String(user.data().displayName||''),email:String(user.data().email||''),cash:a?.cash??p.cash}};
-   if(a&&a.cash-a.reservedCash<EXTRA)return 'reservedFunds';
+   if(!allowOverdraft&&(p.cash<EXTRA||a&&a.cash<EXTRA))return {kind:'insufficientCash',account:{uid:u.id,name:String(user.data().displayName||''),email:String(user.data().email||''),cash:a?.cash??p.cash}};
+   if(a&&a.reservedCash>Math.max(0,a.cash-EXTRA))return 'reservedFunds';
    if(!apply)return a?'eligible':'missingAccounts';
    t.set(receiptRef,{amount:EXTRA,profileCreatedAt:user.createTime,beforePortfolio:p,beforeAccount:a||null,createdAt:FieldValue.serverTimestamp()});
    t.update(portfolioRef,{cash:p.cash-EXTRA,initialCapital:1000000,version:p.version+1});
