@@ -1,3 +1,4 @@
+import {PRODUCTION_EFFECTS,productionEffectKinds} from './production-effects.js';
 import {UNITS_MODEL,pendingUnits,unitLoss,totalUnits} from './production-units.js';
 import {DIVIDEND_MODEL,normalizeDividendBps} from './ranked-dividends.js';
 import {productionEconomy} from './production-economy.js';
@@ -14,14 +15,14 @@ export function productionPool(o,pending=false){
  const factory=Math.floor(total*o.factory/n),equipment=Math.floor(total*o.equipment/n);
  return {factory,equipment,research:total-factory-equipment};
 }
-export const NEW_EFFECTS=['cash','cost','workforce','grant','dividendCap'];
-export const TIMED_EFFECTS=['revenue','efficiency','cost','dividendCap'];
+export const NEW_EFFECTS=['cash','cost','workforce','grant','dividendCap',...productionEffectKinds];
+export const TIMED_EFFECTS=['revenue','efficiency','cost','dividendCap',...productionEffectKinds];
 export const ONE_TIME_EFFECTS=['destroy','cash','workforce','grant'];
 export function validateEffect(e){
  if(!e||!['revenue','efficiency','destroy','none',...NEW_EFFECTS].includes(e.kind))fail('이벤트 효과를 선택하세요.');
  const kind=e.kind,usesAsset=['efficiency','destroy','cost','grant'].includes(kind),asset=usesAsset?e.asset:'factory';
  if(!(kind==='cost'?[...keys,'employee','all']:keys).includes(asset))fail('대상 설비를 선택하세요.');
- const percent=['revenue','efficiency','cost','dividendCap'].includes(kind)?Number(e.percent):0;
+ const percent=['revenue','efficiency','cost','dividendCap',...productionEffectKinds.filter(k=>!PRODUCTION_EFFECTS[k].flat)].includes(kind)?Number(e.percent):0;
  const count=['destroy','workforce','grant'].includes(kind)?Number(e.count):0;
  const counted=Object.hasOwn(e,'settlements'),settlements=TIMED_EFFECTS.includes(kind)?Number(e.settlements):0;
  const hours=TIMED_EFFECTS.includes(kind)&&!counted?Number(e.hours):0;
@@ -29,7 +30,8 @@ export function validateEffect(e){
  if(!Number.isInteger(count)||count<(kind==='workforce'?-1000:0)||count>1000||['destroy','grant'].includes(kind)&&count<1||kind==='workforce'&&count===0)fail('수량은 1~1,000개, 인원 변화는 -1,000~1,000명(0 제외)입니다.');
  if(counted?(!Number.isInteger(settlements)||settlements<0||settlements>365||TIMED_EFFECTS.includes(kind)&&settlements<1):(!Number.isInteger(hours)||hours<0||hours>2160||TIMED_EFFECTS.includes(kind)&&hours<1))fail('적용 횟수는 1~365회로 입력하세요.');
  if(kind==='cash'&&(!Number.isSafeInteger(Number(e.amount))||Math.abs(Number(e.amount))>100000000||Number(e.amount)===0))fail('지원금·손실금은 0을 제외한 ±1억 원 이내 정수로 입력하세요.');
- return {kind,asset,percent,count,...(counted?{settlements}:{hours}),...(kind==='cash'?{amount:Number(e.amount)}:{})};
+ if(PRODUCTION_EFFECTS[kind]?.flat&&(!Number.isSafeInteger(Number(e.amount))||Math.abs(Number(e.amount))>1000000||Number(e.amount)===0))fail('고정 수치 변화는 0을 제외한 ±1,000,000 이내 정수로 입력하세요.');
+ return {kind,asset,percent,count,...(counted?{settlements}:{hours}),...(kind==='cash'||PRODUCTION_EFFECTS[kind]?.flat?{amount:Number(e.amount)}:{})};
 }
 export const needsProduction=o=>o.productionModel!==UNITS_MODEL&&(!o.production||!o.pendingProduction)&&(o.revenue||o.pendingRevenue)>0;
 export function requireProduction(o){if(needsProduction(o))fail('기존 설비의 종류별 매출을 관리자가 회사경영에서 먼저 확인·저장해야 합니다.');}
@@ -57,6 +59,7 @@ export function effectText(input,result){
  const e={...input,...(result&&input.kind==='cash'?{amount:result.amount}:{}),...(result&&['workforce','grant','destroy'].includes(input.kind)?{count:result.count}:{})};
  const names={...ASSET_NAMES,employee:'직원 채용',all:'전체 투자'},sign=n=>n>0?'+'+n:String(n);
  const duration=Number.isInteger(e.settlements)?'정산 '+e.settlements+'회':e.hours+'시간 (이전 방식)';
+ if(PRODUCTION_EFFECTS[e.kind]){const p=PRODUCTION_EFFECTS[e.kind];return p.label+' '+sign(p.flat?e.amount:e.percent)+(p.flat?p.unit:'%')+' · '+duration;}
  if(e.kind==='cash')return '회사 자금 '+sign(e.amount).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원 · 일회성';
  if(e.kind==='cost')return names[e.asset]+' 비용 '+sign(e.percent)+'% · '+duration;
  if(e.kind==='workforce')return e.count===0?'직원 변화 없음 (정원·재직 인원 기준)':e.count>0?'직원 '+e.count+'명 무상 충원 (정원 이내)':'직원 '+(-e.count)+'명 이탈';
@@ -121,5 +124,5 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
 // These are the percentage modifiers used by the displayed revenue forecast,
 // evaluated at its settlement time rather than only at the viewing time.
 export function revenueEffects(ops,records=[],at=Date.now()){
- return records.filter(r=>['revenue','efficiency'].includes(r.effect?.kind)&&r.effect.percent!==0&&activeEffect(r,at,ops)).map(r=>({id:r.id,kind:r.effect.kind,asset:r.effect.asset,percent:r.effect.percent}));
+ return records.filter(r=>['revenue','efficiency',...productionEffectKinds].includes(r.effect?.kind)&&(r.effect.percent!==0||r.effect.amount)&&activeEffect(r,at,ops)).map(r=>({id:r.id,kind:r.effect.kind,asset:r.effect.asset,percent:r.effect.percent,...(r.effect.amount!==undefined?{amount:r.effect.amount}:{})}));
 }

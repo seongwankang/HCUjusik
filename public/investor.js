@@ -7,7 +7,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const won=v=>v===null?'계산 대기':Number(v).toLocaleString('ko-KR')+'원';
  const time=v=>new Date(v).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
  const statusLabels={refunded:'취소·환불 완료',applied:'반영 완료',active:'적용 중',ended:'적용 종료',unchanged:'변화 없음',pending:'가동 대기'};
- const kindLabels={cash:'회사 자금',workforce:'직원 변동',grant:'설비 지급',destroy:'설비 피해',cost:'투자 비용',dividendCap:'배당 상한',revenue:'매출 변동',efficiency:'설비 효율',none:'선택 결과',investment:'시설 투자',hiring:'직원 채용'};
+ const kindLabels={salePrice:'판매가격',salePriceFlat:'판매가격',productionCost:'생산원가',productionCostFlat:'생산원가',productionPower:'생산력',productionPowerFlat:'생산력',cash:'회사 자금',workforce:'직원 변동',grant:'설비 지급',destroy:'설비 피해',cost:'투자 비용',dividendCap:'배당 상한',revenue:'매출 변동',efficiency:'설비 효율',none:'선택 결과',investment:'시설 투자',hiring:'직원 채용'};
 export const historyRow=e=>`<li class="investor-history-item"><div class="investor-history-meta"><span class="history-kind">${esc(e.kind==='cash'?(e.amount<0?'손실금':e.amount>0?'지원금':'회사 자금'):kindLabels[e.kind]||'이벤트')}</span><span class="history-state" data-state="${['applied','active','ended','unchanged','pending','refunded'].includes(e.status)?e.status:'applied'}">${esc(statusLabels[e.status]||'반영 완료')}</span><time datetime="${esc(new Date(e.appliedAt).toISOString())}">${time(e.appliedAt)} ${['investment','hiring'].includes(e.kind)?'투자':'반영'}</time></div><strong>${esc(e.title)}</strong><p>${esc(e.description)}</p></li>`;
 export function renderInvestor(host,d){
  const history=d.recentHistory||d.recentEvents||[];
