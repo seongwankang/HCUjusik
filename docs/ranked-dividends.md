@@ -12,7 +12,7 @@ This replaces the operating-revenue distribution formula for new settlements. It
 
 At the first 07:55-or-later settlement, dividendRounds/d{KoreanDay} atomically freezes all company revenue/rate/rank inputs. It cannot subsequently be edited through client rules. Each company's day receipt records the frozen rank, base, rate, per-share amount, investor total and companyCharge. Later operating changes and the settlement order do not alter the frozen result. Existing locked old-formula payouts finish using their original receipts; already-completed settlements are never rewritten. New ranked operations fail closed if no rank context exists.
 
-The trusted scheduled job resolves due choices and spy detection before freezing the round, then pays holders using the existing exactly-once per-holder receipts. Transfers from industrial spies continue to run after ordinary company revenue. Forecasts in dividendForecasts/main refresh each scheduled pass (normally every 15 minutes), with the company's freshest revenue substituted when viewing its own projection. Forecasts are indicative; the immutable settlement round is authoritative. Forecasts before 07:55 refer to that morning; after the cutoff they refer to the next morning.
+The trusted scheduled job resolves due choices and spy detection before freezing the round, then pays holders using the existing exactly-once per-holder receipts. Transfers from industrial spies continue to run after ordinary company revenue. The server still publishes dividendForecasts/main each scheduled pass. Interactive forecasts now rank a complete live set of company operations/effects at the same upcoming settlement time. They never substitute just the viewed company's fresh revenue into stale values for other companies. Existing live-document subscriptions and immutable effect caches reuse unchanged values. Forecasts are indicative; the immutable settlement round is authoritative. Forecasts before 07:55 refer to that morning; after the cutoff they refer to the next morning.
 
 ## Rate-change news and security
 
@@ -21,3 +21,7 @@ The 08:00-inclusive / 17:00-exclusive Korean window and one actual change per co
 ## Rollout
 
 Publish the tested firestore.rules before enabling the client and the ranked-dividends-migrate trusted workflow. The migration changes only operation dividendModel/dividendBps and the policy marker; it publishes the upcoming forecast and never resets company/student balances or old payout history. Migrations are idempotent. Manual market closure stays in effect.
+
+## Forecast ranking tables
+
+Competition ties are 1,1,3: the third company uses base140, never145. Expected-revenue rankings expose revenueRank/rankBase and effective dividend rate from the same complete input population. The per-share dividend table independently ranks floor(rankBase × rateBps /100), with its own competition ties. Missing inputs suppress dividend coefficients rather than inventing a higher rank. Issuer proceeds, company cash, cumulative revenue and spy transfers do not determine the operating-revenue rank.

@@ -3,10 +3,11 @@ import {immutableRows} from './immutable-reads.js';
 import {adjustedRevenue,effectiveDividendBps,needsProduction} from './event-model.js';
 import {rankedRevenue,DIVIDEND_MODEL} from './ranked-dividends.js';
 import {settlementTime} from './settlement-time.js';
-async function inputs(db){
+async function inputs(db,reads){
+ const readDoc=reads?.getDoc||getDoc,readDocs=reads?.getDocs||getDocs;
  let cursor=null,companies=[];
- for(;;){const page=await getDocs(query(collection(db,'companies'),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])));companies.push(...page.docs.filter(s=>['listed','paused'].includes(s.data().status)));if(page.size<100)break;cursor=page.docs.at(-1);}
- return Promise.all(companies.map(async c=>{const ref=doc(db,'companyOperations',c.id),s=await getDoc(ref),o=s.data();const effects=o?await immutableRows(db,'companyEffects/'+c.id+'/items',{field:'appliedAt',pageSize:100,revision:o.lastEvent||'',persistent:true}):[];return {id:c.id,ref,o,effects};}));
+ for(;;){const page=await readDocs(query(collection(db,'companies'),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])));companies.push(...page.docs.filter(s=>['listed','paused'].includes(s.data().status)));if(page.size<100)break;cursor=page.docs.at(-1);}
+ return Promise.all(companies.map(async c=>{const ref=doc(db,'companyOperations',c.id),s=await readDoc(ref),o=s.data();const effects=o?await immutableRows(db,'companyEffects/'+c.id+'/items',{field:'appliedAt',pageSize:100,revision:o.lastEvent||'',persistent:true}):[];return {id:c.id,ref,o,effects};}));
 }
 function rankedInputs(rows,day,at){return rankedRevenue(rows.map(({id,o,effects})=>{
  if(o&&needsProduction(o))throw Error('기존 설비 분류 완료 후 배당 순위를 확정하세요.');
@@ -31,8 +32,10 @@ export async function publishDividendForecast(db,day){
  const rows=await inputs(db),result={day,settlementAt:settlementTime(day),model:DIVIDEND_MODEL,entries:rankedInputs(rows,day,settlementTime(day)),updatedAt:serverTimestamp()};
  await runTransaction(db,async t=>t.set(doc(db,'dividendForecasts','main'),result));return result;
 }
-export async function forecastDividendContext(db,cid,revenue,day,reads){
- const read=reads?.getDoc||getDoc,s=await read(doc(db,'dividendForecasts','main')),forecast=s.data();
- if(!forecast||forecast.day!==day||!Number.isSafeInteger(revenue))return null;
- return rankedRevenue(forecast.entries.map(r=>({...r,revenue:r.id===cid?revenue:r.revenue}))).find(r=>r.id===cid)||null;
+export async function currentDividendForecast(db,day,reads){
+ if(!Number.isSafeInteger(day)||day<0)throw Error('배당 예상 정산일을 확인하세요.');
+ return {day,settlementAt:settlementTime(day),model:DIVIDEND_MODEL,entries:rankedInputs(await inputs(db,reads),day,settlementTime(day))};
+}
+export async function forecastDividendContext(db,cid,_revenue,day,reads){
+ try{return (await currentDividendForecast(db,day,reads)).entries.find(r=>r.id===cid)||null;}catch{return null;}
 }
