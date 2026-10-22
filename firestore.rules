@@ -70,7 +70,7 @@ service cloud.firestore {
         sparkId(d.eventId) && eventData(d.eventId).get('autoNews',false) &&
         (eventData(d.eventId).type == 'random' || request.time >= eventData(d.eventId).endsAt) &&
         d.eventSummary.keys().hasOnly(['type','groups','unselected']) && d.eventSummary.type == eventData(d.eventId).type &&
-        d.eventSummary.groups is list && d.eventSummary.groups.size() == (d.eventSummary.type == 'choice' ? 3 : 1) &&
+        d.eventSummary.groups is list && d.eventSummary.groups.size() == (d.eventSummary.type == 'choice' ? 3 : eventData(d.eventId).get('randomEffectCount',1)) &&
         d.eventSummary.unselected is list && d.eventSummary.unselected.size() <= 100;
     }
     function newsData(d) {
@@ -91,7 +91,7 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption']) && request.resource.data.get('autoNews',false) is bool && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
+      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -130,8 +130,7 @@ service cloud.firestore {
       allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' && request.time >= eventData(eid).endsAt &&
         selectedOption(eid,option));
       allow create: if admin() && !exists(/databases/$(database)/documents/events/$(eid)) &&
-        getAfter(/databases/$(database)/documents/events/$(eid)).data.type in ['random','choice'] && option in ['0','1','2'] &&
-        request.resource.data.keys().hasOnly(['effect']) && effectData(request.resource.data.effect);
+        getAfter(/databases/$(database)/documents/events/$(eid)).data.type in ['random','choice'] && (getAfter(/databases/$(database)/documents/events/$(eid)).data.get('randomEffectCount',0) > 0 ? option.matches('^(0|[1-9]|1[0-9])$') && int(option) < getAfter(/databases/$(database)/documents/events/$(eid)).data.randomEffectCount && request.resource.data.keys().hasOnly(['effect','targets']) && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.toSet().difference(getAfter(/databases/$(database)/documents/events/$(eid)).data.targets.toSet()).size() == 0 : option in ['0','1','2'] && request.resource.data.keys().hasOnly(['effect'])) && effectData(request.resource.data.effect);
       allow list,update,delete: if false;
     }
     function selectedOption(eid,option) {
@@ -152,14 +151,15 @@ service cloud.firestore {
          (admin() && request.time >= eventData(eid).endsAt && request.resource.data.keys().hasOnly(['option','chosenAt','automatic']) && request.resource.data.automatic == true && request.resource.data.option == eventData(eid).defaultOption));
       allow list,update,delete: if false;
     }
-    function eventReceipt(cid,eid,d) {
+    function eventReceipt(cid,receiptId,d) {
+      let eid=d.get('eventId',receiptId);
       let e=eventData(eid);
-      return manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
-        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt','result','startsAfterSettlement']) &&
+      return (!('eventId' in d) || e.type == 'random' && e.get('randomEffectCount',0) > 0) && manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && (e.get('randomEffectCount',0) > 0 ? d.option is int && d.option >= 0 && d.option < e.randomEffectCount && receiptId == eid+'_e'+string(d.option) && cid in get(/databases/$(database)/documents/eventOutcomes/$(eid)/options/$(string(d.option))).data.targets : d.option == 0 && !('eventId' in d)) : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
+        d.keys().hasOnly(['option','effect','appliedAt','effectiveAt','result','startsAfterSettlement','eventId']) &&
         (d.effect.get('settlements',0) > 0 ? d.startsAfterSettlement == (exists(/databases/$(database)/documents/companyOperations/$(cid)) ? operations(cid).get('settlementCount',0) : 0) : !('startsAfterSettlement' in d)) &&
         (!('result' in d) || (d.effect.kind == 'destroy' ? d.result.keys().hasOnly(['count']) && d.result.count == operations(cid)[d.effect.asset]-getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data[d.effect.asset] : admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
         (!exists(/databases/$(database)/documents/companyOperations/$(cid)) ||
-          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).get('productionModel','legacy') == 'units-v2' || operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == eid));
+          (!operations(cid).locked && (!(d.effect.kind in ['destroy','efficiency','grant']) || (operations(cid).get('productionModel','legacy') == 'units-v2' || operations(cid).revenue == 0 && operations(cid).pendingRevenue == 0 || operations(cid).keys().hasAll(['production','pendingProduction']))) && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.lastEvent == receiptId));
     }
     match /companyEffects/{cid}/items/{eid} {
       // Applied outcomes are investor information; unrevealed outcomes stay private.
@@ -875,6 +875,7 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
+
 
 
 

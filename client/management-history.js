@@ -5,7 +5,7 @@ export function managementHistory({ops={},effects=[],events=[],investments=[]},n
  const o=ops||{};
  const timestamp=v=>typeof v==='number'?v:v?.toMillis?.()??Date.parse(v);
  const recentEvents=effects.filter(r=>[...ONE_TIME_EFFECTS,...TIMED_EFFECTS,'none'].includes(r.effect?.kind)&&Number.isFinite(timestamp(r.appliedAt))&&timestamp(r.appliedAt)<=now).sort((a,b)=>timestamp(b.appliedAt)-timestamp(a.appliedAt)||String(a.id).localeCompare(String(b.id))).map(r=>({
-  source:'event',id:r.id,title:events.find(e=>e.id===r.id)?.title||'기업 이벤트',kind:r.effect.kind,appliedAt:timestamp(r.appliedAt),
+  source:'event',id:r.id,title:events.find(e=>e.id===(r.eventId||r.id))?.title||'기업 이벤트',kind:r.effect.kind,appliedAt:timestamp(r.appliedAt),
   ...(r.effect.kind==='cash'?{amount:Number.isSafeInteger(r.result?.amount)?r.result.amount:r.effect.amount}:{}),
   status:ONE_TIME_EFFECTS.includes(r.effect.kind)?'applied':r.effect.kind==='none'?'unchanged':currentEffect(o,r,now)?'active':'ended',
   ...(Number.isInteger(r.effect.settlements)&&r.effect.settlements>0?{remainingSettlements:remainingSettlements(o,r)}:{}),description:effectText(r.effect,r.effect.kind==='cash'&&Number.isSafeInteger(r.result?.amount)?{amount:r.result.amount}:['workforce','grant','destroy'].includes(r.effect.kind)&&Number.isSafeInteger(r.result?.count)?{count:r.result.count}:undefined),
