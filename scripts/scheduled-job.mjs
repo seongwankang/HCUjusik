@@ -1,3 +1,4 @@
+import {issueAdditionalShares} from '../server/additional-offering.js';
 import {randomBytes,createCipheriv,publicEncrypt} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {correctSignupCapital} from '../server/signup-capital-correction.js';
@@ -22,6 +23,7 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='additional-offering-200'){const db=getFirestore(app),result=await issueAdditionalShares(db);await publishCashRankings(db);console.log(JSON.stringify({additionalOffering:result,rankingsUpdated:true}));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='signup-capital-correction'){
  const policy=JSON.parse(readFileSync('ops/signup-capital-correction-2026-10-22.json','utf8')),db=getFirestore(app);
  if(policy.auditOnly===true){

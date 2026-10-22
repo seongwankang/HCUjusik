@@ -2,7 +2,7 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/quote-policy-97-shares-v3.json]
+    paths: [ops/additional-offering-200-2026-10-23.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
@@ -27,6 +27,7 @@ on:
           - full
           - initial-capital-2000000
           - recovery-event-2026-10-21
+          - additional-offering-200
           - events-only
           - rankings-only
           - spies-policy-only
@@ -57,4 +58,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'rankings-only' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'additional-offering-200' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
