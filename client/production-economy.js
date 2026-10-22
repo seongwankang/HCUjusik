@@ -1,3 +1,4 @@
+import {applyProductionEffects} from './production-effects.js';
 import {UNITS_MODEL,unitsEconomy} from './production-units.js';
 // Ledger values remain compatible with the existing atomic investment rules.
 // They encode capacity/technology, rather than additive money income.
@@ -19,9 +20,10 @@ export function productionEconomy(o,day,records,active,pool,research,capacity){
  const employees=o.employees||0,supported=Math.min(employees,capacity(o));
  const staffPool=(o.staffRevenue||0)+(mature?(o.pendingStaffRevenue||0):0);
  const staff=employees?staffPool/20000*supported/employees:0;
- const salePrice=c.salePrice+Math.floor(c.salePrice*boost/10000);
- const productionCost=Math.max(c.minCost,c.productionCost-Math.floor(Math.max(0,equipment)*c.equipmentDiscount));
- const productionPower=Math.floor(Math.max(0,factories)*c.factoryUnits+staff*c.employeeUnits);
+ const baseSalePrice=c.salePrice+Math.floor(c.salePrice*boost/10000);
+ const baseProductionCost=Math.max(c.minCost,c.productionCost-Math.floor(Math.max(0,equipment)*c.equipmentDiscount));
+ const baseProductionPower=Math.floor(Math.max(0,factories)*c.factoryUnits+staff*c.employeeUnits);
+ const {salePrice,productionCost,productionPower}=applyProductionEffects({salePrice:baseSalePrice,productionCost:baseProductionCost,productionPower:baseProductionPower},records,active);
  const operatingIncome=(salePrice-productionCost)*productionPower;
  let percent=0;for(const r of records)if(active(r)&&r.effect.kind==='revenue')percent+=r.effect.percent;
  const revenue=Math.max(0,operatingIncome+Math.trunc(operatingIncome*percent/100));

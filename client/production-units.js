@@ -1,3 +1,4 @@
+import {applyProductionEffects} from './production-effects.js';
 // Economic inputs are inventory quantities. Historical money-yield fields are never read.
 export const UNITS_MODEL='units-v2';
 export const ASSET_KEYS=['factory','employee','equipment','research'];
@@ -11,9 +12,10 @@ export function unitsEconomy(o,day,records=[],active=()=>false){
  let factoryFactor=1,equipmentFactor=1,researchFactor=1,percent=0;
  for(const r of records)if(active(r)){const e=r.effect;if(e.kind==='revenue')percent+=e.percent;if(e.kind==='efficiency'){if(e.asset==='factory')factoryFactor+=e.percent/100;if(e.asset==='equipment')equipmentFactor+=e.percent/100;if(e.asset==='research')researchFactor+=e.percent/100;}}
  const capacity=Math.min(1000,10+Math.floor(n.factory*25*Math.max(0,factoryFactor))),supported=Math.min(n.employee,capacity);
- const salePrice=1000+Math.floor(n.research*10*Math.max(0,researchFactor));
- const productionCost=Math.max(1,Math.ceil(600*Math.pow(.95,n.equipment*Math.max(0,equipmentFactor))));
- const productionPower=supported*120,operatingIncome=(salePrice-productionCost)*productionPower;
+ const baseSalePrice=1000+Math.floor(n.research*10*Math.max(0,researchFactor));
+ const baseProductionCost=Math.max(1,Math.ceil(600*Math.pow(.95,n.equipment*Math.max(0,equipmentFactor))));
+ const {salePrice,productionCost,productionPower}=applyProductionEffects({salePrice:baseSalePrice,productionCost:baseProductionCost,productionPower:supported*120},records,active);
+ const operatingIncome=Math.max(0,salePrice-productionCost)*productionPower;
  const revenue=Math.max(0,operatingIncome+Math.trunc(operatingIncome*percent/100));
  if(!Number.isSafeInteger(revenue)||revenue>1e12)throw Error('이벤트 적용 수익 한도를 초과합니다.');
  return {base:operatingIncome,revenue,salePrice,productionCost,productionPower,operatingIncome,supported,capacity,boostBps:0};

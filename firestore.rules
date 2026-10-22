@@ -119,12 +119,12 @@ service cloud.firestore {
     function choice(cid,eid) { return get(/databases/$(database)/documents/companyChoices/$(cid)/items/$(eid)).data; }
     function effectData(e) {
       return e.keys().hasAll(['kind','asset','percent','count']) && e.keys().hasOnly(['kind','asset','percent','count','hours','settlements','amount']) &&
-        e.kind in ['revenue','efficiency','destroy','none','cash','cost','workforce','grant','dividendCap'] &&
+        e.kind in ['revenue','efficiency','destroy','none','cash','cost','workforce','grant','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat'] &&
         (e.kind == 'cost' ? e.asset in ['factory','equipment','research','employee','all'] : e.asset in ['factory','equipment','research']) &&
-        e.percent is int && (e.kind == 'cost' ? e.percent >= -90 && e.percent <= 300 : e.kind == 'dividendCap' ? e.percent >= 0 && e.percent <= 100 : e.kind in ['revenue','efficiency'] ? e.percent >= -100 && e.percent <= 500 : e.percent == 0) &&
-        ('settlements' in e ? !('hours' in e) && number(e.settlements,365) && (e.kind in ['revenue','efficiency','cost','dividendCap'] ? e.settlements > 0 : e.settlements == 0) : number(e.hours,2160) && (e.kind in ['revenue','efficiency','cost','dividendCap'] ? e.hours > 0 : e.hours == 0)) &&
+        e.percent is int && (e.kind == 'cost' ? e.percent >= -90 && e.percent <= 300 : e.kind == 'dividendCap' ? e.percent >= 0 && e.percent <= 100 : e.kind in ['revenue','efficiency','salePrice','productionCost','productionPower'] ? e.percent >= -100 && e.percent <= 500 : e.percent == 0) &&
+        ('settlements' in e ? !('hours' in e) && number(e.settlements,365) && (e.kind in ['revenue','efficiency','cost','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat'] ? e.settlements > 0 : e.settlements == 0) : number(e.hours,2160) && (e.kind in ['revenue','efficiency','cost','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat'] ? e.hours > 0 : e.hours == 0)) &&
         e.count is int && (e.kind == 'workforce' ? e.count >= -1000 && e.count <= 1000 && e.count != 0 : e.kind in ['destroy','grant'] ? e.count > 0 && e.count <= 1000 : e.count == 0) &&
-        (e.kind == 'cash' ? e.amount is int && e.amount >= -100000000 && e.amount <= 100000000 && e.amount != 0 : !('amount' in e));
+        (e.kind == 'cash' ? e.amount is int && e.amount >= -100000000 && e.amount <= 100000000 && e.amount != 0 : e.kind in ['salePriceFlat','productionCostFlat','productionPowerFlat'] ? e.amount is int && e.amount >= -1000000 && e.amount <= 1000000 && e.amount != 0 : !('amount' in e));
     }
     match /eventOutcomes/{eid}/options/{option} {
       allow get: if admin() || (participant() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'president' && eventData(eid).type == 'choice' && request.time >= eventData(eid).endsAt &&
@@ -154,7 +154,7 @@ service cloud.firestore {
     }
     function eventReceipt(cid,eid,d) {
       let e=eventData(eid);
-      return manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
+      return manager(cid) && (!(d.effect.kind in ['cash','cost','workforce','grant','dividendCap','salePrice','productionCost','productionPower','salePriceFlat','productionCostFlat','productionPowerFlat']) || (admin() && exists(/databases/$(database)/documents/companyOperations/$(cid)))) && cid in e.targets && (e.type == 'random' ? admin() && d.option == 0 : request.time >= e.endsAt && d.option == choice(cid,eid).option) &&
         d.keys().hasOnly(['option','effect','appliedAt','effectiveAt','result','startsAfterSettlement']) &&
         (d.effect.get('settlements',0) > 0 ? d.startsAfterSettlement == (exists(/databases/$(database)/documents/companyOperations/$(cid)) ? operations(cid).get('settlementCount',0) : 0) : !('startsAfterSettlement' in d)) &&
         (!('result' in d) || (d.effect.kind == 'destroy' ? d.result.keys().hasOnly(['count']) && d.result.count == operations(cid)[d.effect.asset]-getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data[d.effect.asset] : admin() && d.effect.kind in ['cash','workforce','grant'] && d.result is map && d.result.keys().hasOnly(['amount','count']))) && d.effect == outcome(eid,d.option) && d.appliedAt == request.time && d.effectiveAt == (e.type == 'choice' ? e.endsAt : e.startsAt) &&
