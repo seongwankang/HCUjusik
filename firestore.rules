@@ -605,7 +605,7 @@ service cloud.firestore {
         (o.pendingRevenue+o.get('pendingStaffRevenue',0)+o.get('pendingResearchBps',0) == 0 || o.pendingDay >= day) &&
         d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',(asset == 'employee' ? 'employees' : asset),'pendingRevenue','pendingDay','production','pendingProduction','employees','staffRevenue','pendingStaffRevenue','activeResearchBps','pendingResearchBps','lastInvestment']) &&
         d.production == beforeProduction && (asset in ['factory','equipment'] ? poolIncrease(d.pendingProduction,beforePending,asset,yieldAmount) : d.pendingProduction == beforePending) &&
-        (asset == 'employee' ? o.get('employees',0) < staffCapacity(o) : d[asset] == o[asset]+1) &&
+        (asset == 'employee' ? d.employees <= staffCapacity(o) : d[asset] == o[asset]+1) &&
         (asset != 'research' || (o.research < 6 && researchBps(o)+o.get('pendingResearchBps',0) < 3000)) &&
         d.cash == o.cash+funding-o.receivedIssuerCash-cost && d.receivedIssuerCash == funding &&
         d.pendingRevenue == o.pendingRevenue+yieldAmount && d.pendingDay == day &&
@@ -627,11 +627,11 @@ service cloud.firestore {
       let day=investmentDay(o);
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
       return manager(cid) && !o.locked && o.get('pendingEvent','') == '' && get(/databases/$(database)/documents/companies/$(cid)).data.status == 'listed' &&
-        !exists(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(d.lastInvestment)) && r.quantity == 1 && r.activeFromDay == day && r.createdAt == request.time && r.cost == eventCost(o,economyPolicy(),asset) &&
+        !exists(/databases/$(database)/documents/companyOperations/$(cid)/investments/$(d.lastInvestment)) && (asset == 'employee' ? r.quantity is int && r.quantity >= 1 && r.quantity <= 1000 : r.quantity == 1) && r.activeFromDay == day && r.createdAt == request.time && r.cost == eventCost(o,economyPolicy(),asset)*r.quantity &&
         (o.pendingUnits == {'factory':0,'employee':0,'equipment':0,'research':0} || o.pendingDay >= day) &&
         d.diff(o).affectedKeys().hasOnly(['cash','receivedIssuerCash',field,'pendingDay','pendingUnits','lastInvestment']) &&
-        d[field] == o.get(field,0)+1 && number(d[field],1000) && (asset != 'employee' || o.get('employees',0) < staffCapacity(o)) &&
-        d.pendingDay == day && unitsData(d.pendingUnits) && d.pendingUnits.diff(o.pendingUnits).affectedKeys().hasOnly([asset]) && d.pendingUnits[asset] == o.pendingUnits[asset]+1 &&
+        d[field] == o.get(field,0)+r.quantity && number(d[field],1000) && (asset != 'employee' || d.employees <= staffCapacity(o)) &&
+        d.pendingDay == day && unitsData(d.pendingUnits) && d.pendingUnits.diff(o.pendingUnits).affectedKeys().hasOnly([asset]) && d.pendingUnits[asset] == o.pendingUnits[asset]+r.quantity &&
         number(d.cash,1000000000000) && d.cash == o.cash+funding-o.receivedIssuerCash-r.cost && d.receivedIssuerCash == funding;
     }
     function unitsRefund(cid,d,o,id) {
@@ -655,9 +655,9 @@ service cloud.firestore {
       let field=r.asset == 'employee' ? 'employees' : r.asset;
       let funding=get(/databases/$(database)/documents/sparkBooks/$(cid)).data.issuerCash;
       return manager(cid) && !o.locked && r.keys().hasOnly(['asset','quantity','cost','activeFromDay','createdAt']) &&
-        r.asset in ['factory','equipment','research','employee'] && r.quantity == 1 && number(r.cost,1000000000000) && r.cost > 0 &&
+        r.asset in ['factory','equipment','research','employee'] && (o.get('productionModel','legacy') == 'units-v2' && r.asset == 'employee' ? r.quantity is int && r.quantity >= 1 && r.quantity <= 1000 : r.quantity == 1) && number(r.cost,1000000000000) && r.cost > 0 &&
         r.activeFromDay == investmentDay(o) && r.createdAt == request.time && d.lastInvestment == id &&
-        d[field] == o.get(field,0)+1 && d.cash == o.cash+funding-o.receivedIssuerCash-r.cost;
+        d[field] == o.get(field,0)+r.quantity && d.cash == o.cash+funding-o.receivedIssuerCash-r.cost;
     }
     match /economyConfig/{id} {
       allow get: if id == 'main' && participant();

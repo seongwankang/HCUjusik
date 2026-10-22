@@ -34,7 +34,8 @@ export async function operationsView(db,cid,reads){
 }
 export function newOperations(now=Date.now()){const day=koreaDay(now);return {...initialOperations(),productionModel:UNITS_MODEL,pendingUnits:emptyUnits(),dividendBps:1000,dividendModel:DIVIDEND_MODEL,lastSettledDay:now>=settlementTime(day)?day:0};}
 export async function initializeOperations(db,cid){if(!validId(cid))fail('기업을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid);if(!(await t.get(ref)).exists())t.set(ref,newOperations());});}
-export async function invest(db,cid,asset){
+export async function invest(db,cid,asset,quantity=1){
+ if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000||asset!=='employee'&&quantity!==1)fail('채용 인원을 1~1,000명의 정수로 입력하세요.');
  if(!validId(cid)||!Object.hasOwn(ASSETS,asset))fail('기업과 설비를 확인하세요.');
  const investmentId=crypto.randomUUID();
  return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs,cs,company]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid)),t.get(doc(db,'economyConfig','main')),t.get(doc(db,'companies',cid))]);
@@ -43,11 +44,12 @@ export async function invest(db,cid,asset){
  if(o.locked)fail('배당 정산 중에는 투자할 수 없습니다.');const day=investmentDay(o);if(hasPending(o)&&o.pendingDay<day)fail('오늘 7시 55분 정산이 아직 처리 중입니다. 정산 완료 후 추가 투자할 수 있습니다.');
  if(o.productionModel===UNITS_MODEL){
   if(o.pendingEvent)fail('선택한 이벤트 결과를 먼저 적용하세요.');
-  const cost=investmentCost(o,config,asset),cash=availableFunds(o,book)-cost;if(cash<0)fail('회사 자금이 부족합니다.');
-  const change=unitPurchase(o,asset,day);
-  t.set(doc(db,'companyOperations',cid,'investments',investmentId),{asset,quantity:1,cost,activeFromDay:day,createdAt:serverTimestamp()});
-  t.update(ref,{...change,cash,receivedIssuerCash:book.issuerCash,lastInvestment:investmentId});return;
+  const cost=investmentCost(o,config,asset)*quantity,cash=availableFunds(o,book)-cost;if(cash<0)fail('회사 자금이 부족합니다.');
+  const change=unitPurchase(o,asset,day,quantity);
+  t.set(doc(db,'companyOperations',cid,'investments',investmentId),{asset,quantity,cost,activeFromDay:day,createdAt:serverTimestamp()});
+  t.update(ref,{...change,cash,receivedIssuerCash:book.issuerCash,lastInvestment:investmentId});return {quantity,cost};
  }
+ if(quantity!==1)fail('기업 경제 전환 후 일괄 채용할 수 있습니다.');
  const cost=investmentCost(o,config,asset),cash=availableFunds(o,book)-cost;if(o.pendingEvent)fail('선택한 이벤트 결과를 먼저 적용하세요.');if(asset==='research'&&(o.research>=RESEARCH_LIMIT||researchBps(o)+(o.pendingResearchBps||0)>=3000))fail('R&D센터는 최대 6개입니다.');if(asset==='employee'&&(o.employees||0)>=staffCapacity(o))fail('직원 수용 인원이 부족합니다. 공장·생산 설비를 추가해 정원을 늘리세요.');if(asset!=='employee'&&o[asset]>=1000)fail('설비 보유 한도에 도달했습니다.');if(cash<0)fail('회사 자금이 부족합니다.');
  const yieldAmount=['factory','equipment'].includes(asset)?config[asset+'Revenue']:0;
  const pending=productionPool(o,true);if(yieldAmount)pending[asset]+=yieldAmount;

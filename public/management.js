@@ -18,7 +18,7 @@ const assets={factory:'공장',equipment:'생산 설비',research:'R&D센터'};
 const choices={factory:'공장',employee:'직원',equipment:'생산 설비',research:'R&D센터'};
 const dayNow=()=>Math.floor((Date.now()+32400000)/86400000);
 export async function showManagement(host,api,user,isCurrent=()=>true){
- let alive=true,selected='',companies=[],view=null,tab='investments';
+ let alive=true,selected='',companies=[],view=null,tab='investments',employeeQuantity='1',hiringBusy=false;
  const current=()=>alive&&isCurrent()&&document.querySelector('#page-management')?.classList.contains('active');
  const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
  host.classList.remove('empty-state');if(!host.hasChildNodes())host.innerHTML='<p class="placeholder">경영 현황을 불러오는 중…</p>';
@@ -55,7 +55,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const settlement=nextSettlement(o),production=adjustedRevenue(o,settlement.day,[],settlement.at),tomorrow=needs?null:adjustedRevenue(o,settlement.day,[],settlement.at).revenue,settlementLabel=new Date(settlement.at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
    const employees=o.employees||0,capacity=staffCapacity(o),vacancies=Math.max(0,capacity-employees),idle=Math.max(0,employees-capacity);
    const rateStatus=dividendChangeStatus(o);
-   const blocked=o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<settlement.day;
+   const blocked=hiringBusy||o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<settlement.day;
    const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100;
    setHTMLKeepingScroll(host.querySelector('#business-body'),`
     <section class="business-overview" aria-label="경영 요약">
@@ -73,12 +73,12 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
      ${needs?`<div class="business-lock"><h3>기존 설비 매출 분류가 필요합니다</h3>${user.role==='admin'?`<form id="production-form" class="admin-form">${['production','pendingProduction'].map(key=>Object.entries(assets).map(([asset,label])=>`<label>${label} · ${key==='production'?'가동':'대기'} 수익<input type="number" name="${key}-${asset}" min="0" step="1" value="0" required></label>`).join('')).join('')}<p>기존 합계 · 가동 ${won(o.revenue)} / 대기 ${won(o.pendingRevenue)}</p><button class="account-btn">분류 저장</button></form>`:'<p>관리자가 기존 수익을 분류하면 추가 투자할 수 있습니다.</p>'}</div>`:''}
      <div class="business-section-heading"><h2>추가 투자</h2></div>
      <div class="facility-grid">${Object.entries(choices).map(([id,name])=>{
-      const p=needs?{gain:0,payback:null,allowed:false}:previewPurchase(o,c,id,day,settlement.day),count=id==='employee'?employees:o[id],rd=id==='research';
-      const disabled=blocked||available<costs[id]||!p.allowed||needs;
+      const p=needs?{gain:0,payback:null,allowed:false}:previewPurchase(o,c,id,day,settlement.day,id==='employee'?Number(employeeQuantity):1),count=id==='employee'?employees:o[id],rd=id==='research';
+      const disabled=blocked||available<costs[id]*(id==='employee'?Number(employeeQuantity):1)||!p.allowed||needs;
       const reason=blocked?'처리 완료 후 투자 가능':needs?'매출 분류 필요':!p.allowed?(id==='employee'?'직원 정원 도달':'R&D 상한 도달'):available<costs[id]?'투자 자금 부족':'';
-      return `<article class="facility-card ${rd?'research-card':''}"><header><h3>${id==='employee'?'직원 채용':name}</h3><span class="holding-chip">${id==='employee'?'재직':'보유'} ${count}${id==='employee'?'명':'개'}</span></header><strong class="investment-cost">${won(costs[id])}<small>/${id==='employee'?'명':'개'}</small></strong><dl><div><dt>${id==='factory'&&o.productionModel===UNITS_MODEL?'직원 정원 증가':id==='equipment'?'생산원가 절감':rd?'판매가격 상승':'생산력 증가'}</dt><dd>${o.productionModel===UNITS_MODEL?(id==='factory'?'+25명':id==='equipment'?'현재 원가 ×95%':rd?'+10원':'+120개/일'):(id==='factory'?'+1,500개/일':id==='equipment'?'-75원 (최저 300원)':rd?'+5% (기본 판매가 기준)':'+50개/일')}</dd></div><div><dt>투자 후 일수익 증가</dt><dd>${needs?'분류 후 계산':'+'+won(Math.max(0,p.gain))}</dd></div></dl><p class="facility-caption">${o.productionModel===UNITS_MODEL?(id==='factory'?'직원 배치 공간 확장':id==='equipment'?'추가 절감액은 점차 감소':rd?'센터당 판매가격 정액 상승':'직원 정원 '+capacity+'명'):(id==='factory'?'직원 정원 +25명':id==='equipment'?'직원 정원 +10명':rd?'최대 6개 · 판매가격 최대 +30%':'직원 정원 '+capacity+'명')}</p><button class="account-btn" data-business="invest" data-asset="${id}" ${disabled?'disabled':''}>${id==='employee'?'1명 고용하기':name+' 1개 건설'}</button><small class="action-hint">${reason}</small></article>`;
+      return `<article class="facility-card ${rd?'research-card':''}"><header><h3>${id==='employee'?'직원 채용':name}</h3><span class="holding-chip">${id==='employee'?'재직':'보유'} ${count}${id==='employee'?'명':'개'}</span></header><strong class="investment-cost">${won(costs[id])}<small>/${id==='employee'?'명':'개'}</small></strong><dl><div><dt>${id==='factory'&&o.productionModel===UNITS_MODEL?'직원 정원 증가':id==='equipment'?'생산원가 절감':rd?'판매가격 상승':'생산력 증가'}</dt><dd>${o.productionModel===UNITS_MODEL?(id==='factory'?'+25명':id==='equipment'?'현재 원가 ×95%':rd?'+10원':'+120개/일'):(id==='factory'?'+1,500개/일':id==='equipment'?'-75원 (최저 300원)':rd?'+5% (기본 판매가 기준)':'+50개/일')}</dd></div><div><dt>투자 후 일수익 증가</dt><dd ${id==='employee'?'id="employee-gain"':''}>${needs?'분류 후 계산':'+'+won(Math.max(0,p.gain))}</dd></div></dl><p class="facility-caption">${o.productionModel===UNITS_MODEL?(id==='factory'?'직원 배치 공간 확장':id==='equipment'?'추가 절감액은 점차 감소':rd?'센터당 판매가격 정액 상승':'직원 정원 '+capacity+'명'):(id==='factory'?'직원 정원 +25명':id==='equipment'?'직원 정원 +10명':rd?'최대 6개 · 판매가격 최대 +30%':'직원 정원 '+capacity+'명')}</p>${id==='employee'&&o.productionModel===UNITS_MODEL?`<form id="employee-hire-form"><label>채용 인원<input id="employee-quantity" name="quantity" type="number" inputmode="numeric" min="1" max="${Math.max(1,capacity-employees)}" step="1" value="${esc(employeeQuantity)}" required ${blocked?'disabled':''}></label><p>총 고용비 <strong id="employee-total-cost">${won(costs.employee*Number(employeeQuantity))}</strong></p><button type="submit" class="account-btn" ${disabled?'disabled':''}>${Number.isSafeInteger(Number(employeeQuantity))?Number(employeeQuantity):'선택한'}명 고용하기</button></form>`:`<button class="account-btn" data-business="invest" data-asset="${id}" ${disabled?'disabled':''}>${id==='employee'?'1명 고용하기':name+' 1개 건설'}</button>`}<small class="action-hint" ${id==='employee'?'id="employee-hire-hint"':''}>${reason}</small></article>`;
      }).join('')}</div>
-     ${o.productionModel===UNITS_MODEL?`<section><div class="business-section-heading"><h2>오늘 투자 내역</h2></div><div class="portfolio-table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr><th>투자</th><th>결제 금액</th><th></th></tr></thead><tbody>${(view.investments||[]).map(r=>`<tr><td>${choices[r.asset]}</td><td>${won(r.cost)}</td><td>${r.refunded?'취소 완료':`<button class="ghost" data-business="refund" data-investment="${esc(r.id)}" ${blocked?'disabled':''}>취소·환불</button>`}</td></tr>`).join('')||'<tr><td colspan="3">오늘 투자 내역이 없습니다.</td></tr>'}</tbody></table></div></section>`:''}
+     ${o.productionModel===UNITS_MODEL?`<section><div class="business-section-heading"><h2>오늘 투자 내역</h2></div><div class="portfolio-table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr><th>투자</th><th>결제 금액</th><th></th></tr></thead><tbody>${(view.investments||[]).map(r=>`<tr><td>${choices[r.asset]}${r.asset==='employee'?' '+r.quantity+'명':''}</td><td>${won(r.cost)}</td><td>${r.refunded?'취소 완료':`<button class="ghost" data-business="refund" data-investment="${esc(r.id)}" ${blocked?'disabled':''}>취소·환불</button>`}</td></tr>`).join('')||'<tr><td colspan="3">오늘 투자 내역이 없습니다.</td></tr>'}</tbody></table></div></section>`:''}
      <details class="business-guide"><summary>투자 수익 비교</summary><div class="table-wrap" tabindex="0" role="region" aria-label="스크롤 가능한 표"><table><thead><tr><th>투자</th><th>예상 일수익 증가</th><th>단순 회수 기간</th></tr></thead><tbody>${Object.keys(choices).map(id=>{const p=needs?null:previewPurchase(o,c,id,day,settlement.day);return `<tr><td>${choices[id]}</td><td>${p?won(Math.max(0,p.gain)):'—'}</td><td>${p?.payback?p.payback+'일':'—'}</td></tr>`;}).join('')}</tbody></table></div><p>배당·이벤트를 제외한 단순 비교입니다.</p></details>
     </section>
     <section id="business-panel-spies" role="tabpanel" aria-labelledby="business-tab-spies" data-management-panel="spies" hidden><div id="business-spies"></div></section>
@@ -94,7 +94,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    setTab(tab);
    if(draft){const form=host.querySelector('#'+draft.id);if(form){for(const [name,value] of draft.values){const input=form.elements.namedItem(name);if(input&&input.type!=='file')input.value=value;}form.elements.namedItem(draft.name)?.focus({preventScroll:true});}}
   }
-  host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;message('');await load();};
+  host.querySelector('#business-company').onchange=async e=>{selected=e.target.value;employeeQuantity='1';message('');await load();};
   host.querySelector('#business-refresh').onclick=async()=>{await api.refresh?.();await load();};
   host.onclick=async e=>{
    const nav=e.target.closest('[data-management-tab]');if(nav){setTab(nav.dataset.managementTab);return;}
@@ -103,7 +103,19 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    try{await post('/api/economy-'+({invest:'invest',refund:'refund',settle:'settle'}[action]),{companyId:cid,asset:button.dataset.asset,investmentId:button.dataset.investment});await load();if(current()&&selected===cid)message(action==='settle'?'정산을 완료했습니다.':'반영했습니다.');}catch(err){await load();if(current())message(err.message);}finally{if(current())host.querySelector('#business-company').disabled=false;}
   };
   host.onkeydown=e=>{const nav=e.target.closest('[role="tab"][data-management-tab]');if(!nav||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=['investments','events','spies','settlement','shareholders'],index=tabs.indexOf(tab);setTab(e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(index+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length],true);};
+  host.oninput=e=>{
+   if(e.target.id!=='employee-quantity')return;employeeQuantity=e.target.value;
+   const q=Number(employeeQuantity),o=view.ops,valid=Number.isSafeInteger(q)&&q>=1&&q<=1000,next=nextSettlement(o),p=valid?previewPurchase(o,view.config,'employee',dayNow(),next.day,q):null,cost=investmentCost(o,view.config,'employee')*(valid?q:0),blocked=hiringBusy||o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<next.day;
+   const hint=!valid?'인원을 정수로 입력하세요.':!p.allowed?'직원 정원이 부족합니다.':view.available<cost?'투자 자금이 부족합니다.':'';
+   host.querySelector('#employee-total-cost').textContent=valid?won(cost):'—';host.querySelector('#employee-gain').textContent=valid&&p.allowed?'+'+won(Math.max(0,p.gain)):'—';host.querySelector('#employee-hire-hint').textContent=hint;
+   const button=host.querySelector('#employee-hire-form button');button.textContent=valid?q+'명 고용하기':'고용하기';button.disabled=blocked||!!hint;
+  };
   host.onsubmit=async e=>{
+   if(e.target.id==='employee-hire-form'){
+    e.preventDefault();if(hiringBusy||!e.target.reportValidity())return;const q=Number(new FormData(e.target).get('quantity')),cid=selected;hiringBusy=true;e.target.querySelector('button').disabled=true;host.querySelector('#business-company').disabled=true;message('채용 중…');let result;
+    try{await post('/api/economy-invest',{companyId:cid,asset:'employee',quantity:q});result=q+'명 고용했습니다.';}catch(error){result=error.message;}
+    finally{hiringBusy=false;await load();if(current()&&selected===cid){message(result);host.querySelector('#business-company').disabled=false;}}return;
+   }
    if(!['dividend-form','economy-config-form','production-form'].includes(e.target.id))return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
    try{const b=Object.fromEntries(new FormData(e.target));if(e.target.id==='production-form')await post('/api/economy-production',{companyId:selected,...Object.fromEntries(['production','pendingProduction'].map(key=>[key,Object.fromEntries(Object.keys(assets).map(asset=>[asset,Number(b[key+'-'+asset])]))]))});else if(e.target.id==='dividend-form')await post('/api/economy-rate',{companyId:selected,dividendBps:Math.round(Number(b.rate)*100)});else await post('/api/economy-config',Object.fromEntries(Object.entries(b).map(([k,v])=>[k,k==='researchBoostBps'?Math.round(Number(v)*100):Number(v)])));await load();if(current())message('설정을 저장했습니다.');}catch(err){if(current())message(err.message);button.disabled=false;}
   };
