@@ -18,12 +18,13 @@ export function unitsEconomy(o,day,records=[],active=()=>false){
  if(!Number.isSafeInteger(revenue)||revenue>1e12)throw Error('이벤트 적용 수익 한도를 초과합니다.');
  return {base:operatingIncome,revenue,salePrice,productionCost,productionPower,operatingIncome,supported,capacity,boostBps:0};
 }
-export function unitPurchase(o,asset,day){
+export function unitPurchase(o,asset,day,quantity=1){
+ if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000||asset!=='employee'&&quantity!==1)throw Error('채용 인원을 1~1,000명의 정수로 입력하세요.');
  const pending=pendingUnits(o),field=asset==='employee'?'employees':asset;
  if(ASSET_KEYS.some(k=>pending[k]>0)&&o.pendingDay<day)throw Error('이전 정산을 완료한 뒤 투자하세요.');
- if(totalUnits(o,asset)>=1000)throw Error('보유 수량 한도에 도달했습니다.');
- if(asset==='employee'&&totalUnits(o,asset)>=unitCapacity(o))throw Error('직원 정원이 부족합니다. 공장을 추가하세요.');
- return {[field]:totalUnits(o,asset)+1,pendingDay:day,pendingUnits:{...pending,[asset]:pending[asset]+1}};
+ if(totalUnits(o,asset)+quantity>1000)throw Error('보유 수량 한도에 도달했습니다.');
+ if(asset==='employee'&&totalUnits(o,asset)+quantity>unitCapacity(o))throw Error('직원 정원이 부족합니다. 공장을 추가하세요.');
+ return {[field]:totalUnits(o,asset)+quantity,pendingDay:day,pendingUnits:{...pending,[asset]:pending[asset]+quantity}};
 }
 export function unitLoss(o,asset,count){
  const pending=pendingUnits(o),lost=Math.min(totalUnits(o,asset),count),field=asset==='employee'?'employees':asset;
