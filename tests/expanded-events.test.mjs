@@ -13,8 +13,8 @@ test('one-time money uses all issuer proceeds once, allows company debt and reje
  assert.throws(()=>eventMutation({...o,cash:1e12},{kind:'cash',amount:100000000},context),/한도/);
  assert.equal(adjustedRevenue({...o,...p},day).revenue,adjustedRevenue(o,day).revenue);
 });
-test('free workforce respects capacity and losses reduce active and pending yield proportionally',()=>{
- const o=base(),gain=eventMutation(o,{kind:'workforce',count:1000},context);assert.equal(gain.employees,35);assert.equal(gain.staffRevenue,700000);assert.equal(gain.cash,undefined);
+test('free workforce bypasses capacity and losses reduce active and pending yield proportionally',()=>{
+ const o=base(),gain=eventMutation(o,{kind:'workforce',count:1000},context);assert.equal(gain.employees,1000);assert.equal(gain.staffRevenue,20000000);assert.equal(gain.cash,undefined);
  const loss=eventMutation(o,{kind:'workforce',count:-2},context);assert.equal(loss.employees,3);assert.equal(loss.staffRevenue,60000);assert.equal(loss.pendingStaffRevenue,30000);
  const all=eventMutation(o,{kind:'workforce',count:-1000},context);assert.equal(all.employees,0);assert.equal(all.staffRevenue+all.pendingStaffRevenue,0);
 });

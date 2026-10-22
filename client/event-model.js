@@ -62,7 +62,7 @@ export function effectText(input,result){
  if(PRODUCTION_EFFECTS[e.kind]){const p=PRODUCTION_EFFECTS[e.kind];return p.label+' '+sign(p.flat?e.amount:e.percent)+(p.flat?p.unit:'%')+' · '+duration;}
  if(e.kind==='cash')return '회사 자금 '+sign(e.amount).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원 · 일회성';
  if(e.kind==='cost')return names[e.asset]+' 비용 '+sign(e.percent)+'% · '+duration;
- if(e.kind==='workforce')return e.count===0?'직원 변화 없음 (정원·재직 인원 기준)':e.count>0?'직원 '+e.count+'명 무상 충원 (정원 이내)':'직원 '+(-e.count)+'명 이탈';
+ if(e.kind==='workforce')return e.count===0?'직원 변화 없음':e.count>0?'직원 '+e.count+'명 무상 충원 (정원 초과 가능)':'직원 '+(-e.count)+'명 이탈';
  if(e.kind==='grant')return ASSET_NAMES[e.asset]+' '+e.count+'개 무상 지급';
  if(e.kind==='dividendCap')return '배당률 상한 '+e.percent+'% · '+duration;
  return e.kind==='destroy'?ASSET_NAMES[e.asset]+' '+e.count+'개 파괴 (영구)':e.kind==='none'?'변화 없음':(e.kind==='revenue'?'일매출':ASSET_NAMES[e.asset]+' 효율')+' '+sign(e.percent)+'% · '+duration;
@@ -101,14 +101,14 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
   return {costEvents:costs};
  }
  if(o.productionModel===UNITS_MODEL&&['grant','workforce'].includes(e.kind)){
-  const asset=e.kind==='workforce'?'employee':e.asset,n=totalUnits(o,asset),delta=e.kind==='workforce'?(e.count>0?Math.min(e.count,Math.max(0,staffCapacity(o)-n)):Math.max(e.count,-n)):Math.min(e.count,1000-n);
-  return delta<0?unitLoss(o,asset,-delta):{[asset==='employee'?'employees':asset]:n+delta};
+  const asset=e.kind==='workforce'?'employee':e.asset,n=totalUnits(o,asset),delta=e.kind==='workforce'?(e.count>0?Math.min(e.count,Math.max(0,1000-n)):Math.max(e.count,-n)):Math.min(e.count,1000-n);
+  return delta<0?unitLoss(o,asset,-delta):{[asset==='employee'?'employees':asset]:n+delta,...(e.kind==='workforce'?{eventEmployees:(o.eventEmployees||0)+delta}:{})};
  }
  if(e.kind==='workforce'){
-  const n=o.employees||0,delta=e.count>0?Math.min(e.count,Math.max(0,staffCapacity(o)-n)):Math.max(e.count,-n);
-  if(delta>=0){const staffRevenue=(o.staffRevenue||0)+delta*config.employeeRevenue;if(!Number.isSafeInteger(staffRevenue)||staffRevenue>1e12)fail('직원 수익 한도를 초과합니다.');return {employees:n+delta,staffRevenue};}
+  const n=o.employees||0,delta=e.count>0?Math.min(e.count,Math.max(0,1000-n)):Math.max(e.count,-n);
+  if(delta>=0){const staffRevenue=(o.staffRevenue||0)+delta*config.employeeRevenue;if(!Number.isSafeInteger(staffRevenue)||staffRevenue>1e12)fail('직원 수익 한도를 초과합니다.');return {employees:n+delta,eventEmployees:(o.eventEmployees||0)+delta,staffRevenue};}
   const lost=-delta;
-  return {employees:n-lost,staffRevenue:(o.staffRevenue||0)-Math.floor((o.staffRevenue||0)*lost/n),pendingStaffRevenue:(o.pendingStaffRevenue||0)-Math.floor((o.pendingStaffRevenue||0)*lost/n)};
+  return {employees:n-lost,...(o.eventEmployees!==undefined?{eventEmployees:Math.max(0,o.eventEmployees-lost)}:{}),staffRevenue:(o.staffRevenue||0)-Math.floor((o.staffRevenue||0)*lost/n),pendingStaffRevenue:(o.pendingStaffRevenue||0)-Math.floor((o.pendingStaffRevenue||0)*lost/n)};
  }
  if(e.kind==='grant'){
   requireProduction(o);

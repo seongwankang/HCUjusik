@@ -53,7 +53,7 @@ export async function showManagement(host,api,user,isCurrent=()=>true){
    const focused=document.activeElement,draftForm=focused?.closest?.('form'),draft=draftForm&&host.contains(draftForm)?{id:draftForm.id,values:[...new FormData(draftForm)],name:focused.name}:null;
    const {ops:o,book,config:c,available,days}=view,day=dayNow(),needs=needsProduction(o),costs=Object.fromEntries(Object.keys(choices).map(asset=>[asset,investmentCost(o,c,asset)]));
    const settlement=nextSettlement(o),production=adjustedRevenue(o,settlement.day,[],settlement.at),tomorrow=needs?null:adjustedRevenue(o,settlement.day,[],settlement.at).revenue,settlementLabel=new Date(settlement.at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
-   const employees=o.employees||0,capacity=staffCapacity(o),vacancies=Math.max(0,capacity-employees),idle=Math.max(0,employees-capacity);
+   const employees=o.employees||0,capacity=staffCapacity(o),vacancies=Math.max(0,capacity-employees),idle=Math.max(0,employees-(o.eventEmployees||0)-capacity);
    const rateStatus=dividendChangeStatus(o);
    const blocked=hiringBusy||o.locked||!!o.pendingEvent||hasPending(o)&&o.pendingDay<settlement.day;
    const bonus=Math.min(3000,researchBps(o)+(o.pendingResearchBps||0))/100;

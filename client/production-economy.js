@@ -17,7 +17,7 @@ export function productionEconomy(o,day,records,active,pool,research,capacity){
   if(e.asset==='research')boost+=Math.trunc(baseBoost*factor);
  }
  boost=Math.max(0,Math.min(3000,boost));
- const employees=o.employees||0,supported=Math.min(employees,capacity(o));
+ const employees=o.employees||0,eventStaff=Math.min(employees,o.eventEmployees||0),supported=Math.min(employees-eventStaff,capacity(o))+eventStaff;
  const staffPool=(o.staffRevenue||0)+(mature?(o.pendingStaffRevenue||0):0);
  const staff=employees?staffPool/20000*supported/employees:0;
  const baseSalePrice=c.salePrice+Math.floor(c.salePrice*boost/10000);

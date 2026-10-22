@@ -11,7 +11,7 @@ export function unitsEconomy(o,day,records=[],active=()=>false){
  const pending=matureUnits(o,day),n=Object.fromEntries(ASSET_KEYS.map(k=>[k,Math.max(0,totalUnits(o,k)-pending[k])]));
  let factoryFactor=1,equipmentFactor=1,researchFactor=1,percent=0;
  for(const r of records)if(active(r)){const e=r.effect;if(e.kind==='revenue')percent+=e.percent;if(e.kind==='efficiency'){if(e.asset==='factory')factoryFactor+=e.percent/100;if(e.asset==='equipment')equipmentFactor+=e.percent/100;if(e.asset==='research')researchFactor+=e.percent/100;}}
- const capacity=Math.min(1000,10+Math.floor(n.factory*25*Math.max(0,factoryFactor))),supported=Math.min(n.employee,capacity);
+ const capacity=Math.min(1000,10+Math.floor(n.factory*25*Math.max(0,factoryFactor))),eventStaff=Math.min(n.employee,o.eventEmployees||0),supported=Math.min(n.employee-eventStaff,capacity)+eventStaff;
  const baseSalePrice=1000+Math.floor(n.research*10*Math.max(0,researchFactor));
  const baseProductionCost=Math.max(1,Math.ceil(600*Math.pow(.95,n.equipment*Math.max(0,equipmentFactor))));
  const {salePrice,productionCost,productionPower}=applyProductionEffects({salePrice:baseSalePrice,productionCost:baseProductionCost,productionPower:supported*120},records,active);
@@ -30,5 +30,6 @@ export function unitPurchase(o,asset,day,quantity=1){
 }
 export function unitLoss(o,asset,count){
  const pending=pendingUnits(o),lost=Math.min(totalUnits(o,asset),count),field=asset==='employee'?'employees':asset;
- return {[field]:totalUnits(o,asset)-lost,pendingUnits:{...pending,[asset]:Math.max(0,pending[asset]-lost)}};
+ const eventLost=asset==='employee'?Math.min(o.eventEmployees||0,lost):0;
+ return {[field]:totalUnits(o,asset)-lost,...(asset==='employee'&&o.eventEmployees!==undefined?{eventEmployees:(o.eventEmployees||0)-eventLost}:{}),pendingUnits:{...pending,[asset]:Math.max(0,pending[asset]-(lost-eventLost))}};
 }
