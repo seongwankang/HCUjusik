@@ -1,3 +1,4 @@
+import {PREVIOUS_PRICE_WEIGHT,EXECUTION_PRICE_WEIGHT} from '../client/smoothed-price.js';
 import {PERSONAL_RANKINGS,personalRankingMarkup} from './personal-rankings.js';
 import {setHTMLKeepingScroll,captureScroll,restoreScroll} from './scroll-state.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -28,7 +29,7 @@ export async function showRankings(host,api,user,isCurrent,{preserveOnError=fals
  host.querySelectorAll('[data-personal-ranking]').forEach(b=>b.onclick=()=>personalTable(b.dataset.personalRanking));personalTable(selectedPersonal);
  function marketTable(key){
   host.querySelector('#market-ranking-table').dataset.ranking=key;
-  const notes={prices:'체결 수량 반영 기준가 · 기존 92% + 체결가 8%',volume:'오늘 체결 수량',gainers:'전일 종가 대비',losers:'전일 종가 대비',expectedRevenue:'다음 정산 예상 매출 · 공동순위 다음 순위는 건너뜀',expectedDividendPerShare:'예상 매출 순위 계수 × 배당률(%)',cumulativeRevenue:'정산 완료 매출 누계'};
+  const notes={prices:`체결 수량 반영 기준가 · 기존 ${Math.round(PREVIOUS_PRICE_WEIGHT*100)}% + 체결가 ${Math.round(EXECUTION_PRICE_WEIGHT*100)}%`,volume:'오늘 체결 수량',gainers:'전일 종가 대비',losers:'전일 종가 대비',expectedRevenue:'다음 정산 예상 매출 · 공동순위 다음 순위는 건너뜀',expectedDividendPerShare:'예상 매출 순위 계수 × 배당률(%)',cumulativeRevenue:'정산 완료 매출 누계'};
   host.querySelectorAll('[data-ranking]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ranking===key)));
   host.querySelector('#market-ranking-note').textContent=notes[key]+(['gainers','losers'].includes(key)?' · 전일 거래가 없으면 초기 판매가 기준':'')+(data[key+'Unavailable']?' · '+data[key+'Unavailable']+'개 종목 집계 불가':'');
   const rows=data[key]||[],label={prices:'기준가',volume:'거래량',gainers:'상승률',losers:'하락률',expectedRevenue:'예상 일매출',expectedDividendPerShare:'예상 1주당 배당',cumulativeRevenue:'누적 매출'}[key];

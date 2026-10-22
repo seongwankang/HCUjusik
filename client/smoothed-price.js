@@ -1,10 +1,11 @@
 import {collection,getDocs,query,where,orderBy,limit} from 'firebase/firestore';
 const validPrice=p=>Number.isFinite(p)&&p>0&&p<=1000000000;
-export const QUOTE_MODEL='ema92-share-v2';
+export const PREVIOUS_PRICE_WEIGHT=.97,EXECUTION_PRICE_WEIGHT=.03;
+export const QUOTE_MODEL='ema97-share-v3';
 export function nextSmoothedPrice(previous,price,quantity=1){
  if(!validPrice(previous)||!Number.isSafeInteger(price)||!validPrice(price))throw Error('체결 가격을 확인하세요.');
  if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000)throw Error('체결 주식 수량을 확인하세요.');
- let value=previous;for(let i=0;i<quantity;i++){const next=value*.92+price*.08;if(next===value)break;value=next;}return value;
+ let value=previous;for(let i=0;i<quantity;i++){const next=value*PREVIOUS_PRICE_WEIGHT+price*EXECUTION_PRICE_WEIGHT;if(next===value)break;value=next;}return value;
 }
 // Replay every fill in sequence, once. Persist only the unrounded accumulator
 // and processed book version; refreshing never starts the average over again.
@@ -39,7 +40,7 @@ export function createSmoothedReader(fetchPage,storage){
 const readers=new WeakMap();
 export function smoothedReader(db){
  if(!readers.has(db)){
-  const prefix='hcujusik-ema92-share-v2:'+db.app?.options?.projectId+':';
+  const prefix='hcujusik-'+QUOTE_MODEL+':'+db.app?.options?.projectId+':';
   const storage=typeof localStorage==='undefined'?null:{get:async id=>{const raw=localStorage.getItem(prefix+id);return raw?JSON.parse(raw):null;},set:async(id,state)=>localStorage.setItem(prefix+id,JSON.stringify(state))};
   readers.set(db,createSmoothedReader(async(cid,since,through)=>{
    const page=await getDocs(query(collection(db,'sparkBooks',cid,'trades'),where('marketVersion','>',since),where('marketVersion','<=',through),orderBy('marketVersion'),limit(100)));
