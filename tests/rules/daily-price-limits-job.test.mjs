@@ -25,12 +25,12 @@ test('trusted preparation freezes closing EMA, refunds out-of-band orders once, 
   assert.equal((await db.doc('sparkAccounts/buyer').get()).data().reservedCash,0);assert.equal((await db.doc('sparkAccounts/seller').get()).data().reservedPositions.a,0);assert.equal((await db.doc('sparkAccounts/seller').get()).data().positions.a,10);
   assert.equal((await db.doc('sparkAccounts/buyer').get()).data().cash,1000000);assert.equal((await db.doc('sparkAccounts/buyer').get()).data().positions.a,3);assert.equal((await db.doc('sparkAccounts/buyer/orders/old-buy-order').get()).data().filled,3);assert.equal((await db.doc('sparkAccounts/buyer/orders/old-buy-order').get()).data().cancelled,2);
   assert.deepEqual(await publishDailyPriceLimits(db,{now}),{updated:0,cancelled:0});
-  await db.doc('sparkBooks/a/trades/today').set({price:16000,marketVersion:5,createdAt:Timestamp.fromMillis(now)});await db.doc('sparkBooks/a').update({version:5});
+  await db.doc('sparkBooks/a/trades/today').set({price:16000,quantity:10,marketVersion:5,createdAt:Timestamp.fromMillis(now)});await db.doc('sparkBooks/a').update({version:5});
   const night=Date.parse('2026-10-22T21:00:00+09:00');await publishDailyPriceLimits(db,{now:night});
-  current=(await db.doc('sparkBooks/a').get()).data();assert.equal(current.priceLimits.referencePrice,10000);assert.equal(current.nextPriceLimits.referencePrice,10600);assert.equal(current.nextPriceLimits.day,day+1);
+  current=(await db.doc('sparkBooks/a').get()).data();assert.equal(current.priceLimits.referencePrice,10000);assert.equal(current.nextPriceLimits.referencePrice,13400);assert.equal(current.nextPriceLimits.day,day+1);
   // A delayed preparation after a new-day execution must still exclude it.
-  await db.doc('sparkBooks/a/trades/next-day').set({price:20000,marketVersion:6,createdAt:Timestamp.fromMillis(now+86400000)});await db.doc('sparkBooks/a').update({version:6});
-  await publishDailyPriceLimits(db,{now:now+86400000});current=(await db.doc('sparkBooks/a').get()).data();assert.equal(current.priceLimits.referencePrice,10600);assert.equal(current.nextPriceLimits,undefined);
+  await db.doc('sparkBooks/a/trades/next-day').set({price:20000,quantity:1,marketVersion:6,createdAt:Timestamp.fromMillis(now+86400000)});await db.doc('sparkBooks/a').update({version:6});
+  await publishDailyPriceLimits(db,{now:now+86400000});current=(await db.doc('sparkBooks/a').get()).data();assert.equal(current.priceLimits.referencePrice,13400);assert.equal(current.nextPriceLimits,undefined);
   await db.doc('systemMaintenance/reset').set({resetId:'test'});assert.equal((await publishDailyPriceLimits(db,{now:now+86400000*2})).maintenance,true);assert.equal((await db.doc('sparkBooks/a').get()).data().priceLimits.day,day+1);
  }finally{await db.terminate();await deleteApp(app);}
 });

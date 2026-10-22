@@ -66,10 +66,10 @@ export async function showTrading(c,request,container){
   form.elements.price.min=String(dailyLimits?.lower||100);form.elements.price.max=String(dailyLimits?.upper||1000000000);total();
   const a=data.account;lastMatchError=data.matchError;settlementLocked=!!data.settlementLocked;matchingPending=!!data.matchPending;
   box.querySelector('#limit-account').innerHTML=`<div><span>주문 가능 현금</span><strong>${won(a.cash-a.reservedCash)}</strong></div><div><span>매수 대기금액</span><strong>${won(a.reservedCash)}</strong></div><div><span>보유 수량</span><strong>${a.positions[c.id]||0}<small>주</small></strong></div><div><span>내 평균 매입가</span><strong>${data.costBasis?.averagePrice==null?'—':Number(data.costBasis.averagePrice).toLocaleString('ko-KR',{maximumFractionDigits:2})+'원'}</strong></div><div><span>매도 가능</span><strong>${(a.positions[c.id]||0)-(a.reservedPositions[c.id]||0)}<small>주</small></strong></div>`;
-  const displayPrice=Number.isSafeInteger(c.currentPrice)?c.currentPrice:data.market?.lastPrice||c.referencePrice;
+  const displayPrice=data.market?.referencePrice??c.currentPrice??c.referencePrice;
   c.previousClose=data.market?.previousClose;c.closeKind=data.market?.closeKind;renderDayChange(c,displayPrice);
-  const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(displayPrice);quoteLabel.textContent=c.quoteKind==='initial'?'첫 거래 전':'현재가';}
-  setHTMLKeepingScroll(box.querySelector('#limit-book'),`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':'가격별 대기 주문'}</span></div>`+renderOrderBook(data.book,data.market?.lastPrice||c.referencePrice,form.elements.price.value,dailyLimits));
+  const quote=document.querySelector('#company-current-price'),quoteLabel=document.querySelector('#company-price-label');if(quote){quote.textContent=won(displayPrice);quoteLabel.textContent=data.market?.displayInitial?'초기 기준가':'기준가';}
+  setHTMLKeepingScroll(box.querySelector('#limit-book'),`<div class="book-summary"><span>초기 판매 잔여 <b>${data.market?.treasuryShares??c.issuedShares}주</b></span><span>${settlementLocked?'배당 정산 중':'가격별 대기 주문'}</span></div>`+renderOrderBook(data.book,displayPrice,form.elements.price.value,dailyLimits));
 
   const orders=data.orders.filter(o=>o.companyId===c.id),fills=data.fills.filter(f=>f.companyId===c.id);
   priceChart.update(data.marketTrades||[],{available:data.marketHistoryAvailable===true});

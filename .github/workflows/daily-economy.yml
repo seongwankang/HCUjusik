@@ -2,7 +2,7 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/signup-capital-correction-2026-10-22.json]
+    paths: [ops/quote-policy-92-shares-v2.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
@@ -55,4 +55,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'signup-capital-correction' || inputs.mode || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'rankings-only' || inputs.mode || 'full' }}

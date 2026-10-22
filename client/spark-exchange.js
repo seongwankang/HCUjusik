@@ -1,3 +1,4 @@
+import {withSmoothedPrice,createSmoothedReader} from './smoothed-price.js';
 import {displayOrderLevels} from './display-order-levels.js';
 import {displayPriceLimits} from './display-price-limits.js';
 import {priceLimits,priceLimitDay,currentPriceLimits,withinPriceLimits,assertDailyPrice} from './daily-price-limits.js';
@@ -137,7 +138,14 @@ export function previousClose(db,companyId,book){
  const limits=currentPriceLimits(book);if(limits)return Promise.resolve(limits.referencePrice);
  let cache=closeCaches.get(db);if(!cache){cache=new Map();closeCaches.set(db,cache);}
  const day=koreaDayStart(),old=cache.get(companyId);if(old?.day===day)return old.promise;
- const promise=getDocs(query(collection(db,'sparkBooks',companyId,'trades'),where('createdAt','<',Timestamp.fromMillis(day)),orderBy('createdAt','desc'),limit(1))).then(result=>result.empty?null:result.docs[0].data().price).catch(error=>{if(cache.get(companyId)?.promise===promise)cache.delete(companyId);throw error;});
+ const promise=(async()=>{
+  const result=await getDocs(query(collection(db,'sparkBooks',companyId,'trades'),where('createdAt','<',Timestamp.fromMillis(day)),orderBy('createdAt','desc'),limit(1)));
+  const anchor=book.displayPriceAnchor,anchorBefore=anchor?.appliedAt?.toMillis?.()<day;
+  if(result.empty)return anchorBefore?anchor.price:null;
+  const through=Math.max(result.docs[0].data().marketVersion,anchorBefore?anchor.version:0);
+  const read=createSmoothedReader(async(id,since,to)=>{const page=await getDocs(query(collection(db,'sparkBooks',id,'trades'),where('marketVersion','>',since),where('marketVersion','<=',to),orderBy('marketVersion'),limit(100)));return page.docs.map(d=>d.data());});
+  return (await read(companyId,{...book,version:through,...(!anchorBefore?{displayPriceAnchor:null}:{})},book.initialPrice)).price;
+ })().catch(error=>{if(cache.get(companyId)?.promise===promise)cache.delete(companyId);throw error;});
  cache.set(companyId,{day,promise});return promise;
 }
 export async function sparkView(db,uid,companyId,role,reads){
@@ -153,9 +161,9 @@ export async function sparkView(db,uid,companyId,role,reads){
  let matchError=settlementLocked?'배당 정산 중입니다. 정산이 완료되면 거래를 재개합니다.':null;try{for(let i=0;i<8&&!settlementLocked;i++){if(i===0&&!crossing(initialBook.data()))break;if(!await matchSpark(db,uid,companyId,{recordPublic:history.available}))break;matched=true;}}catch{matchError='미체결 주문 처리가 보류됐습니다. 호가를 새로고침하거나 관리자에게 대기 주문 확인을 요청하세요.';}
  if(matched){await reads?.refresh?.(['sparkAccounts/'+uid,'sparkBooks/'+companyId]);if(history.available)history=await marketHistory(db,companyId,100,{epoch:initialBook.data().correctionRevision||0});}
  const [ledger,bookDoc,ordersDoc]=await Promise.all([accountLedger(db,uid,reads),readDoc(doc(db,'sparkBooks',companyId)),readDocs(query(collection(db,'sparkAccounts',uid,'orders'),orderBy('createdAt','desc'),limit(30)),'sparkAccounts/'+uid+'/orders')]);
- const book=bookDoc.data(),limits=currentPriceLimits(book),visibleLimits=displayPriceLimits(book),orders=ordersDoc.docs.map(d=>d.data());
+ const book=bookDoc.data(),company=(await readDoc(doc(db,'companies',companyId))).data(),quote=await withSmoothedPrice(db,{id:companyId,...company},book),limits=currentPriceLimits(book),visibleLimits=displayPriceLimits(book),orders=ordersDoc.docs.map(d=>d.data());
  for(const o of book.orders.filter(o=>o.uid===uid))if(!orders.some(x=>x.orderId===o.id))orders.push({companyId,orderId:o.id,...o,filled:o.quantity-o.remaining,cancelled:0,status:'open'});
  const levels=side=>displayOrderLevels(book,side,visibleLimits);
  const close=previous.unavailable?null:previous.price??book.initialPrice,closeKind=previous.unavailable?'unavailable':previous.price?'previous':'initial';
- return {priceLimits:limits,displayPriceLimits:visibleLimits,marketOpen:marketSession().open&&!!limits,marketHours:marketSession().label,settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:ledger.account,costBasis:ledger.costBasis[companyId]||{averagePrice:null,complete:true},market:{lastPrice:book.lastPrice,treasuryShares:book.treasuryShares,previousClose:close,closeKind},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:ledger.fills.filter(f=>f.companyId===companyId).slice(0,30),mode:'spark-limit-v1',matchPending:!settlementLocked&&!matchError&&marketSession().open&&!!crossing(book),matchError,adminOrders:role==='admin'?book.orders:[]};
+ return {priceLimits:limits,displayPriceLimits:visibleLimits,marketOpen:marketSession().open&&!!limits,marketHours:marketSession().label,settlementLocked,marketTrades:history.trades,marketHistoryAvailable:history.available,account:ledger.account,costBasis:ledger.costBasis[companyId]||{averagePrice:null,complete:true},market:{referencePrice:quote.displayPrice,displayInitial:quote.displayInitial,treasuryShares:book.treasuryShares,previousClose:close,closeKind},book:{asks:levels('sell'),bids:levels('buy')},orders:orders.sort((a,b)=>b.sequence-a.sequence),fills:ledger.fills.filter(f=>f.companyId===companyId).slice(0,30),mode:'spark-limit-v1',matchPending:!settlementLocked&&!matchError&&marketSession().open&&!!crossing(book),matchError,adminOrders:role==='admin'?book.orders:[]};
 }

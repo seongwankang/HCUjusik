@@ -4,7 +4,7 @@ import {investorSnapshots} from '../client/rankings.js';
 import {personalRankingRows,personalRankingMarkup} from '../public/personal-rankings.js';
 export function rankingFixture(){
  const users=[],accounts=[];for(const [group,cash,quantity] of [['C',1000,0],['S',0,1000],['B',600,600]])for(let i=0;i<100;i++){const id=group+String(i).padStart(3,'0');users.push({id,displayName:id,role:'student',active:true});accounts.push({id,cash,positions:quantity?{one:quantity}:{},reservedPositions:{},reservedCash:0,version:0});}
- return {users,accounts,companies:[{id:'one',name:'One',ticker:'ONE',referencePrice:1,issuedShares:1000000}],books:[{id:'one',lastPrice:1,issuedShares:1000000,treasuryShares:840000,version:0}]};
+ return {users,accounts,companies:[{id:'one',name:'One',ticker:'ONE',referencePrice:1,issuedShares:1000000}],books:[{id:'one',lastPrice:1,displayPrice:1,issuedShares:1000000,treasuryShares:840000,version:0}]};
 }
 test('all participants compete independently in total, cash and stock top 100; union profiles cover all three lists',async()=>{
  const f=rankingFixture(),{board,profiles}=await investorSnapshots(f.users,f.accounts,f.companies,f.books);

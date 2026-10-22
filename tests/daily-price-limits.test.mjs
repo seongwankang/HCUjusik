@@ -20,10 +20,10 @@ test('21:00 rolls forward; delayed morning preparation still uses yesterday at 2
 });
 test('close replays the displayed EMA, excludes today even when preparation is late, and carries an untraded close',async()=>{
  const cutoff=Date.parse('2026-10-21T21:00:00+09:00');
- const trades=[{price:16000,marketVersion:1,createdAt:{toMillis:()=>cutoff-1}},{price:20000,marketVersion:2,createdAt:{toMillis:()=>cutoff+36000000}}];
+ const trades=[{price:16000,quantity:1,marketVersion:1,createdAt:{toMillis:()=>cutoff-1}},{price:20000,quantity:1,marketVersion:2,createdAt:{toMillis:()=>cutoff+36000000}}];
  let since;
  const db={collection:()=>({where:(f,op,v)=>{since=v;return {orderBy:()=>({limit:()=>({get:async()=>{const docs=trades.filter(t=>t.marketVersion>since).map(t=>({data:()=>t}));return {docs,size:docs.length};}})})};}})};
  const book={initialPrice:10000,version:2};
- const first=await closingQuote(db,'a',book,cutoff);assert.equal(first.price,10600);assert.equal(first.version,1);assert.equal(first.count,1);
- trades.splice(1);const carried=await closingQuote(db,'a',book,cutoff+86400000,first);assert.equal(carried.price,10600);assert.equal(carried.count,1);
+ const first=await closingQuote(db,'a',book,cutoff);assert.equal(first.price,10500);assert.equal(first.version,1);assert.equal(first.count,1);
+ trades.splice(1);const carried=await closingQuote(db,'a',book,cutoff+86400000,first);assert.equal(carried.price,10500);assert.equal(carried.count,1);
 });

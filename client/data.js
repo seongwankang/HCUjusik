@@ -195,7 +195,7 @@ export function createClientApi({db,getUser,viewReads}){
   if(route==='/api/trading-portfolio'&&method==='GET'){
    const [ledger,pending]=await Promise.all([accountLedger(db,user.uid,reads),openBuyOrders(db,user.uid,reads)]),account=ledger.account;
    const ids=[...new Set([...Object.keys(account?.positions||{}),...Object.keys(account?.reservedPositions||{}),...ledger.fills.map(f=>f.companyId),...pending.map(o=>o.companyId)])];if(ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))message('보유 기업 ID를 확인하세요.');const rows=await Promise.all(ids.map(async id=>({id,company:await get('companies/'+id),book:await get('sparkBooks/'+id)})));
-   const portfolio=tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(rows.map(r=>[r.id,r.book])));
+   const portfolio=tradingPortfolio(account,Object.fromEntries(rows.map(r=>[r.id,r.company])),Object.fromEntries(await Promise.all(rows.map(async r=>[r.id,await withSmoothedPrice(db,{id:r.id,...r.company},r.book)]))));
    return {...portfolio,pendingBuys:pendingBuyRows(pending,Object.fromEntries(rows.map(r=>[r.id,r.company]))),holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
   }
   if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true,revision:(await get('sparkAccounts/'+user.uid))?.version}))};

@@ -10,10 +10,10 @@ export function tradingPortfolio(account,companies,books){
   const quantity=a.positions[id]??0,reserved=a.reservedPositions[id]??0;
   if(!integer(quantity,1000000)||!integer(reserved,quantity))throw new Error('보유 주식 수량을 확인하세요.');
   if(!quantity)continue;
-  const company=companies[id],last=books[id]?.displayPrice??books[id]?.lastPrice,reference=company?.referencePrice;
-  const price=integer(last,1000000000)&&last>0?last:integer(reference,1000000)&&reference>0?reference:null;
+  const company=companies[id],last=books[id]?.displayPrice,reference=company?.referencePrice;
+  const price=integer(last,1000000000)&&last>0?last:(!books[id]||!books[id].lastPrice)&&integer(reference,1000000)&&reference>0?reference:null;
   if(price===null)valuationComplete=false;else stockValue+=quantity*price;
-  holdings.push({companyId:id,name:company?.name||id,ticker:company?.ticker||id,quantity,reserved,available:quantity-reserved,price,priceSource:last===price?'last':'initial',value:price===null?null:quantity*price});
+  holdings.push({companyId:id,name:company?.name||id,ticker:company?.ticker||id,quantity,reserved,available:quantity-reserved,price,priceSource:books[id]?.displayInitial===true?'initial':last===price?'reference':'initial',value:price===null?null:quantity*price});
  }
  return {initialized:!!account,cash:a.cash,reservedCash:a.reservedCash,availableCash:a.cash-a.reservedCash,holdings,valuationComplete,stockValue:valuationComplete?stockValue:null,totalValue:valuationComplete?a.cash+stockValue:null,version:a.version};
 }

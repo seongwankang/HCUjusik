@@ -1,6 +1,6 @@
 import {FieldValue} from 'firebase-admin/firestore';
 import {priceLimits,priceLimitDay,withinPriceLimits} from '../client/daily-price-limits.js';
-import {nextSmoothedPrice} from '../client/smoothed-price.js';
+import {nextSmoothedPrice,QUOTE_MODEL} from '../client/smoothed-price.js';
 import {emptyIndexes} from '../client/order-index.js';
 import {cancelSpark} from '../client/spark-exchange.js';
 
@@ -15,15 +15,16 @@ export async function closingQuote(db,cid,book,cutoff,old){
  const a=book.displayPriceAnchor,anchorKey=a?a.version+':'+a.price:'',anchorTime=a?.appliedAt?.toMillis?.()??book.updatedAt?.toMillis?.();
  const anchor=a&&Number.isSafeInteger(a.version)&&a.version<=book.version&&a.price>0&&a.price%100===0&&(old?.anchorKey===anchorKey||anchorTime<cutoff)?a:null;
  const key=anchor?anchor.version+':'+anchor.price:'';
- const valid=old&&old.referencePrice===book.initialPrice&&old.correctionRevision===(book.correctionRevision||0)&&old.anchorKey===key&&old.cutoff<=cutoff&&old.version<=book.version;
- let state=valid?{...old}:{referencePrice:book.initialPrice,correctionRevision:book.correctionRevision||0,anchorKey:key,value:anchor?.price||book.initialPrice,count:0,version:anchor?.version??-1};
+ const valid=old&&old.model===QUOTE_MODEL&&old.referencePrice===book.initialPrice&&old.correctionRevision===(book.correctionRevision||0)&&old.anchorKey===key&&old.cutoff<=cutoff&&old.version<=book.version;
+ let state=valid?{...old}:{model:QUOTE_MODEL,referencePrice:book.initialPrice,correctionRevision:book.correctionRevision||0,anchorKey:key,value:anchor?.price||book.initialPrice,count:0,version:anchor?.version??-1};
  let done=false;
  while(!done){
   const page=await db.collection('sparkBooks/'+cid+'/trades').where('marketVersion','>',state.version).orderBy('marketVersion').limit(100).get();
   for(const row of page.docs){const t=row.data();
    if(!t.createdAt?.toMillis||!Number.isSafeInteger(t.marketVersion))throw Error('Invalid closing trade');
    if(t.createdAt.toMillis()>=cutoff){done=true;break;}
-   state.value=nextSmoothedPrice(state.value,t.price);state.count++;state.version=t.marketVersion;
+   if(!Number.isSafeInteger(t.quantity)||t.quantity<1)throw Error('Invalid closing trade quantity');
+   state.value=nextSmoothedPrice(state.value,t.price,t.quantity);state.count+=t.quantity;state.version=t.marketVersion;
   }
   if(page.size<100)done=true;
  }

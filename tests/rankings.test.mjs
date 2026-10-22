@@ -11,7 +11,7 @@ test('cash ranks exclude admins/inactive users, include untraded starting cash, 
 });
 test('price ranks use actual fills, honest initial price fallback and exclude unlisted companies',()=>{
  const companies=[{id:'a',name:'가',ticker:'A',status:'listed',referencePrice:10000},{id:'b',name:'나',ticker:'B',status:'paused',referencePrice:10000},{id:'c',name:'다',status:'draft',referencePrice:99999}];
- const r=priceRankings(companies,[{id:'a',lastPrice:12000}]);assert.deepEqual(r.map(x=>[x.id,x.price,x.initial,x.rank]),[['a',12000,false,1],['b',10000,true,2]]);
+ const r=priceRankings(companies,[{id:'a',lastPrice:12000,displayPrice:12000}]);assert.deepEqual(r.map(x=>[x.id,x.price,x.initial,x.rank]),[['a',12000,false,1],['b',10000,true,2]]);
 });
 test('daily settlement becomes due at exactly 07:55 Korean time',()=>{
  assert.equal(settlementDue(Date.parse('2026-10-16T22:54:59.999Z')),false);
@@ -24,7 +24,7 @@ test('asset rankings use cash plus eighty percent of reference-valued holdings w
  const users=[{id:'a',displayName:'가',role:'student',active:true},{id:'b',displayName:'나',role:'student',active:true}];
  const accounts=[{id:'a',cash:500000,reservedCash:100000,positions:{one:100},reservedPositions:{one:80}},{id:'b',cash:1500000}];
  const companies=[{id:'one',referencePrice:10000}];
- const r=cashRankings(users,accounts,companies,[{id:'one',lastPrice:20000}]);assert.equal(r.entries[0].name,'가');assert.equal(r.entries[0].stockValue,2000000);assert.equal(r.entries[0].totalValue,2100000);assert.equal(r.entries[0].cash,500000);assert.equal('positions' in r.entries[0],false);
+ const r=cashRankings(users,accounts,companies,[{id:'one',lastPrice:20000,displayPrice:20000}]);assert.equal(r.entries[0].name,'가');assert.equal(r.entries[0].stockValue,2000000);assert.equal(r.entries[0].totalValue,2100000);assert.equal(r.entries[0].cash,500000);assert.equal('positions' in r.entries[0],false);
  const initial=cashRankings(users,accounts,companies,[]);assert.equal(initial.entries[0].totalValue,1500000);assert.equal(initial.entries[0].name,'나');assert.equal(initial.entries[1].totalValue,1300000);assert.deepEqual(initial.entries.map(x=>x.rank),[1,2]);
  assert.throws(()=>cashRankings(users,accounts,[],[]),/가격/);
 });

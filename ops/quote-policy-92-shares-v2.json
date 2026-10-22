@@ -1,0 +1,7 @@
+{
+  "model": "ema92-share-v2",
+  "previousWeight": 0.92,
+  "executionWeight": 0.08,
+  "unit": "executed-share",
+  "refresh": "rankings-only"
+}

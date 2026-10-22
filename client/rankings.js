@@ -1,3 +1,4 @@
+import {previousClose} from './spark-exchange.js';
 import {rankedRevenue,normalizeDividendBps} from './ranked-dividends.js';
 import {currentDividendForecast} from './dividend-rounds.js';
 import {nextSettlement} from './settlement-time.js';
@@ -25,7 +26,7 @@ export function cashRankings(users,accounts,companies=[],books=[]){
 }
 export function priceRankings(companies,books,max=100){
  const map=new Map(books.map(b=>[b.id,b]));
- return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const b=map.get(c.id),last=b&&Object.hasOwn(b,'displayPrice')?b.displayPrice:b?.lastPrice,initial=b?.displayInitial??!(money(last)&&last>0),price=initial?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
+ return ranked(companies.filter(c=>['listed','paused'].includes(c.status)).map(c=>{const b=map.get(c.id),last=b?.displayPrice,initial=b?.displayInitial??!(money(last)&&last>0),price=initial&&(!b||!b.lastPrice)?c.referencePrice:last;if(!money(price)||price<1)throw Error('종목 가격을 확인하세요.');return {id:c.id,name:c.name,ticker:c.ticker,price,initial,paused:c.status==='paused'};}),'price').slice(0,max);
 }
 export async function allRows(db,path,reads){const readDocs=reads?.getDocs||getDocs;let cursor=null,rows=[];for(;;){const page=await readDocs(query(collection(db,path),orderBy(documentId()),limit(100),...(cursor?[startAfter(cursor)]:[])),path);rows.push(...page.docs.map(d=>({id:d.id,...d.data()})));if(page.size<100)return rows;cursor=page.docs.at(-1);}}
 export async function investorSnapshots(users,accounts,companies=[],books=[]){
@@ -65,8 +66,7 @@ export async function marketRankings(db,companies,books,now=Date.now(),reads){
   if(Number.isSafeInteger(version)&&cached?.key===key){sessions[p.id]={volume:cached.volume,change:dayChange(p.price,cached.close)};return;}
   const path=collection(db,'sparkBooks',p.id,'trades');let cursor=null,volume=0;
   for(;;){const page=await getDocs(query(path,where('createdAt','>=',Timestamp.fromMillis(start)),where('createdAt','<',Timestamp.fromMillis(start+86400000)),orderBy('createdAt'),limit(100),...(cursor?[startAfter(cursor)]:[])));for(const d of page.docs){const q=d.data().quantity;if(!Number.isSafeInteger(q)||q<=0)throw Error('체결 수량 오류');volume+=q;}if(page.size<100)break;cursor=page.docs.at(-1);}
-  const previous=limitReference?null:await getDocs(query(path,where('createdAt','<',Timestamp.fromMillis(start)),orderBy('createdAt','desc'),limit(1)));
-  const close=limitReference??(previous.empty?companies.find(c=>c.id===p.id).referencePrice:previous.docs[0].data().price);
+  const close=limitReference??await previousClose(db,p.id,books.find(b=>b.id===p.id))??companies.find(c=>c.id===p.id).referencePrice;
   sessions[p.id]={volume,change:dayChange(p.price,close)};if(Number.isSafeInteger(version))cache.set(p.id,{key,volume,close});
  }catch{sessions[p.id]={volume:null,change:null};}}));
  return {...marketRankingLists(prices,sessions),...revenueRankingLists(prices,await revenueTask),asOf:now,day:new Date(start+32400000).toISOString().slice(0,10)};

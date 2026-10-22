@@ -1,8 +1,9 @@
 import {doc,onSnapshot} from 'firebase/firestore';
 import {withSmoothedPrice} from './smoothed-price.js';
 export function companyQuote(company,book){
- const last=book&&Object.hasOwn(book,'displayPrice')?book.displayPrice:book?.lastPrice;
- if(last!==undefined&&(!Number.isSafeInteger(last)||last<0))return {currentPrice:null,quoteKind:'error'};
+ const last=book?.displayPrice;
+ if(last===undefined&&book?.lastPrice)return {currentPrice:null,quoteKind:'error'};
+ if(last!==undefined&&(!Number.isSafeInteger(last)||last<=0))return {currentPrice:null,quoteKind:'error'};
  if(last>0)return {currentPrice:last,quoteKind:book?.displayInitial?'initial':'traded'};
  return Number.isSafeInteger(company.referencePrice)&&company.referencePrice>0?{currentPrice:company.referencePrice,quoteKind:'initial'}:{currentPrice:null,quoteKind:'error'};
 }
