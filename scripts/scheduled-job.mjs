@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {correctSignupCapital} from '../server/signup-capital-correction.js';
 import {migrateProductionUnits} from '../server/production-units-migration.js';
 import {migrateRankedDividends} from '../server/ranked-dividend-migration.js';
 import {rankingValue} from '../client/ranking-value.js';
@@ -19,6 +21,11 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='signup-capital-correction'){
+ const policy=JSON.parse(readFileSync('ops/signup-capital-correction-2026-10-22.json','utf8')),db=getFirestore(app);
+ const result=await correctSignupCapital(db,{apply:policy.apply===true});if(policy.apply===true)await publishCashRankings(db);
+ console.log(JSON.stringify({signupCapitalCorrection:result}));process.exit(0);
+}
 if(process.env.ECONOMY_JOB_MODE==='production-units-migrate'){console.log(JSON.stringify(await migrateProductionUnits(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='ranked-dividends-migrate'){console.log(JSON.stringify(await migrateRankedDividends(getFirestore(app))));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='offering-audit'){
