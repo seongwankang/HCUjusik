@@ -1,3 +1,4 @@
+import {runScheduledRandomEvents} from './event-reservations.js';
 import {allRows} from '../client/rankings.js';
 import {closeChoiceEvent,applyRandomEvent} from '../client/events.js';
 // Queue lookup uses only endsAt (automatic single-field index).
@@ -8,7 +9,7 @@ export async function runDueChoiceEvents(db,now=Date.now()){
   for(const o of await allRows(db,'companyOperations'))if(o.pendingEvent)await db.runTransaction(async t=>{const ref=db.doc('companyOperations/'+o.id),s=await t.get(ref),event=await t.get(db.doc('events/'+o.pendingEvent));if(event.data()?.type==='choice'&&s.data()?.pendingEvent===o.pendingEvent&&!s.data().locked)t.update(ref,{pendingEvent:''});});
   await migration.set({complete:true});
  }
- let processed=0,failed=0;const blocked=new Set();
+ const scheduled=await runScheduledRandomEvents(db,now);let processed=scheduled.processed,failed=scheduled.failed;const blocked=new Set(scheduled.blocked);
  // Each completed queue document is removed only after every selected/defaulted company succeeds.
  let cursor=null;for(;;){let q=db.collection('eventQueue').where('endsAt','<=',new Date(now)).orderBy('endsAt').limit(100);if(cursor)q=q.startAfter(cursor);const page=await q.get();for(const entry of page.docs){try{const event=(await db.doc('events/'+entry.id).get()).data();const r=event?.type==='random'?await applyRandomEvent(db,entry.id):await closeChoiceEvent(db,entry.id);if(r.failed.length||r.newsPending){failed++;r.failed.forEach(f=>blocked.add(typeof f==='string'?f:f.companyId));}else{await entry.ref.delete();processed++;}}catch{failed++;}}if(page.size<100)break;cursor=page.docs.at(-1);}
  return {processed,failed,blocked};

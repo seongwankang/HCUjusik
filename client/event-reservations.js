@@ -1,0 +1,4 @@
+import {doc,getDocs,collection,query,orderBy,limit,runTransaction} from 'firebase/firestore';
+export function reservationTime(value,now=Date.now()){const time=Date.parse(value);if(!Number.isFinite(time)||time<=now||time>now+365*86400000)throw Error('예약 시각은 현재 이후 1년 이내로 지정하세요.');return time;}
+export async function listEventReservations(db){const rows=await getDocs(query(collection(db,'eventReservations'),orderBy('scheduledAt'),limit(100)));return {reservations:rows.docs.map(s=>({id:s.id,...s.data()}))};}
+export async function cancelEventReservation(db,id){if(!/^[A-Za-z0-9_-]{1,128}$/.test(id||''))throw Error('예약을 선택하세요.');await runTransaction(db,async t=>{const ref=doc(db,'eventReservations',id),row=await t.get(ref);if(!row.exists())throw Error('이미 실행되었거나 취소된 예약입니다.');if(row.data().status!=='pending')throw Error('이미 실행 중이어서 취소할 수 없습니다.');t.delete(ref);});return {cancelled:true};}

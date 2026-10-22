@@ -1,7 +1,8 @@
+import {reservationTime} from './event-reservations.js';
 import {randomEffectGroups,effectReceiptId} from './random-effects.js';
 import {immutableRows} from './immutable-reads.js';
 import {publishEventNews,validateEventNews} from './event-news.js';
-import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,serverTimestamp,Timestamp} from 'firebase/firestore';
+import {doc,getDoc,getDocs,collection,query,limit,orderBy,startAfter,runTransaction,writeBatch,setDoc,serverTimestamp,Timestamp} from 'firebase/firestore';
 import {revenueEffects,validateEffect,eventMutation,NEW_EFFECTS,currentEffect,remainingSettlements,requireProduction,adjustedRevenue,needsProduction} from './event-model.js';
 import {effectiveConfig} from './business-policy.js';
 import {initializeOperations} from './economy.js';
@@ -12,7 +13,7 @@ const fail=s=>{throw new Error(s);};
 export function effectRecords(db,cid,options={}){
  return immutableRows(db,'companyEffects/'+cid+'/items',{field:'appliedAt',pageSize:100,...options});
 }
-export async function publishEvent(db,b){
+export async function publishEvent(db,b,{reservedExecution=false}={}){
  if(!valid(b.id)||!['random','choice'].includes(b.type))fail('이벤트 종류를 확인하세요.');
  const title=String(b.title||'').trim(),content=String(b.content||'').trim();
  if(!title||title.length>120||!content||content.length>5000)fail('제목과 상황 설명을 입력하세요.');
@@ -27,6 +28,12 @@ export async function publishEvent(db,b){
  if(b.defaultOption!==undefined&&(b.type!=='choice'||!Number.isInteger(b.defaultOption)||b.defaultOption<0||b.defaultOption>2))fail('미선택 기본 선택지를 1~3번 중 하나로 지정하세요.');
  const effects=groups?groups.map(g=>g.effect):b.type==='choice'?b.options.map(o=>validateEffect(o.effect)):[validateEffect(b.effect)];
  const ref=doc(db,'events',b.id);if((await getDoc(ref)).exists())fail('이미 발행한 이벤트입니다. 적용 상태를 조회하세요.');
+ if(b.scheduledAt!==undefined){
+  if(b.type!=='random')fail('랜덤 이벤트만 예약할 수 있습니다.');
+  const scheduled=reservationTime(b.scheduledAt),payload={id:b.id,type:'random',title,content,news,deadline:new Date(scheduled+86400000).toISOString(),...(groups?{effects:groups.map(g=>({companyIds:g.targets,effect:g.effect}))}:{companyIds:targets,effect:effects[0]})};
+  await setDoc(doc(db,'eventReservations',b.id),{scheduledAt:Timestamp.fromMillis(scheduled),payload,status:'pending',createdAt:serverTimestamp()});return {id:b.id,scheduled:true,scheduledAt:new Date(scheduled).toISOString()};
+ }
+ if(!reservedExecution&&(await getDoc(doc(db,'eventReservations',b.id))).exists())fail('예약된 이벤트입니다. 예약 목록에서 확인하세요.');
  const batch=writeBatch(db);
  batch.set(doc(db,'eventQueue',b.id),{endsAt:b.type==='choice'?deadline:serverTimestamp()});
  if(news)batch.set(doc(db,'eventNewsDrafts',b.id),news);

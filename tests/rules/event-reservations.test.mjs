@@ -1,0 +1,26 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {writeFile} from 'node:fs/promises';
+import {initializeTestEnvironment,assertFails} from '@firebase/rules-unit-testing';
+import {doc,getDoc,setDoc,updateDoc} from 'firebase/firestore';
+import {initializeApp,deleteApp} from 'firebase-admin/app';import {getFirestore} from 'firebase-admin/firestore';
+import {publishEvent,applyRandomEvent} from '../../client/events.js';import {cancelEventReservation,listEventReservations} from '../../client/event-reservations.js';
+import {initialOperations} from '../../client/economy.js';import {eventNewsId} from '../../client/event-news.js';import {buildJob} from '../../scripts/build-jobs.mjs';
+if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST||''))throw Error('Loopback emulator required');
+test('private timed events execute after due, cancel safely, resume failures and never duplicate effects or news',async()=>{
+ const projectId='demo-event-reservations',env=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8')}}),app=initializeApp({projectId},'reservation-test'),db=getFirestore(app);
+ try{
+ await env.clearFirestore();const claims={email:'test@hcu.hs.kr',email_verified:true},admin=env.authenticatedContext('admin',claims).firestore(),student=env.authenticatedContext('student',claims).firestore();
+ for(const [id,role] of [['admin','admin'],['student','student']])await db.doc('users/'+id).set({displayName:id,role,active:true});
+ await db.doc('companies/a').set({name:'A',status:'listed',referencePrice:10000,issuedShares:1000});await db.doc('sparkBooks/a').set({issuerCash:0,initialPrice:10000,issuedShares:1000,treasuryShares:1000,lastPrice:0,version:0});await db.doc('companyOperations/a').set({...initialOperations(),productionModel:'units-v2',pendingUnits:{factory:0,employee:0,equipment:0,research:0}});
+ await writeFile('.generated-reservation-job-entry.mjs',"export {runScheduledRandomEvents} from './server/event-reservations.js';export {runScheduledEconomy} from './server/scheduled-economy.js';");await buildJob('.generated-reservation-job-entry.mjs','.generated-reservation-job.mjs');const job=await import('../../.generated-reservation-job.mjs?'+Date.now());
+ const due=Date.now()+3600000,body=id=>({id,type:'random',title:'예약 비공개 제목',content:'예약 비공개 내용',deadline:new Date(due+86400000).toISOString(),scheduledAt:new Date(due).toISOString(),news:{title:'예약 기사',content:'예약 뉴스 본문'},effects:[{companyIds:['a'],effect:{kind:'cash',amount:1000}},{companyIds:['a'],effect:{kind:'salePriceFlat',amount:100,settlements:2}}]});
+ const scheduled=await publishEvent(admin,body('first'));assert.equal(scheduled.scheduled,true);assert.equal((await db.doc('events/first').get()).exists,false);assert.equal((await db.collection('news').get()).size,0);assert.equal((await listEventReservations(admin)).reservations.length,1);
+ await assertFails(getDoc(doc(student,'eventReservations/first')));await assertFails(listEventReservations(student));await assertFails(cancelEventReservation(student,'first'));await assertFails(updateDoc(doc(admin,'eventReservations/first'),{status:'processing'}));
+ await assert.rejects(publishEvent(admin,{...body('first'),scheduledAt:undefined}),/예약/);await assert.rejects(applyRandomEvent(admin,'first'));
+ assert.equal((await job.runScheduledRandomEvents(db,due-1)).processed,0);assert.equal((await db.doc('companyOperations/a').get()).data().cash,0);
+ const result=await job.runScheduledEconomy(db,{mode:'events-only',now:due,settle:()=>assert.fail('no settlement'),publish:()=>assert.fail('no ranking'),detect:()=>assert.fail('no spy draw')});assert.equal(result.choiceEvents.processed,1);assert.deepEqual(result.failed,[]);assert.equal((await db.doc('companyOperations/a').get()).data().cash,1000);assert.equal((await db.doc('eventReservations/first').get()).exists,false);assert.equal((await db.doc('eventQueue/first').get()).exists,false);assert.equal((await db.doc('events/first').get()).exists,true);
+ assert.equal((await db.doc('news/'+await eventNewsId('first')).get()).data().title,'예약 기사');assert.equal((await job.runScheduledRandomEvents(db,due+1000)).processed,0);assert.equal((await db.collection('news').get()).size,1);
+ await publishEvent(admin,body('cancel'));await cancelEventReservation(admin,'cancel');await job.runScheduledRandomEvents(db,due);assert.equal((await db.doc('events/cancel').get()).exists,false);
+ await publishEvent(admin,body('retry'));await db.doc('companyOperations/a').update({locked:true});assert.equal((await job.runScheduledRandomEvents(db,due)).failed,1);assert.equal((await db.doc('eventReservations/retry').get()).data().status,'processing');await assert.rejects(cancelEventReservation(admin,'retry'),/실행 중/);await db.doc('companyOperations/a').update({locked:false});await job.runScheduledRandomEvents(db,due);assert.equal((await db.doc('companyOperations/a').get()).data().cash,2000);assert.equal((await db.collection('news').get()).size,2);
+ for(const value of [new Date(Date.now()-1).toISOString(),'invalid',new Date(Date.now()+366*86400000).toISOString()])await assert.rejects(publishEvent(admin,{...body('invalid'),scheduledAt:value}));
+ }finally{await db.terminate();await env.cleanup();await deleteApp(app);}
+});

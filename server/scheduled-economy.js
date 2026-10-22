@@ -16,6 +16,7 @@ import {settlementTime} from '../client/settlement-time.js';
 export const settlementDue=now=>now>=settlementTime(koreaDay(now)); // 07:55 KST = previous day 22:55 UTC.
 export async function runScheduledEconomy(db,{now=Date.now(),settle=settleDay,publish=publishCashRankings,detect=detectDailySpy,mode='full',isPaused=settlementPaused,prepareLimits=publishDailyPriceLimits,fundStartup=fundCompanyStartup}={}){
  if((await db.doc('systemMaintenance/reset').get()).exists)return {settled:0,resumed:0,skipped:0,failed:[],choiceEvents:{processed:0,failed:0},rankingsUpdated:false,maintenance:true};
+ if(mode==='events-only'){const r=await runDueChoiceEvents(db,now);return {settled:0,resumed:0,skipped:0,failed:[...r.blocked],choiceEvents:{processed:r.processed,failed:r.failed},rankingsUpdated:false};}
  if(marketPaused(now))await closeMarket(db);
  if(mode==='rankings-only'||mode==='full'&&isPaused(now)){
   const previous=(await db.doc('leaderboards/cash').get()).data(),updated=mode==='rankings-only'||rankingRefreshDue(previous,now);

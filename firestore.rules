@@ -88,10 +88,25 @@ service cloud.firestore {
           request.resource.data.publishedAt == resource.data.publishedAt && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['eventSummary']));
       allow delete: if false;
     }
+    match /eventReservations/{id} {
+      allow get: if admin();
+      allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
+      allow create: if admin() && !exists(/databases/$(database)/documents/events/$(id)) && reservationData(id,request.resource.data);
+      allow delete: if admin() && resource.data.status == 'pending';
+      allow update: if false;
+    }
+    function reservationData(id,d) {
+      return sparkId(id) && d.keys().hasAll(['scheduledAt','payload','status','createdAt']) && d.keys().hasOnly(['scheduledAt','payload','status','createdAt']) &&
+        d.status == 'pending' && d.createdAt == request.time && d.scheduledAt is timestamp && d.scheduledAt > request.time && d.scheduledAt <= request.time+duration.value(365,'d') &&
+        d.payload is map && d.payload.keys().hasAll(['id','type','title','content','news','deadline']) && d.payload.keys().hasOnly(['id','type','title','content','news','deadline','effects','companyIds','effect']) &&
+        d.payload.id == id && d.payload.type == 'random' && str(d.payload.title,120) && d.payload.title.size() > 0 && str(d.payload.content,5000) && d.payload.content.size() > 0 && d.payload.deadline is string &&
+        (d.payload.news == null || eventNewsDraftData(d.payload.news)) &&
+        ('effects' in d.payload ? d.payload.effects is list && d.payload.effects.size() >= 1 && d.payload.effects.size() <= 20 : d.payload.companyIds is list && d.payload.companyIds.size() > 0 && d.payload.companyIds.size() <= 100 && effectData(d.payload.effect));
+    }
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
+      allow create: if admin() && !exists(/databases/$(database)/documents/eventReservations/$(id)) && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&

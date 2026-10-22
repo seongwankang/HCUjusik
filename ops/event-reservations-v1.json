@@ -1,0 +1,6 @@
+{
+  "mode": "events-only",
+  "intervalMinutes": 5,
+  "privateCollection": "eventReservations",
+  "version": 1
+}

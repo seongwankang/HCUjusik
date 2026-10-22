@@ -2,10 +2,11 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/spy-rate400-v3.json]
+    paths: [ops/event-reservations-v1.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *' # Reservation checks; no settlement or rankings
   workflow_dispatch:
     inputs:
       mode:
@@ -26,6 +27,7 @@ on:
           - full
           - initial-capital-2000000
           - recovery-event-2026-10-21
+          - events-only
           - rankings-only
           - spies-policy-only
         default: full
@@ -55,4 +57,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'spies-policy-only' || inputs.mode || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'events-only' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
