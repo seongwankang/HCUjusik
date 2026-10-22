@@ -24,6 +24,12 @@ if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
 if(process.env.ECONOMY_JOB_MODE==='signup-capital-correction'){
  const policy=JSON.parse(readFileSync('ops/signup-capital-correction-2026-10-22.json','utf8')),db=getFirestore(app);
+ if(policy.auditOnly===true){
+  const since=Date.parse('2026-10-22T08:00:00+09:00'),until=Date.parse('2026-10-23T00:00:00+09:00'),users=await db.collection('users').get(),previous=(await db.doc('capitalAdjustments/signup-overgrant-2026-10-22').get()).data();
+  const profiles=users.docs.filter(u=>['student','president'].includes(u.data().role)&&u.createTime.toMillis()>=since&&u.createTime.toMillis()<until),rows=await Promise.all(profiles.map(async u=>{const [p,r]=await Promise.all([db.doc('portfolios/'+u.id).get(),db.doc('capitalAdjustments/signup-overgrant-2026-10-22/users/'+u.id).get()]);return {created:u.createTime.toMillis(),initial:p.data()?.initialCapital,corrected:r.exists};}));
+  const last=previous?.completedAt?.toMillis()??0,newer=rows.filter(r=>r.created>last);
+  console.log(JSON.stringify({signupFundingAudit:{users:users.size,participantsSince08:rows.length,initialOneMillion:rows.filter(r=>r.initial===1000000).length,initialTwoMillion:rows.filter(r=>r.initial===2000000).length,unknownInitial:rows.filter(r=>![1000000,2000000].includes(r.initial)).length,correctedReceipts:rows.filter(r=>r.corrected).length,unrecoveredTwoMillion:rows.filter(r=>r.initial===2000000&&!r.corrected).length,joinedAfterLastCorrection:newer.length,newOneMillion:newer.filter(r=>r.initial===1000000).length,newTwoMillion:newer.filter(r=>r.initial===2000000).length,checkedAt:new Date().toISOString()}}));process.exit(0);
+ }
  const excluded=[];const result=await correctSignupCapital(db,{apply:policy.apply===true,allowOverdraft:policy.allowOverdraft===true,onExcluded:row=>excluded.push(row)});if(policy.apply===true)await publishCashRankings(db);
  let encryptedExcludedReport=null;
  if(policy.reportPublicKey){const key=randomBytes(32),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(JSON.stringify(excluded),'utf8'),cipher.final()]);encryptedExcludedReport={key:publicEncrypt({key:policy.reportPublicKey,oaepHash:'sha256'},key).toString('base64'),iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')};}
