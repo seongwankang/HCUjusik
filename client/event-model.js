@@ -1,3 +1,4 @@
+import {UNITS_MODEL,pendingUnits,unitLoss,totalUnits} from './production-units.js';
 import {DIVIDEND_MODEL,normalizeDividendBps} from './ranked-dividends.js';
 import {productionEconomy} from './production-economy.js';
 import {researchBps,staffCapacity,BOOST_LIMIT,RESEARCH_LIMIT} from './business-policy.js';
@@ -30,11 +31,12 @@ export function validateEffect(e){
  if(kind==='cash'&&(!Number.isSafeInteger(Number(e.amount))||Math.abs(Number(e.amount))>100000000||Number(e.amount)===0))fail('지원금·손실금은 0을 제외한 ±1억 원 이내 정수로 입력하세요.');
  return {kind,asset,percent,count,...(counted?{settlements}:{hours}),...(kind==='cash'?{amount:Number(e.amount)}:{})};
 }
-export const needsProduction=o=>(!o.production||!o.pendingProduction)&&(o.revenue||o.pendingRevenue)>0;
+export const needsProduction=o=>o.productionModel!==UNITS_MODEL&&(!o.production||!o.pendingProduction)&&(o.revenue||o.pendingRevenue)>0;
 export function requireProduction(o){if(needsProduction(o))fail('기존 설비의 종류별 매출을 관리자가 회사경영에서 먼저 확인·저장해야 합니다.');}
 export function destruction(o,e){
  requireProduction(o);
  if(o.locked)fail('배당 정산 중입니다. 정산 완료 후 이벤트를 적용하세요.');
+ if(o.productionModel===UNITS_MODEL)return unitLoss(o,e.asset,e.count);
  const p=productionPool(o),q=productionPool(o,true),n=o[e.asset],lost=Math.min(n,e.count);
  const activeLoss=n?Math.floor(p[e.asset]*lost/n):0,pendingLoss=n?Math.floor(q[e.asset]*lost/n):0;
  p[e.asset]-=activeLoss;q[e.asset]-=pendingLoss;
@@ -94,6 +96,10 @@ export function eventMutation(o,input,{config,book,effectiveAt,eventId}){
   if(e.kind==='dividendCap')return {dividendLimit:term};
   const costs={...o.costEvents};for(const asset of ['factory','equipment','research','employee'])if(e.asset==='all'||e.asset===asset)costs[asset]=term;
   return {costEvents:costs};
+ }
+ if(o.productionModel===UNITS_MODEL&&['grant','workforce'].includes(e.kind)){
+  const asset=e.kind==='workforce'?'employee':e.asset,n=totalUnits(o,asset),delta=e.kind==='workforce'?(e.count>0?Math.min(e.count,Math.max(0,staffCapacity(o)-n)):Math.max(e.count,-n)):Math.min(e.count,1000-n);
+  return delta<0?unitLoss(o,asset,-delta):{[asset==='employee'?'employees':asset]:n+delta};
  }
  if(e.kind==='workforce'){
   const n=o.employees||0,delta=e.count>0?Math.min(e.count,Math.max(0,staffCapacity(o)-n)):Math.max(e.count,-n);

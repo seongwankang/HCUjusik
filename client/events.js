@@ -53,7 +53,7 @@ export async function applyEvent(db,cid,eid,option=0,{operator=true}={}){
   if(os.exists()&&os.data().locked)fail('배당 정산 완료 후 결과 적용을 다시 눌러 주세요. 선택은 저장되어 있습니다.');
   const patch=os.exists()?eventMutation(os.data(),effect,{config:config?effectiveConfig(config.data()):null,book:book?.data(),eventId:eid,effectiveAt:(n.type==='choice'?n.endsAt:n.startsAt).toMillis()}):{};
   const result=effect.kind==='cash'?{amount:patch.cash-(os.data().cash+(book?.data()?.issuerCash||0)-os.data().receivedIssuerCash)}:effect.kind==='workforce'?{count:patch.employees-(os.data().employees||0)}:effect.kind==='grant'?{count:patch[effect.asset]-os.data()[effect.asset]}:effect.kind==='destroy'?{count:os.data()[effect.asset]-patch[effect.asset]}:null;
-  if(os.exists())t.update(ops,{...patch,lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
+  if(os.exists())t.update(ops,{...patch,...(os.data().productionModel==='units-v2'&&((effect.kind==='destroy'&&result?.count>0)||(effect.kind==='workforce'&&result?.count<0))?{inventoryLossAt:{...os.data().inventoryLossAt,[effect.kind==='workforce'?'employee':effect.asset]:serverTimestamp()}}:{}),lastEvent:eid,...(n.type==='choice'?{pendingEvent:''}:{})});
   t.set(receipt,{option,effect,...(Number.isInteger(effect.settlements)&&effect.settlements>0?{startsAfterSettlement:os.data()?.settlementCount||0}:{}),...(result?{result}:{}),appliedAt:serverTimestamp(),effectiveAt:n.type==='choice'?n.endsAt:n.startsAt});return {applied:true};
  });
 }

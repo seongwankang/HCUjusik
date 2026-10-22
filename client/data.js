@@ -19,7 +19,7 @@ import {investorSnapshot} from './investor.js';
 import {accountAssets,allRows,marketRankings,publishCashRankings} from './rankings.js';
 import {RANKING_INTERVAL,rankingRefreshDue,rankingUpdatedAt} from './ranking-schedule.js';
 import {newsId,readComments,postComment,voteComment,removeComment} from './news.js';
-import {operationsView,initializeOperations,invest,settleDay,validateConfig} from './economy.js';
+import {operationsView,initializeOperations,invest,refundInvestment,settleDay,validateConfig} from './economy.js';
 import {tradingPortfolio} from './portfolio.js';
 import {getDoc,getDocs,doc,collection,query,orderBy,limit,startAfter,runTransaction,updateDoc,Timestamp,serverTimestamp} from 'firebase/firestore';
 import {validateAdmin} from '../src/admin.js';
@@ -30,7 +30,7 @@ function plain(v){if(v instanceof Timestamp)return v.toDate().toISOString();if(A
 export function createClientApi({db,getUser,viewReads}){
  const freshGet=async path=>{const s=await getDoc(doc(db,path));return s.exists()?{...plain(s.data()),id:s.id}:null;};
  const freshList=async(kind,max,sort)=>{const [key,direction='asc']=sort.split(' ');return (await getDocs(query(collection(db,kind),orderBy(key,direction),limit(max)))).docs.map(s=>({...plain(s.data()),id:s.id}));};
- const investmentsFor=(cid,ops)=>immutableRows(db,'companyOperations/'+cid+'/investments',{field:'createdAt',pageSize:30,revision:ops?.lastInvestment||'',persistent:true});
+ const investmentsFor=async(cid,ops)=>{const [rows,refunds]=await Promise.all([immutableRows(db,'companyOperations/'+cid+'/investments',{field:'createdAt',pageSize:30,revision:ops?.lastInvestment||'',persistent:true}),ops?.productionModel==='units-v2'?immutableRows(db,'companyOperations/'+cid+'/refunds',{field:'createdAt',pageSize:30,revision:ops?.lastRefund||'',persistent:true}):[]]);const canceled=new Set(refunds.map(r=>r.investmentId));return rows.map(r=>({...r,refunded:canceled.has(r.id)}));};
  const eventsFor=async()=>{const head=viewReads?await viewReads.getDocs(query(collection(db,'events'),orderBy('startsAt','desc'),limit(100)),'events'):null;return immutableRows(db,'events',{field:'startsAt',pageSize:100,persistent:true,...(head?{revision:head.docs.map(d=>d.id).join(',')}:{})});};
  return async function api(path,options={}){
   const url=new URL(path,'https://local.invalid'),route=url.pathname,method=options.method||'GET';
@@ -80,7 +80,7 @@ export function createClientApi({db,getUser,viewReads}){
    const [company,ops,book,account,effects,events]=await Promise.all([get('companies/'+cid),opTask,get('sparkBooks/'+cid),get('sparkAccounts/'+user.uid),opTask.then(o=>effectRecords(db,cid,{revision:o?.lastEvent||'',persistent:true})),eventsFor()]);
    if(!company)message('기업을 찾을 수 없습니다.');
    const next=nextSettlement(ops||{}),dividendContext=ops?.dividendModel==='rank-v1'?await forecastDividendContext(db,cid,adjustedRevenue(ops,next.day,effects,next.at).revenue,next.day,reads):null;
-   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events,dividendContext}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastEvent,ops?.settlementCount])};
+   return {...investorSnapshot({companyId:cid,ops,book,account,effects,events,dividendContext}),recentEvents:[],recentHistory:[],historyPending:true,historyVersion:JSON.stringify([ops?.lastInvestment,ops?.lastRefund,ops?.lastEvent,ops?.settlementCount])};
   }
   if(route==='/api/company-history'&&method==='GET'){
    const cid=url.searchParams.get('companyId');if(!newsId(cid))message('기업을 선택하세요.');
@@ -102,7 +102,7 @@ export function createClientApi({db,getUser,viewReads}){
   if(route==='/api/economy-production'&&method==='POST'){
    if(profile.role!=='admin')message('관리자만 기존 매출을 분류할 수 있습니다.');const b=JSON.parse(options.body||'{}');
    if(!newsId(b.companyId))message('기업을 선택하세요.');
-   await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',b.companyId),s=await t.get(ref),o=s.data();if(!o||o.locked||o.production)message('분류가 완료됐거나 정산 중입니다.');
+   await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',b.companyId),s=await t.get(ref),o=s.data();if(!o||o.productionModel==='units-v2'||o.locked||o.production)message('분류가 완료됐거나 정산 중입니다.');
     for(const [key,total] of [['production',o.revenue],['pendingProduction',o.pendingRevenue]]){const p=b[key];if(!p||Object.keys(p).length!==3||['factory','equipment','research'].some(k=>!Number.isSafeInteger(p[k])||p[k]<0||(!o[k]&&p[k]>0))||p.factory+p.equipment+p.research!==total)message('종류별 매출 합계가 기존 매출과 일치해야 합니다.');}
     t.update(ref,{production:b.production,pendingProduction:b.pendingProduction});});return {ok:true};
   }
@@ -122,13 +122,14 @@ export function createClientApi({db,getUser,viewReads}){
   if(route==='/api/spy-policy'&&method==='POST'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const policy=spyPolicy(JSON.parse(options.body||'{}'));await runTransaction(db,async t=>t.set(doc(db,'spyPolicy/main'),policy));return {ok:true};}
   if(route==='/api/spy-hire'&&method==='POST'){const b=JSON.parse(options.body||'{}');const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(b.companyId);if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 고용할 수 있습니다.');return hireSpy(db,b.companyId,b.targetId);}
   if(route==='/api/economy-config'&&method==='GET')return {config:effectiveConfig(await get('economyConfig/main'))};
-  if(method==='POST'&&['/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
+  if(method==='POST'&&['/api/economy-refund','/api/economy-invest','/api/economy-prepare','/api/economy-rate','/api/economy-settle','/api/economy-config'].includes(route)){
    const b=JSON.parse(options.body||'{}');
    if(route==='/api/economy-config'){if(profile.role!=='admin')message('관리자만 설정할 수 있습니다.');const c=validateConfig(b);await runTransaction(db,async t=>{const ref=doc(db,'economyConfig','main'),old=await t.get(ref);t.set(ref,{...c,...(old.data()?.dividendModel?{dividendModel:old.data().dividendModel}:{})});});return {ok:true};}
    const cid=b.companyId;if(typeof cid!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(cid))message('기업을 선택하세요.');
    const assigned=profile.role==='president'&&(await get('assignments/'+user.uid))?.companyIds?.includes(cid);
    if(profile.role!=='admin'&&!assigned)message('담당 사장 또는 관리자만 사용할 수 있습니다.');
    if(route==='/api/economy-prepare'){await initializeOperations(db,cid);return {ok:true};}
+   if(route==='/api/economy-refund')return refundInvestment(db,cid,b.investmentId);
    if(route==='/api/economy-invest'){await invest(db,cid,b.asset);return {ok:true};}
    if(route==='/api/economy-settle'){if(profile.role!=='admin')message('일일 정산은 관리자만 실행할 수 있습니다.');if(!await get('spyRounds/preflight-d'+Math.floor((Date.now()+32400000)/86400000)))message('자동 정산의 산업스파이 발각 처리가 먼저 완료되어야 합니다. 잠시 후 다시 확인하세요.');const result=await settleDay(db,cid);return {...result,spies:{status:'scheduled'}};}
    return changeDividendRate(db,cid,b.dividendBps);

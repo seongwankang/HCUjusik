@@ -45,7 +45,7 @@ test('permanent destruction is atomic, exact and idempotent; forged cash and rec
 test('global random event resumes safely; presidents cannot trigger it; settlement snapshots adjusted revenue',async()=>{
  await publishEvent(admin,body('global','random'));await assertFails(applyEvent(president,'one','global',0));
  await applyEvent(president,'one','forged',0);let result=await applyRandomEvent(admin,'global');assert.equal(result.applied,2);assert.deepEqual(result.failed,[]);result=await applyRandomEvent(admin,'global');assert.equal(result.applied,2);
- const key=await beginDay(admin,'one');const d=(await getDoc(doc(admin,'companyOperations/one/days',key))).data();assert.equal(d.revenue,4000); // three -20% effects on remaining 5,000 base
+ const key=await beginDay(admin,'one');const d=(await getDoc(doc(admin,'companyOperations/one/days',key))).data();assert.equal(d.revenue,2720); // Legacy production: 17 units ×400 margin ×40% after three -20% effects
  assert.equal((await getDoc(doc(admin,'companyOperations/one'))).data().revenue,5000);
  await publishEvent(admin,body('locked','random',{companyId:'one'}));result=await applyRandomEvent(admin,'locked');assert.equal(result.failed.length,1);
  await assertFails(setDoc(doc(president,'companyChoices/one/items/secret'),{option:2,chosenAt:serverTimestamp()}));
@@ -66,7 +66,7 @@ test('saved overdue choices cannot avoid destruction at settlement and pending f
  const key=await beginDay(admin,'two');
  const o=(await getDoc(doc(admin,'companyOperations/two'))).data();assert.equal(o.factory,1);assert.equal(o.pendingEvent,'');
  const receipt=(await getDoc(doc(admin,'companyEffects/two/items/withheld'))).data();assert.equal(receipt.effectiveAt.toMillis(),chosen.toMillis());
- const d=(await getDoc(doc(admin,'companyOperations/two/days',key))).data();assert.equal(d.revenue,13000); // remaining 5k factory, +50% efficiency, -20% revenue
+ const d=(await getDoc(doc(admin,'companyOperations/two/days',key))).data();assert.equal(d.revenue,8000); // Legacy production: 25 units ×400 margin ×80% after efficiency/revenue effects
 });
 
 async function expire(id){await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'events',id),{endsAt:Timestamp.fromMillis(Date.now()-1000)}));}
