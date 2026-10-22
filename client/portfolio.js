@@ -2,7 +2,7 @@ import {INITIAL_CASH} from './initial-capital.js';
 const integer=(v,max=1000000000000)=>Number.isSafeInteger(v)&&v>=0&&v<=max;
 export function tradingPortfolio(account,companies,books){
  const a=account||{cash:INITIAL_CASH,reservedCash:0,positions:{},reservedPositions:{},version:0};
- if(!integer(a.cash)||!integer(a.reservedCash,a.cash)||!integer(a.version)||!a.positions||typeof a.positions!=='object'||Array.isArray(a.positions)||!a.reservedPositions||typeof a.reservedPositions!=='object'||Array.isArray(a.reservedPositions))throw new Error('거래 계좌 형식을 확인하세요.');
+ if(!Number.isSafeInteger(a.cash)||Math.abs(a.cash)>1e12||!integer(a.reservedCash,Math.max(0,a.cash))||!integer(a.version)||!a.positions||typeof a.positions!=='object'||Array.isArray(a.positions)||!a.reservedPositions||typeof a.reservedPositions!=='object'||Array.isArray(a.reservedPositions))throw new Error('거래 계좌 형식을 확인하세요.');
  let stockValue=0,valuationComplete=true;
  const holdings=[];
  for(const id of new Set([...Object.keys(a.positions),...Object.keys(a.reservedPositions)])){

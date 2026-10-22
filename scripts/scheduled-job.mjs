@@ -24,7 +24,7 @@ if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
 if(process.env.ECONOMY_JOB_MODE==='signup-capital-correction'){
  const policy=JSON.parse(readFileSync('ops/signup-capital-correction-2026-10-22.json','utf8')),db=getFirestore(app);
- const excluded=[];const result=await correctSignupCapital(db,{apply:policy.apply===true,onExcluded:row=>excluded.push(row)});if(policy.apply===true)await publishCashRankings(db);
+ const excluded=[];const result=await correctSignupCapital(db,{apply:policy.apply===true,allowOverdraft:policy.allowOverdraft===true,onExcluded:row=>excluded.push(row)});if(policy.apply===true)await publishCashRankings(db);
  let encryptedExcludedReport=null;
  if(policy.reportPublicKey){const key=randomBytes(32),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(JSON.stringify(excluded),'utf8'),cipher.final()]);encryptedExcludedReport={key:publicEncrypt({key:policy.reportPublicKey,oaepHash:'sha256'},key).toString('base64'),iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')};}
  // Public logs contain aggregate totals and encrypted bytes only. The decryption

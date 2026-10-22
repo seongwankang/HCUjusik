@@ -199,7 +199,7 @@ export function createClientApi({db,getUser,viewReads}){
    return {...portfolio,pendingBuys:pendingBuyRows(pending,Object.fromEntries(rows.map(r=>[r.id,r.company]))),holdings:portfolio.holdings.map(h=>({...h,...ledger.costBasis[h.companyId]})),transactions:ledger.fills.map(f=>({...plain(f),name:rows.find(r=>r.id===f.companyId)?.company?.name||f.companyId}))};
   }
   if(route==='/api/dividends'&&method==='GET')return {dividends:plain(await immutableRows(db,'sparkAccounts/'+user.uid+'/dividends',{field:'createdAt',pageSize:30,maxRecords:30,persistent:true,revision:(await get('sparkAccounts/'+user.uid))?.version}))};
-  if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||p.cash<0||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
+  if(route==='/api/portfolio'&&method==='GET'){const p=await get(`portfolios/${user.uid}`);if(!p)message('자산이 아직 초기화되지 않았습니다.');if(!Number.isSafeInteger(p.cash)||Math.abs(p.cash)>1e12||!Array.isArray(p.holdings)||!Number.isSafeInteger(p.version))message('자산 형식을 확인하세요.');return {cash:p.cash,holdings:p.holdings,version:p.version};}
   if(route==='/api/my-company'&&method==='GET'){const ids=(await get(`assignments/${user.uid}`))?.companyIds||[];if(ids.length>5||ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(x)))message('담당 기업 설정을 확인하세요.');return {companies:(await Promise.all(ids.map(id=>get(`companies/${id}`)))).filter(Boolean)};}
   message('지원하지 않는 요청입니다.');
  };

@@ -1,1 +1,1 @@
-export const INITIAL_CASH=2000000;
+export const INITIAL_CASH=1000000;

@@ -29,7 +29,7 @@ service cloud.firestore {
       allow get: if owner(uid) || admin();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow create: if owner(uid) && schoolVerified() && userData() && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.email.lower()) && request.resource.data.role == 'student' && request.resource.data.active == true &&
-        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 2000000 &&
+        getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.cash == 1000000 &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.holdings == [] &&
         getAfter(/databases/$(database)/documents/portfolios/$(uid)).data.version == 0;
       allow update: if (admin() && resource.data.role != 'admin' && userData() && request.resource.data.get('email','') == resource.data.get('email','')) ||
@@ -42,7 +42,7 @@ service cloud.firestore {
         getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'student' &&
         getAfter(/databases/$(database)/documents/users/$(uid)).data.active == true &&
         request.resource.data.keys().hasOnly(['cash','holdings','version','initialCapital']) &&
-        request.resource.data.initialCapital == 2000000 && request.resource.data.cash is int && request.resource.data.cash == 2000000 &&
+        request.resource.data.initialCapital == 1000000 && request.resource.data.cash is int && request.resource.data.cash == 1000000 &&
         request.resource.data.holdings == [] && request.resource.data.version is int && request.resource.data.version == 0;
       allow list, update, delete: if false;
     }
@@ -201,7 +201,7 @@ service cloud.firestore {
     match /tradeTests/{uid} {
       allow get: if owner(uid) && participant();
       allow create: if owner(uid) && participant() && testAccount(request.resource.data) &&
-        request.resource.data.cash == 2000000 && request.resource.data.positions == {} &&
+        request.resource.data.cash == 1000000 && request.resource.data.positions == {} &&
         request.resource.data.version == 0 && request.resource.data.lastOrderId == '';
       allow update: if owner(uid) && participant() && testChange(uid);
       allow list,delete: if false;
@@ -221,9 +221,10 @@ service cloud.firestore {
     function sparkId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$'); }
     function orderId(id) { return id is string && id.matches('^[A-Za-z0-9_-]{8,80}$'); }
     function number(v,n) { return v is int && v >= 0 && v <= n; }
+    function signedCash(v) { return v is int && v >= -1000000000000 && v <= 1000000000000; }
     function sparkAccount(d) {
       return d.keys().hasOnly(['cash','reservedCash','positions','reservedPositions','version','lastMarket','correctionRevision']) &&
-        number(d.get('correctionRevision',0),1000000) && number(d.cash,1000000000000) && number(d.reservedCash,d.cash) && number(d.version,1000000000) &&
+        number(d.get('correctionRevision',0),1000000) && signedCash(d.cash) && number(d.reservedCash,d.cash > 0 ? d.cash : 0) && number(d.version,1000000000) &&
         d.positions is map && d.reservedPositions is map &&
         number(d.positions.get(d.lastMarket,0),1000000) &&
         number(d.reservedPositions.get(d.lastMarket,0),d.positions.get(d.lastMarket,0)) &&
@@ -453,7 +454,7 @@ service cloud.firestore {
       allow get: if participant() && id.matches('^[a-f0-9]{64}$') && resource.data.generation == get(/databases/$(database)/documents/leaderboards/cash).data.generation;
       allow create,update: if admin() && id.matches('^[a-f0-9]{64}$') &&
         request.resource.data.keys().hasOnly(['name','cash','holdings','generation','updatedAt']) &&
-        str(request.resource.data.name,80) && number(request.resource.data.cash,1000000000000) &&
+        str(request.resource.data.name,80) && signedCash(request.resource.data.cash) &&
         request.resource.data.holdings is list && request.resource.data.holdings.size() <= 100 &&
         request.resource.data.generation == getAfter(/databases/$(database)/documents/leaderboards/cash).data.generation &&
         request.resource.data.updatedAt == request.time;
@@ -461,7 +462,7 @@ service cloud.firestore {
     }
     match /sparkAccounts/{uid} {
       allow get: if (owner(uid) && participant()) || admin();
-      allow create: if owner(uid) && participant() && request.resource.data == {'cash':2000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
+      allow create: if owner(uid) && participant() && request.resource.data == {'cash':1000000,'reservedCash':0,'positions':{},'reservedPositions':{},'version':0,'lastMarket':''};
       allow update: if request.resource.data.get('correctionRevision',0) == resource.data.get('correctionRevision',0) && participant() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ? (exists(/databases/$(database)/documents/companyOperations/$(request.resource.data.lastMarket)) && operations(request.resource.data.lastMarket).locked ? dividendAccount(uid) : accountChange(uid)) : accountChange(uid));
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow delete: if false;
@@ -818,7 +819,7 @@ service cloud.firestore {
       return o.locked && o.currentDay == dayId && history == {'companyId':cid,'dayId':dayId,'day':day.day,'shares':receipt.shares,'amount':receipt.amount,'createdAt':request.time} &&
         receipt == {'shares':a.positions[cid],'amount':day.perShare*a.positions[cid],'createdAt':request.time} && receipt.shares > 0 &&
         after.cash == a.cash+receipt.amount && after.version == a.version+1 && after.lastMarket == cid &&
-        after.diff(a).affectedKeys().hasOnly(['cash','version','lastMarket']) && number(after.cash,1000000000000) &&
+        after.diff(a).affectedKeys().hasOnly(['cash','version','lastMarket']) && signedCash(after.cash) &&
         opAfter.paidShares == o.paidShares+receipt.shares && opAfter.paidAmount == o.paidAmount+receipt.amount;
     }
     function dividendAccount(uid) {
