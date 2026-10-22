@@ -1,3 +1,6 @@
+import {rankedRevenue,normalizeDividendBps} from './ranked-dividends.js';
+import {currentDividendForecast} from './dividend-rounds.js';
+import {nextSettlement} from './settlement-time.js';
 import {rankingValue} from './ranking-value.js';
 import {currentPriceLimits} from './daily-price-limits.js';
 import {shareholderSnapshots} from './shareholders.js';
@@ -56,7 +59,7 @@ const marketSessions=new WeakMap();
 export async function marketRankings(db,companies,books,now=Date.now(),reads){
  books=await Promise.all(companies.map(async c=>({id:c.id,...await withSmoothedPrice(db,c,books.find(b=>b.id===c.id))})));
  let cache=marketSessions.get(db);if(!cache){cache=new Map();marketSessions.set(db,cache);}
- const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=companyRevenueRows(db,prices,now,reads);
+ const prices=priceRankings(companies,books,Infinity),start=koreaDayStart(now),sessions={},revenueTask=currentDividendForecast(db,nextSettlement({},now).day,reads).catch(()=>null).then(forecast=>companyRevenueRows(db,prices,now,reads,forecast));
  await Promise.all(prices.map(async p=>{try{
   const limitReference=currentPriceLimits(books.find(b=>b.id===p.id),now)?.referencePrice,version=books.find(b=>b.id===p.id)?.version,key=JSON.stringify([start,version,limitReference]),cached=cache.get(p.id);
   if(Number.isSafeInteger(version)&&cached?.key===key){sessions[p.id]={volume:cached.volume,change:dayChange(p.price,cached.close)};return;}
@@ -79,8 +82,13 @@ export function companyRevenueMetrics(ops,days,effects=[],now=Date.now()){
  return {expectedRevenue,cumulativeRevenue};
 }
 export function revenueRankingLists(prices,revenues){
- const rows=prices.map(p=>({...p,expectedRevenue:revenues[p.id]?.expectedRevenue??null,cumulativeRevenue:revenues[p.id]?.cumulativeRevenue??null}));
- return {expectedRevenue:ranked(rows.filter(r=>r.expectedRevenue!==null),'expectedRevenue').slice(0,100),cumulativeRevenue:ranked(rows.filter(r=>r.cumulativeRevenue!==null),'cumulativeRevenue').slice(0,100),expectedRevenueUnavailable:rows.filter(r=>r.expectedRevenue===null).length,cumulativeRevenueUnavailable:rows.filter(r=>r.cumulativeRevenue===null).length};
+ const rows=prices.map(p=>({...p,expectedRevenue:revenues[p.id]?.expectedRevenue??null,cumulativeRevenue:revenues[p.id]?.cumulativeRevenue??null,dividendBps:revenues[p.id]?.dividendBps??null}));
+ const complete=rows.every(r=>r.expectedRevenue!==null);
+ const rankedRows=complete?rankedRevenue(rows.map(r=>({...r,revenue:r.expectedRevenue}))):[];
+ const quotes=new Map(rankedRows.map(r=>[r.id,{revenueRank:r.rank,rankBase:r.rankBase,expectedDividendPerShare:r.dividendBps===null?null:Math.floor(r.rankBase*normalizeDividendBps(r.dividendBps)/100)}]));
+ const expected=ranked(rows.filter(r=>r.expectedRevenue!==null),'expectedRevenue').map(r=>({...r,...quotes.get(r.id)}));
+ const dividendRows=expected.filter(r=>r.expectedDividendPerShare!==null&&r.expectedDividendPerShare!==undefined);
+ return {expectedRevenue:expected.slice(0,100),cumulativeRevenue:ranked(rows.filter(r=>r.cumulativeRevenue!==null),'cumulativeRevenue').slice(0,100),expectedDividendPerShare:ranked(dividendRows,'expectedDividendPerShare').slice(0,100),expectedDividendPerShareUnavailable:rows.length-dividendRows.length,expectedRevenueUnavailable:rows.filter(r=>r.expectedRevenue===null).length,cumulativeRevenueUnavailable:rows.filter(r=>r.cumulativeRevenue===null).length};
 }
 const revenueTotals=new WeakMap();
 async function completedRevenueTotal(db,cid,ops){
@@ -93,13 +101,10 @@ async function completedRevenueTotal(db,cid,ops){
  }
  cache.set(cid,{day:completed,total,revision});return total;
 }
-async function companyRevenueRows(db,prices,now,reads){
- const readDoc=reads?.getDoc||getDoc;
- return Object.fromEntries(await Promise.all(prices.map(async p=>{try{
-  const ops=(await readDoc(doc(db,'companyOperations',p.id))).data(),[effects,days]=await Promise.allSettled([effectRecords(db,p.id,{revision:ops?.lastEvent||'',persistent:true}),completedRevenueTotal(db,p.id,ops)]);
-  let expectedRevenue=null,cumulativeRevenue=null;
-  if(effects.status==='fulfilled')try{expectedRevenue=companyRevenueMetrics(ops,[],effects.value,now).expectedRevenue;}catch{}
-  if(days.status==='fulfilled')cumulativeRevenue=days.value;
-  return [p.id,{expectedRevenue,cumulativeRevenue}];
- }catch{return [p.id,{expectedRevenue:null,cumulativeRevenue:null}];}})));
+async function companyRevenueRows(db,prices,now,reads,forecast){
+ const readDoc=reads?.getDoc||getDoc,entries=new Map((forecast?.entries||[]).map(r=>[r.id,r]));
+ return Object.fromEntries(await Promise.all(prices.map(async p=>{let cumulativeRevenue=null;
+  try{const ops=(await readDoc(doc(db,'companyOperations',p.id))).data();cumulativeRevenue=await completedRevenueTotal(db,p.id,ops);}catch{}
+  const entry=entries.get(p.id);return [p.id,{expectedRevenue:entry?.revenue??null,dividendBps:entry?.rateBps??null,cumulativeRevenue}];
+ })));
 }
