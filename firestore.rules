@@ -92,8 +92,17 @@ service cloud.firestore {
       allow get: if admin();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
       allow create: if admin() && !exists(/databases/$(database)/documents/events/$(id)) && reservationData(id,request.resource.data);
-      allow delete: if admin() && resource.data.status == 'pending';
-      allow update: if false;
+      allow delete: if admin() && (resource.data.status == 'pending' || resource.data.status == 'processing' && exists(/databases/$(database)/documents/events/$(id)) && !existsAfter(/databases/$(database)/documents/eventQueue/$(id)));
+      allow update: if admin() && reservationClaimData(request.resource.data,resource.data);
+    }
+    function reservationClaimData(d,o) {
+      return d.keys().hasAll(['scheduledAt','payload','status','createdAt']) && d.keys().hasOnly(['scheduledAt','payload','status','createdAt']) &&
+        d.diff(o).affectedKeys().hasOnly(['status']) && d.status == 'processing' && o.status in ['pending','processing'] &&
+        d.scheduledAt is timestamp && d.scheduledAt <= request.time && d.createdAt is timestamp && d.payload is map;
+    }
+    function reservationReady(id) {
+      let p=/databases/$(database)/documents/eventReservations/$(id);
+      return !exists(p) || get(p).data.status == 'processing' && get(p).data.scheduledAt <= request.time;
     }
     function reservationData(id,d) {
       return sparkId(id) && d.keys().hasAll(['scheduledAt','payload','status','createdAt']) && d.keys().hasOnly(['scheduledAt','payload','status','createdAt']) &&
@@ -106,7 +115,7 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && !exists(/databases/$(database)/documents/eventReservations/$(id)) && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
+      allow create: if admin() && reservationReady(id) && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -127,7 +136,8 @@ service cloud.firestore {
         (getAfter(/databases/$(database)/documents/events/$(eid)).data.type == 'choice' ?
           request.resource.data.endsAt == getAfter(/databases/$(database)/documents/events/$(eid)).data.endsAt :
           request.resource.data.endsAt == request.time);
-      allow read, update, delete: if false;
+      allow delete: if admin() && eventData(eid).type == 'random';
+      allow read, update: if false;
     }
     function eventData(eid) { return get(/databases/$(database)/documents/events/$(eid)).data; }
     function outcome(eid,option) { return get(/databases/$(database)/documents/eventOutcomes/$(eid)/options/$(string(option))).data.effect; }

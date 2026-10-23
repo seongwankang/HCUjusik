@@ -1,0 +1,8 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {automaticEventReservations} from '../public/automatic-event-reservations.js';
+test('only a visible administrator executes due reservations; runs are throttled and do not overlap',async()=>{
+ let user={id:'a',role:'student'},visible=true,time=0,calls=0,tick,resolve,completed=0;const runner=automaticEventReservations({api:path=>{assert.equal(path,'/api/event-reservations-run');calls++;return new Promise(r=>resolve=r);},getUser:()=>user,isVisible:()=>visible,now:()=>time,every:(fn,ms)=>{assert.equal(ms,30000);tick=fn;return 7;},cancel:id=>assert.equal(id,7),onResult:r=>completed+=r.processed});
+ await runner.run();assert.equal(calls,0);user.role='admin';visible=false;await runner.run();assert.equal(calls,0);visible=true;const work=runner.run();await tick();assert.equal(calls,1);resolve({processed:1});await work;assert.equal(completed,1);await tick();assert.equal(calls,1);time=30000;const again=tick();assert.equal(calls,2);resolve({processed:0});await again;runner.stop();
+});
+test('connection failure retries after 30 seconds and user changes restart promptly',async()=>{
+ let time=100,user={id:'a',role:'admin'},calls=0;const runner=automaticEventReservations({api:async()=>{calls++;throw Error('offline');},getUser:()=>user,now:()=>time,every:()=>1,cancel:()=>{}});await runner.run();await runner.run();assert.equal(calls,1);time+=30000;await runner.run();assert.equal(calls,2);user={id:'b',role:'admin'};await runner.run();assert.equal(calls,3);user=null;await runner.run();assert.equal(calls,3);runner.stop();
+});

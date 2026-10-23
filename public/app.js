@@ -1,3 +1,4 @@
+import {automaticEventReservations} from './automatic-event-reservations.js';
 import {pendingBuyMarkup} from './pending-orders.js';
 import {setHTMLKeepingScroll,captureScroll,restoreScroll} from './scroll-state.js';
 import {setupPasswordChange} from './password-change.js';
@@ -231,12 +232,13 @@ async function updateVisibleView(){
  finally{viewUpdating=false;if(viewAgain){viewAgain=false;clearTimeout(viewTimer);viewTimer=setTimeout(updateVisibleView,180);}}
 }
 const passwordUI=setupPasswordChange({changePassword,getUser:()=>state.user});
+const reservationAutomation=automaticEventReservations({api:getJSON,getUser:()=>state.user,isVisible:()=>!document.hidden,onResult:r=>{if(r.processed)window.dispatchEvent(new CustomEvent('admin-saved',{detail:{kind:'events'}}));}});
 const rankingAutomation=automaticRankings({api:getJSON,getUser:()=>state.user,isVisible:()=>!document.hidden});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)void rankingAutomation.run();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){void rankingAutomation.run();void reservationAutomation.run();}});
 const registration=setupRegistration({api:getJSON,login,signup,logout,verificationStatus,sendVerification,onSignedIn:async user=>{
- screens.clear();state.user=user;state.companyId=null;history.replaceState(null,'','#/market');updateAccountButton();await initialLoad({authenticatedUser:user});void rankingAutomation.run();
+ screens.clear();state.user=user;state.companyId=null;history.replaceState(null,'','#/market');updateAccountButton();await initialLoad({authenticatedUser:user});void rankingAutomation.run();void reservationAutomation.run();
  if(state.page==='portfolio')loadPortfolio();if(state.page==='management')loadManagement();
 }});
 const adminUI=setupAdmin(getJSON);
 installUpdateNotice(typeof __APP_BUILD__==='string'?__APP_BUILD__:'dev');
-initialLoad().then(async()=>{void rankingAutomation.run();if(!state.user)await registration.resume().catch(()=>{});window.dispatchEvent(new Event('app-ready'));}).catch(()=>window.dispatchEvent(new Event('app-startup-error')));
+initialLoad().then(async()=>{void rankingAutomation.run();void reservationAutomation.run();if(!state.user)await registration.resume().catch(()=>{});window.dispatchEvent(new Event('app-ready'));}).catch(()=>window.dispatchEvent(new Event('app-startup-error')));

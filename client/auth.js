@@ -83,6 +83,10 @@ export async function changePassword(current,next,confirmation){
 
 export async function dataRequest(path,options){
  await ensure();try{const result=await api(path,options);
+  if(path==='/api/event-reservations-run'){
+   if(result.processed||result.failed)await viewReads.refresh(['events','news','eventReservations','companyOperations','companyEffects']).catch(()=>{});
+   return result;
+  }
   if(path==='/api/rankings-auto'){
    if(result.updated)await viewReads.refresh(['leaderboards','investorSnapshots']).catch(()=>{});
    return result;

@@ -2,7 +2,7 @@ name: Daily settlement and rankings
 on:
   push:
     branches: [main]
-    paths: [ops/shareholder-refresh-2026-10-23.json]
+    paths: [ops/event-reservation-recovery-2026-10-23.json]
   schedule:
     - cron: '55 22 * * *' # 07:55 Asia/Seoul
     - cron: '*/15 * * * *'
@@ -59,4 +59,4 @@ jobs:
       - run: node .generated-scheduled-job.mjs
         env:
           FIREBASE_PROJECT_ID: hcujusik
-          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'shareholders-only' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
+          ECONOMY_JOB_MODE: ${{ github.event_name == 'push' && 'events-only' || inputs.mode || (github.event.schedule == '*/5 * * * *' && 'events-only') || 'full' }}
