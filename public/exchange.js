@@ -59,12 +59,15 @@ export async function showTrading(c,request,container){
    if(investorQueued&&alive()){investorQueued=false;refreshInvestor();}
   });
  }
+ let matchFailures=0,nextMatchAt=0;
+ const deferMatch=()=>{nextMatchAt=Date.now()+Math.min(30000,2000*2**Math.min(matchFailures++,4));};
  async function refresh(){
   const data=await request('/api/exchange?companyId='+c.id);if(!alive())return;
   dailyLimits=data.priceLimits||null;
   const range=box.querySelector('#price-limit-range');range.innerHTML=priceLimitsMarkup(data.displayPriceLimits||dailyLimits);
   form.elements.price.min=String(dailyLimits?.lower||100);form.elements.price.max=String(dailyLimits?.upper||1000000000);total();
   const a=data.account;lastMatchError=data.matchError;settlementLocked=!!data.settlementLocked;matchingPending=!!data.matchPending;
+  if(matchingPending&&lastMatchError)deferMatch();else{matchFailures=0;nextMatchAt=Date.now()+1000;}
   box.querySelector('#limit-account').innerHTML=`<div><span>주문 가능 현금</span><strong>${won(a.cash-a.reservedCash)}</strong></div><div><span>매수 대기금액</span><strong>${won(a.reservedCash)}</strong></div><div><span>보유 수량</span><strong>${a.positions[c.id]||0}<small>주</small></strong></div><div><span>내 평균 매입가</span><strong>${data.costBasis?.averagePrice==null?'—':Number(data.costBasis.averagePrice).toLocaleString('ko-KR',{maximumFractionDigits:2})+'원'}</strong></div><div><span>매도 가능</span><strong>${(a.positions[c.id]||0)-(a.reservedPositions[c.id]||0)}<small>주</small></strong></div>`;
   const displayPrice=data.market?.referencePrice??c.currentPrice??c.referencePrice;
   c.previousClose=data.market?.previousClose;c.closeKind=data.market?.closeKind;renderDayChange(c,displayPrice);
@@ -98,7 +101,7 @@ export async function showTrading(c,request,container){
  });
  box.querySelector('#limit-refresh').addEventListener('click',async()=>{if(busy)return;busy=true;lock();try{await request.refresh?.();await refresh();if(alive())status.textContent=lastMatchError||'호가와 체결 내역을 갱신했습니다.';}catch(e){if(alive())status.textContent=e.message;}finally{busy=false;if(alive())lock();}});
  let queuedRefresh=false,lastSessionOpen=marketSession().open,quoteDay=koreaDayStart();
- let sessionClock;const tick=()=>{if(!alive())return;if(queuedRefresh&&!busy){queuedRefresh=false;busy=true;refresh().catch(()=>{}).finally(()=>{busy=false;if(alive())lock();});}const open=marketSession().open;if(open!==lastSessionOpen){lastSessionOpen=open;if(!busy&&open)status.textContent=settlementLocked?'배당 정산 중':'주문 가능 · 08:00~21:00';}if(matchingPending&&!busy&&open){busy=true;status.textContent='대기 주문을 체결 중입니다…';refresh().then(()=>{if(alive())status.textContent=lastMatchError||(matchingPending?'대기 주문을 체결 중입니다…':'체결 내역을 갱신했습니다.');}).catch(e=>{matchingPending=false;if(alive())status.textContent=e.message;}).finally(()=>{busy=false;if(alive())lock();});}if(quoteDay!==koreaDayStart()&&!busy){quoteDay=koreaDayStart();c.previousClose=null;renderDayChange(c);busy=true;refresh().catch(()=>{}).finally(()=>{busy=false;if(alive())lock();});}lock();};
+ let sessionClock;const tick=()=>{if(!alive())return;if(queuedRefresh&&!busy){queuedRefresh=false;busy=true;refresh().catch(()=>{}).finally(()=>{busy=false;if(alive())lock();});}const open=marketSession().open;if(open!==lastSessionOpen){lastSessionOpen=open;if(!busy&&open)status.textContent=settlementLocked?'배당 정산 중':'주문 가능 · 08:00~21:00';}if(matchingPending&&!busy&&open&&Date.now()>=nextMatchAt){busy=true;status.textContent='대기 주문을 체결 중입니다…';refresh().then(()=>{if(alive())status.textContent=lastMatchError||(matchingPending?'대기 주문을 체결 중입니다…':'체결 내역을 갱신했습니다.');}).catch(e=>{deferMatch();if(alive())status.textContent=e.message;}).finally(()=>{busy=false;if(alive())lock();});}if(quoteDay!==koreaDayStart()&&!busy){quoteDay=koreaDayStart();c.previousClose=null;renderDayChange(c);busy=true;refresh().catch(()=>{}).finally(()=>{busy=false;if(alive())lock();});}lock();};
  const pause=()=>{clearInterval(sessionClock);};disposeTrading=pause;
  const resume=()=>{disposeTrading=pause;token=++generation;clearInterval(sessionClock);sessionClock=setInterval(tick,1000);stopHistory.resume?.();lock();};
  resume();

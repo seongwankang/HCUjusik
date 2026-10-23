@@ -10,13 +10,18 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/systemMaintenance/reset); }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
-    function schoolClaims() { return request.auth.token.email_verified == true && request.auth.token.email is string && request.auth.token.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$'); }
-    function schoolVerified() { return signedIn() && schoolClaims(); }
-    function participant() {
-      return signedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || schoolClaims());
+    function schoolClaims() {
+      let claims=request.auth.token;
+      return claims.email_verified == true && claims.email is string && claims.email.lower().matches('^[^ @]+@hcu[.]hs[.]kr$');
     }
+    function schoolVerified() { return signedIn() && schoolClaims(); }
+    // Cache profile/claims within each check: partial fills validate several
+    // atomic writes and must remain below the Rules expression budget.
+    function participantProfile() {
+      let profile=get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return profile.active == true && (profile.role == 'admin' || schoolClaims());
+    }
+    function participant() { return signedIn() && participantProfile(); }
     function admin() { return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true; }
     function str(v, n) { return v is string && v.size() > 0 && v.size() <= n; }
     function ids(v) { return v is list && v.size() <= 5 &&
