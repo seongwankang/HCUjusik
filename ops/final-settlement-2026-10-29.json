@@ -1,0 +1,4 @@
+{
+  "authorizedDay": "2026-10-29",
+  "purpose": "Run the last settlement immediately once, close trading indefinitely and stop recurring economy jobs"
+}

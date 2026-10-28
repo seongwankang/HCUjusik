@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {marketSession,settlementPaused} from '../client/market-session.js';
+test('competition ends indefinitely on October 29 without changing the prior trading day',()=>{assert.equal(marketSession(Date.parse('2026-10-28T12:00:00+09:00')).open,true);for(const at of ['2026-10-29T08:00:00+09:00','2026-10-30T12:00:00+09:00','2027-01-01T12:00:00+09:00']){assert.equal(marketSession(Date.parse(at)).open,false);assert.equal(settlementPaused(Date.parse(at)),true);}});

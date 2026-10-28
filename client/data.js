@@ -53,6 +53,7 @@ export function createClientApi({db,getUser,viewReads}){
   if(profile.active!==true)message('비활성화된 참가 계정입니다. 관리자에게 문의하세요.');
   if(route==='/api/rankings-auto'&&method==='POST'){
    if(profile.role!=='admin')message('관리자만 순위를 집계할 수 있습니다.');
+   if(await get('marketFinalization/main'))return {updated:false,nextAt:Number.MAX_SAFE_INTEGER};
    const board=await freshGet('leaderboards/cash'),now=Date.now();
    if(!rankingRefreshDue(board,now))return {updated:false,nextAt:rankingUpdatedAt(board)+RANKING_INTERVAL};
    await publishCashRankings(db);return {updated:true,nextAt:Date.now()+RANKING_INTERVAL};
@@ -92,7 +93,7 @@ export function createClientApi({db,getUser,viewReads}){
    const [effects,events,investments]=await Promise.all([effectRecords(db,cid,{revision:ops?.lastEvent||'',persistent:true}),eventsFor(),investmentsFor(cid,ops)]);
    return historyPage(managementHistory({ops,effects,events,investments}).recentHistory,cursor);
   }
-  if(route==='/api/event-reservations-run'&&method==='POST'){if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');const {processed,failed,errors}=await runDueRandomReservations(db);return {processed,failed,errors};}
+  if(route==='/api/event-reservations-run'&&method==='POST'){if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');if(await get('marketFinalization/main'))return {processed:0,failed:0,errors:[],stopped:true};const {processed,failed,errors}=await runDueRandomReservations(db);return {processed,failed,errors};}
   if(route==='/api/admin/event-reservations'&&method==='GET'){if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');return plain(await listEventReservations(db));}
   if(route==='/api/event-reservation-cancel'&&method==='POST'){if(profile.role!=='admin')message('관리자만 사용할 수 있습니다.');return cancelEventReservation(db,JSON.parse(options.body||'{}').id);}
   if(route==='/api/company-events'&&method==='GET'){const cid=url.searchParams.get('companyId'),view=await eventCompanyView(db,cid,reads),next=nextSettlement((await get('companyOperations/'+cid))||{});return plain({...view,dividendContext:await forecastDividendContext(db,cid,view.settlementProjection.revenue,next.day,reads)});}

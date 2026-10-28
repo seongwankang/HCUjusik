@@ -1,3 +1,4 @@
+import {finalizeCompetition} from '../server/finalize-competition.js';
 import {grantParticipantBonus} from '../server/participant-bonus.js';
 import {refreshShareholders} from '../server/shareholder-refresh.js';
 import {issueAdditionalShares} from '../server/additional-offering.js';
@@ -25,6 +26,7 @@ const projectId=process.env.FIREBASE_PROJECT_ID;
 if(!projectId)throw Error('FIREBASE_PROJECT_ID is required');
 if(process.env.FIRESTORE_EMULATOR_HOST&&(!projectId.startsWith('demo-')||!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST)))throw Error('Emulator requires a loopback demo project');
 const app=initializeApp({projectId,...(!process.env.FIRESTORE_EMULATOR_HOST?{credential:applicationDefault()}:{})});
+if(process.env.ECONOMY_JOB_MODE==='finalize-2026-10-29'){console.log(JSON.stringify({finalSettlement:await finalizeCompetition(getFirestore(app))}));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='participant-bonus-500k'){const db=getFirestore(app),result=await grantParticipantBonus(db);await publishCashRankings(db);console.log(JSON.stringify({participantBonus:result,rankingsUpdated:true}));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='additional-offering-200'){const db=getFirestore(app),result=await issueAdditionalShares(db);await publishCashRankings(db);console.log(JSON.stringify({additionalOffering:result,rankingsUpdated:true}));process.exit(0);}
 if(process.env.ECONOMY_JOB_MODE==='signup-capital-correction'){

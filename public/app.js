@@ -7,7 +7,7 @@ import {createRetainedViews} from './retained-views.js';
 import {batchPaint} from './render-batch.js';
 import {showTransactions} from './transactions.js';
 import {setupRegistration} from './registration.js';
-import {marketSession} from '../client/market-session.js';
+import {marketSession,marketPaused} from '../client/market-session.js';
 import {newsCategory} from '../src/news-category.js';
 import {renderDayChange} from './quote-change.js';
 import {showRankings} from './rankings.js';
@@ -22,7 +22,7 @@ const screens=createRetainedViews();
 const state = {page:'dashboard',companies:[],news:[],events:[],user:null,companyError:null,companyId:null};
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-function marketNotice(){const el=document.querySelector('.event-date'),open=marketSession().open;el.dataset.open=String(open);el.innerHTML='<span class="live-dot"></span>'+(Date.now()<Date.parse('2026-10-21T08:00:00+09:00')?'시장 준비 중 · 10/21(수) 08:00 재개':open?'장 운영 중 · 21:00 마감':'장 마감 · 08:00 시작');}marketNotice();setInterval(marketNotice,60000);
+function marketNotice(){const el=document.querySelector('.event-date'),open=marketSession().open;el.dataset.open=String(open);el.innerHTML='<span class="live-dot"></span>'+(Date.now()<Date.parse('2026-10-21T08:00:00+09:00')?'시장 준비 중 · 10/21(수) 08:00 재개':marketPaused(Date.now())?'모의주식 종료 · 무기한 휴장':open?'장 운영 중 · 21:00 마감':'장 마감 · 08:00 시작');}marketNotice();setInterval(marketNotice,60000);
 const won = value => Number(value || 0).toLocaleString('ko-KR') + '원';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 

@@ -62,14 +62,15 @@ export async function invest(db,cid,asset,quantity=1){
 
  });
 }
-export async function beginDay(db,cid,retry=0){
- if(Date.now()<settlementTime(koreaDay())){const running=(await getDoc(doc(db,'companyOperations',cid))).data();if(!running?.locked)fail('오늘 정산은 오전 7시 55분부터 실행할 수 있습니다.');}
+export async function beginDay(db,cid,retry=0,options={}){
+ if(options.finalSettlementAt!==undefined){const final=(await getDoc(doc(db,'marketFinalization/main'))).data();if(final?.status!=='settling'||final.day!==koreaDay()||final.cutoffAt?.toMillis()!==options.finalSettlementAt)fail('최종 정산 승인 상태를 확인하세요.');}
+ if(options.finalSettlementAt===undefined&&Date.now()<settlementTime(koreaDay())){const running=(await getDoc(doc(db,'companyOperations',cid))).data();if(!running?.locked)fail('오늘 정산은 오전 7시 55분부터 실행할 수 있습니다.');}
  if(!validId(cid))fail('기업을 선택하세요.');const existing=(await getDoc(doc(db,'companyOperations',cid))).data();if(existing?.locked)return existing.currentDay;await applyDueCompanyChoices(db,cid);let before=await getDoc(doc(db,'companyOperations',cid));if(before.data()?.pendingEvent){const eid=before.data().pendingEvent,selected=await getDoc(doc(db,'companyChoices',cid,'items',eid));const event=await getDoc(doc(db,'events',eid));if(event.data()?.type==='choice'&&event.data().endsAt.toMillis()>Date.now()){await runTransaction(db,async t=>{const r=doc(db,'companyOperations',cid),s=await t.get(r);if(!s.data().locked&&s.data().pendingEvent===eid)t.update(r,{pendingEvent:''});});}else await applyEvent(db,cid,eid,selected.data().option);before=await getDoc(doc(db,'companyOperations',cid));}const records=await effectRecords(db,cid),context=before.data()?.dividendModel===DIVIDEND_MODEL?await frozenDividendContext(db,cid,koreaDay()):null;return runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,bs]=await Promise.all([t.get(ref),t.get(doc(db,'sparkBooks',cid))]);
  if(!os.exists()||!bs.exists())fail('회사 계좌와 주식 판매 내역을 확인하세요.');const o=os.data();if(o.locked)return o.currentDay;if(o.pendingEvent||o.lastEvent!==before.data()?.lastEvent)throw new Error('EVENT_RETRY');
- const day=koreaDay(),key='d'+day,p=dayPlan(o,bs.data(),day,records,context?settlementTime(day):Date.now(),context),dayRef=doc(db,'companyOperations',cid,'days',key);if((await t.get(dayRef)).exists())fail('이미 정산한 날짜입니다.');
+ const day=koreaDay(),key='d'+day,p=dayPlan(o,bs.data(),day,records,options.finalSettlementAt??(context?settlementTime(day):Date.now()),context),dayRef=doc(db,'companyOperations',cid,'days',key);if((await t.get(dayRef)).exists())fail('이미 정산한 날짜입니다.');
  t.set(dayRef,{...(context?{model:DIVIDEND_MODEL,rank:p.rank,rankBase:p.rankBase,companyCharge:p.companyCharge}:{}),day,revenue:p.revenue,issuedShares:p.issuedShares,treasuryShares:p.treasuryShares,treasuryDividend:p.treasuryDividend,sold:p.sold,perShare:p.perShare,dividend:p.dividend,retained:p.retained,rateBps:p.rateBps,createdAt:serverTimestamp()});
  t.update(ref,{...(o.productionModel===UNITS_MODEL?{pendingUnits:matureUnits(o,day)}:{}),settlementCount:(o.settlementCount||0)+1,cash:p.cash,receivedIssuerCash:bs.data().issuerCash,revenue:o.productionModel===UNITS_MODEL?0:p.base,...(o.production?{production:Object.fromEntries(['factory','equipment','research'].map(k=>[k,productionPool(o)[k]+(o.pendingDay<=day?productionPool(o,true)[k]:0)])),pendingProduction:o.pendingDay<=day?{factory:0,equipment:0,research:0}:productionPool(o,true)}:{}),staffRevenue:(o.staffRevenue||0)+(o.pendingDay<=day?(o.pendingStaffRevenue||0):0),pendingStaffRevenue:o.pendingDay<=day?0:(o.pendingStaffRevenue||0),activeResearchBps:researchBps(o)+(o.pendingDay<=day?(o.pendingResearchBps||0):0),pendingResearchBps:o.pendingDay<=day?0:(o.pendingResearchBps||0),pendingRevenue:o.pendingDay<=day?0:o.pendingRevenue,pendingDay:o.pendingDay<=day?0:o.pendingDay,locked:true,currentDay:key,paidShares:0,paidAmount:0});return key;
- }).catch(e=>{if(e.message==='EVENT_RETRY'&&retry<5)return beginDay(db,cid,retry+1);throw e;});
+ }).catch(e=>{if(e.message==='EVENT_RETRY'&&retry<5)return beginDay(db,cid,retry+1,options);throw e;});
 }
 export async function payHolder(db,cid,key,uid){
  return runTransaction(db,async t=>{const opRef=doc(db,'companyOperations',cid),accountRef=doc(db,'sparkAccounts',uid),receipt=doc(db,'companyOperations',cid,'days',key,'payouts',uid);
@@ -80,8 +81,8 @@ export async function payHolder(db,cid,key,uid){
  });
 }
 export async function finishDay(db,cid,key){await runTransaction(db,async t=>{const ref=doc(db,'companyOperations',cid),[os,ds]=await Promise.all([t.get(ref),t.get(doc(db,'companyOperations',cid,'days',key))]);const o=os.data(),d=ds.data();if(!o?.locked||o.currentDay!==key)fail('진행 중인 정산이 없습니다.');if(o.paidShares!==d.sold||o.paidAmount!==d.dividend)fail('배당 대상 수량이 맞지 않습니다. 정산을 다시 실행해 누락된 지급을 완료하세요.');t.update(ref,{locked:false,lastSettledDay:d.day,currentDay:''});});}
-export async function settleDay(db,cid,onProgress=()=>{}){
- const key=await beginDay(db,cid);let cursor=null,count=0;
+export async function settleDay(db,cid,onProgress=()=>{},options={}){
+ const key=await beginDay(db,cid,0,options);let cursor=null,count=0;
  for(;;){const q=query(collection(db,'sparkAccounts'),where(new FieldPath('positions',cid),'>',0),limit(100),...(cursor?[startAfter(cursor)]:[]));const page=await getDocs(q);for(const s of page.docs){await payHolder(db,cid,key,s.id);onProgress(++count);}if(page.size<100)break;cursor=page.docs.at(-1);}
  await finishDay(db,cid,key);return {ok:true,recipients:count};
 }

@@ -8,6 +8,11 @@ rules_version = '2';
 // No email, password, key, or private student data in companies/news.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function competitionRunning() { return !exists(/databases/$(database)/documents/marketFinalization/main); }
+    match /marketFinalization/{id} {
+      allow get: if id == 'main' && participant();
+      allow list,write: if false;
+    }
     function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/systemMaintenance/reset); }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
     function schoolClaims() {
@@ -96,9 +101,9 @@ service cloud.firestore {
     match /eventReservations/{id} {
       allow get: if admin();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && !exists(/databases/$(database)/documents/events/$(id)) && reservationData(id,request.resource.data);
+      allow create: if competitionRunning() && admin() && !exists(/databases/$(database)/documents/events/$(id)) && reservationData(id,request.resource.data);
       allow delete: if admin() && (resource.data.status == 'pending' || resource.data.status == 'processing' && exists(/databases/$(database)/documents/events/$(id)) && !existsAfter(/databases/$(database)/documents/eventQueue/$(id)));
-      allow update: if admin() && reservationClaimData(request.resource.data,resource.data);
+      allow update: if competitionRunning() && admin() && reservationClaimData(request.resource.data,resource.data);
     }
     function reservationClaimData(d,o) {
       return d.keys().hasAll(['scheduledAt','payload','status','createdAt']) && d.keys().hasOnly(['scheduledAt','payload','status','createdAt']) &&
@@ -120,7 +125,7 @@ service cloud.firestore {
     match /events/{id} {
       allow get: if participant();
       allow list: if participant() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if admin() && reservationReady(id) && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
+      allow create: if competitionRunning() && admin() && reservationReady(id) && request.resource.data.keys().hasOnly(['type','title','content','companyId','targets','options','startsAt','endsAt','autoNews','newsDraftRequired','defaultOption','randomEffectCount']) && request.resource.data.get('autoNews',false) is bool && (!('randomEffectCount' in request.resource.data) || request.resource.data.type == 'random' && id.size() <= 110 && request.resource.data.randomEffectCount is int && request.resource.data.randomEffectCount >= 1 && request.resource.data.randomEffectCount <= 20) && (!('defaultOption' in request.resource.data) || request.resource.data.type == 'choice' && request.resource.data.defaultOption is int && request.resource.data.defaultOption in [0,1,2]) && (!('newsDraftRequired' in request.resource.data) || request.resource.data.newsDraftRequired == true && request.resource.data.autoNews == true && eventNewsDraftData(getAfter(/databases/$(database)/documents/eventNewsDrafts/$(id)).data)) &&
         request.resource.data.type in ['random','choice'] && str(request.resource.data.title,120) && str(request.resource.data.content,5000) &&
         request.resource.data.companyId is string && request.resource.data.targets is list && request.resource.data.targets.size() > 0 && request.resource.data.targets.size() <= 100 &&
         request.resource.data.options is list && (request.resource.data.type == 'choice' ? request.resource.data.options.size() == 3 : request.resource.data.options.size() == 0) &&
@@ -382,11 +387,11 @@ service cloud.firestore {
     }
     function marketOpen() {
       let minute=(int(request.time.toMillis() / 60000)+540)%1440;
-      return request.time >= timestamp.date(2026,10,20)+duration.value(23,'h') && minute >= 480 && minute < 1260;
+      return competitionRunning() && request.time >= timestamp.date(2026,10,20)+duration.value(23,'h') && minute >= 480 && minute < 1260;
     }
     match /sparkBooks/{cid} {
       allow get: if sparkId(cid) && participant();
-      allow create: if sparkId(cid) && participant() && request.resource.data == {
+      allow create: if competitionRunning() && sparkId(cid) && participant() && request.resource.data == {
         'priceLimits':initialPriceLimits(get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice),
         'initialPrice':get(/databases/$(database)/documents/companies/$(cid)).data.referencePrice,
         'issuedShares':get(/databases/$(database)/documents/companies/$(cid)).data.issuedShares,
@@ -748,8 +753,8 @@ service cloud.firestore {
     match /companySpies/{cid} {
       allow get: if participant();
       allow list: if admin() && request.query.limit != null && request.query.limit <= 100;
-      allow create: if spyContract(cid,request.resource.data);
-      allow update: if admin() || spyContract(cid,request.resource.data);
+      allow create: if competitionRunning() && spyContract(cid,request.resource.data);
+      allow update: if competitionRunning() && (admin() || spyContract(cid,request.resource.data));
       allow delete: if false;
       match /hires/{id} {
         allow get: if participant();
@@ -792,7 +797,7 @@ service cloud.firestore {
     }
     match /dividendRounds/{id} {
       allow get: if participant();
-      allow create: if admin() && request.resource.data.model == 'rank-v1' && request.resource.data.day == dayNumber() && request.time.toMillis() >= dayNumber()*86400000-3900000 && request.resource.data.createdAt == request.time;
+      allow create: if competitionRunning() && admin() && request.resource.data.model == 'rank-v1' && request.resource.data.day == dayNumber() && request.time.toMillis() >= dayNumber()*86400000-3900000 && request.resource.data.createdAt == request.time;
       allow list,update,delete: if false;
     }
     match /dividendForecasts/{id} {
@@ -802,16 +807,16 @@ service cloud.firestore {
     }
     match /companyOperations/{cid} {
       allow get: if participant();
-      allow create: if manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
+      allow create: if competitionRunning() && manager(cid) && exists(/databases/$(database)/documents/companies/$(cid)) && request.resource.data ==
         {'productionModel':'units-v2','pendingUnits':{'factory':0,'employee':0,'equipment':0,'research':0},'cash':0,'receivedIssuerCash':0,'revenue':0,'pendingRevenue':0,'pendingDay':0,'factory':0,'equipment':0,'research':0,'dividendBps':1000,'dividendModel':'rank-v1','lastSettledDay':request.time.toMillis() >= dayNumber()*86400000-3900000 ? dayNumber() : 0,'locked':false,'currentDay':'','paidShares':0,'paidAmount':0};
       // Admin is the trusted simulation operator. Students/presidents can only
       // buy configured assets and set their assigned company's dividend rate, never mint cash.
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :
+      allow update: if competitionRunning() && (request.resource.data.diff(resource.data).affectedKeys().hasAny(['dividendBps','lastDividendDay']) ? dividendRate(cid,request.resource.data,resource.data) :
         admin() ? operationData(request.resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastSpyHire']) ? spyHireOperation(cid,request.resource.data,resource.data) :
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastEvent']) ? eventOperation(cid,request.resource.data,resource.data) :
         resource.data.get('productionModel','legacy') == 'units-v2' ? (request.resource.data.get('lastRefund','') != resource.data.get('lastRefund','') ? unitsRefund(cid,request.resource.data,resource.data,request.resource.data.lastRefund) : unitsInvestment(cid,request.resource.data,resource.data)) :
-        investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee');
+        investment(cid,request.resource.data,resource.data,request.resource.data.factory != resource.data.factory ? 'factory' : request.resource.data.equipment != resource.data.equipment ? 'equipment' : request.resource.data.research != resource.data.research ? 'research' : 'employee'));
       allow list,delete: if false;
       match /refunds/{id} {
         allow get: if participant();
@@ -828,7 +833,7 @@ service cloud.firestore {
       match /days/{dayId} {
         allow get: if participant();
         allow list: if participant() && request.query.limit != null && request.query.limit <= 30;
-        allow create: if admin() && !operations(cid).locked && request.resource.data.day == dayNumber() && request.resource.data.day > operations(cid).lastSettledDay &&
+        allow create: if competitionRunning() && admin() && !operations(cid).locked && request.resource.data.day == dayNumber() && request.resource.data.day > operations(cid).lastSettledDay &&
           request.resource.data.createdAt == request.time && getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.currentDay == dayId &&
           getAfter(/databases/$(database)/documents/companyOperations/$(cid)).data.settlementCount == operations(cid).get('settlementCount',0)+1;
         allow update,delete: if false;

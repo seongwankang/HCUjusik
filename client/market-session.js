@@ -1,4 +1,5 @@
-export const settlementPaused=now=>now>=Date.parse('2026-10-19T00:00:00+09:00')&&now<Date.parse('2026-10-21T08:00:00+09:00');
+export const COMPETITION_END_AT=Date.parse('2026-10-29T00:00:00+09:00');
+export const settlementPaused=now=>now>=COMPETITION_END_AT||now>=Date.parse('2026-10-19T00:00:00+09:00')&&now<Date.parse('2026-10-21T08:00:00+09:00');
 export const MARKET_RESUMES_AT=Infinity;
 export const MARKET_PAUSE_START=Date.parse('2026-10-19T00:00:00+09:00');
 export const MANUAL_MARKET_CLOSED_AT=Date.parse('2026-10-22T00:00:00+09:00');

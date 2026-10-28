@@ -9,8 +9,9 @@ import {detectionCandidates,detectionCompensation,detectionArticle} from './spy-
 const funds=(o,b)=>o.cash+b.issuerCash-o.receivedIssuerCash;
 const checkCash=value=>{if(!Number.isSafeInteger(value)||Math.abs(value)>1e12)throw Error('발각 보상금 지급 후 회사 자금 한도를 초과합니다.');return value;};
 // IAM job only. No browser endpoint or client-selected random draw is exposed.
-export async function detectDailySpy(db,{now=Date.now(),pick=randomInt,blocked=new Set()}={}){
- const day=koreaDay(now);if(now<settlementTime(day))return {status:'not-due'};
+export async function detectDailySpy(db,{now=Date.now(),pick=randomInt,blocked=new Set(),allowEarly=false}={}){
+ const day=koreaDay(now);if(now<settlementTime(day)&&!allowEarly)return {status:'not-due'};
+ if(allowEarly){const final=(await db.doc('marketFinalization/main').get()).data();if(final?.status!=='settling'||final.day!==day||final.cutoffAt?.toMillis()!==now)throw Error('Final settlement authorization required');}
  await migrateSpyPolicy(db);
  const ref=db.doc('spyRounds/preflight-d'+day);
  return db.runTransaction(async t=>{
